@@ -1,0 +1,249 @@
+/* Print Invoice Styles - Optimized for thermal printers (80mm) */
+
+.print-invoice-container {
+  min-height: 100vh;
+  background-color: #f3f4f6;
+  padding: 2rem;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.invoice-paper {
+  width: 100%;
+  max-width: 400px;
+  background: white;
+  padding: 1.5rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  border-radius: 0.5rem;
+  font-family: 'Courier New', Courier, monospace;
+}
+
+.invoice-header {
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.restaurant-name {
+  font-size: 1.25rem;
+  font-weight: bold;
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+}
+
+.restaurant-info {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin: 0.125rem 0;
+}
+
+.divider {
+  border-top: 2px dashed #d1d5db;
+  margin: 0.75rem 0;
+}
+
+.invoice-meta {
+  margin-bottom: 0.75rem;
+}
+
+.meta-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.meta-label {
+  font-weight: 600;
+  color: #374151;
+}
+
+.meta-value {
+  text-align: right;
+}
+
+.items-section {
+  margin-bottom: 0.75rem;
+}
+
+.items-table {
+  width: 100%;
+  font-size: 0.75rem;
+  border-collapse: collapse;
+}
+
+.items-table thead th {
+  padding: 0.375rem 0.25rem;
+  border-bottom: 1px solid #d1d5db;
+  font-weight: 600;
+  color: #374151;
+}
+
+.items-table tbody td {
+  padding: 0.375rem 0.25rem;
+  vertical-align: top;
+}
+
+.item-name {
+  max-width: 180px;
+}
+
+.modifiers {
+  margin-top: 0.25rem;
+  padding-left: 0.5rem;
+}
+
+.modifier-item {
+  font-size: 0.65rem;
+  color: #6b7280;
+  line-height: 1.3;
+}
+
+.item-notes {
+  font-size: 0.65rem;
+  color: #6b7280;
+  font-style: italic;
+  margin-top: 0.25rem;
+}
+
+.totals-section {
+  margin-bottom: 0.75rem;
+}
+
+.total-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.total-final {
+  font-size: 0.875rem;
+  font-weight: bold;
+  padding-top: 0.375rem;
+  border-top: 2px solid #374151;
+  margin-top: 0.375rem;
+}
+
+.payments-section {
+  margin-bottom: 0.75rem;
+}
+
+.section-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-bottom: 0.375rem;
+  text-transform: uppercase;
+  color: #374151;
+}
+
+.payment-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  margin-bottom: 0.25rem;
+  color: #6b7280;
+}
+
+.payment-total {
+  font-weight: 600;
+  color: #059669;
+  padding-top: 0.25rem;
+  border-top: 1px dashed #d1d5db;
+  margin-top: 0.25rem;
+}
+
+.payment-remaining {
+  font-weight: 600;
+  color: #dc2626;
+}
+
+.invoice-footer {
+  text-align: center;
+  margin-top: 1rem;
+}
+
+.thank-you {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.footer-text {
+  font-size: 0.7rem;
+  color: #6b7280;
+}
+
+/* Print Styles */
+@media print {
+  body {
+    background: white !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-invoice-container {
+    padding: 0;
+    background: white;
+  }
+
+  .invoice-paper {
+    max-width: 80mm;
+    width: 80mm;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 4mm;
+    margin: 0;
+    font-size: 9pt;
+  }
+
+  .restaurant-name {
+    font-size: 14pt;
+  }
+
+  .restaurant-info,
+  .meta-row,
+  .items-table,
+  .total-row {
+    font-size: 9pt;
+  }
+
+  .modifier-item,
+  .item-notes,
+  .payment-row {
+    font-size: 8pt;
+  }
+
+  .divider {
+    border-top: 1px dashed #000;
+  }
+
+  .items-table thead th {
+    border-bottom: 1px solid #000;
+  }
+
+  .total-final {
+    border-top: 2px solid #000;
+  }
+
+  /* Ensure everything is black on white for thermal printers */
+  * {
+    color: #000 !important;
+    background: white !important;
+  }
+
+  .payment-row {
+    color: #000 !important;
+  }
+
+  /* Page breaks */
+  .invoice-paper {
+    page-break-after: avoid;
+  }
+
+  .items-table tr {
+    page-break-inside: avoid;
+  }
+}

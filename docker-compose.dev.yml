@@ -1,0 +1,50 @@
+# Development docker-compose override
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      target: builder
+    environment:
+      NODE_ENV: development
+    volumes:
+      - ./packages/backend/src:/app/packages/backend/src
+      - ./packages/backend/prisma:/app/packages/backend/prisma
+    command: npm run dev --workspace=@qr-order/backend
+
+  # Development: Use Vite dev servers instead of nginx
+  customer:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      target: builder
+      args:
+        PACKAGE_PATH: packages/customer
+    volumes:
+      - ./packages/customer/src:/app/packages/customer/src
+    command: npm run dev --workspace=@qr-order/customer -- --host
+    ports:
+      - "5173:5173"
+
+  admin:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      target: builder
+      args:
+        PACKAGE_PATH: packages/admin
+    volumes:
+      - ./packages/admin/src:/app/packages/admin/src
+    command: npm run dev --workspace=@qr-order/admin -- --host
+    ports:
+      - "5174:5174"

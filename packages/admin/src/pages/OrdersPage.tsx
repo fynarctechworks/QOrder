@@ -1,0 +1,1228 @@
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { motion, AnimatePresence } from 'framer-motion';
+import toast from 'react-hot-toast';
+import { orderService } from '../services';
+import { useSocket } from '../context/SocketContext';
+import { usePaymentRequests } from '../context/PaymentRequestContext';
+import { sanitize } from '../utils/sanitize';
+import { useCurrency } from '../hooks/useCurrency';
+import { timeAgo } from '../utils/timeAgo';
+import type { Order, OrderItem, OrderStatus } from '../types';
+import CashierOrderModal from '../components/CashierOrderModal';
+import RunningTablesSection from '../components/RunningTablesSection';
+
+/* ═══════════════════════════ Constants ════════════════════════ */
+
+const STATUS_FLOW: OrderStatus[] = [
+  'pending', 'preparing', 'payment_pending', 'completed',
+];
+
+const SM: Record<OrderStatus, {
+  label: string; btnLabel: string; dot: string; bg: string; text: string; border: string;
+  btnStyle: string; btnIcon: string;
+}> = {
+  pending:         { label: 'Pending',         btnLabel: 'Pending',         dot: 'bg-amber-500',   bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-l-amber-400',   btnStyle: 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-200/50',   btnIcon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
+  preparing:       { label: 'Preparing',       btnLabel: 'Confirm',         dot: 'bg-violet-500',  bg: 'bg-violet-50',  text: 'text-violet-700',  border: 'border-l-violet-400',  btnStyle: 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-200/50', btnIcon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
+  payment_pending: { label: 'Payment Pending', btnLabel: 'Served',          dot: 'bg-emerald-500', bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-l-emerald-400', btnStyle: 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-200/50', btnIcon: 'M5 13l4 4L19 7' },
+  completed:       { label: 'Completed',       btnLabel: 'Complete',        dot: 'bg-gray-400',    bg: 'bg-gray-100',   text: 'text-gray-600',    border: 'border-l-gray-300',    btnStyle: 'bg-gray-500 hover:bg-gray-600 text-white shadow-gray-200/50',     btnIcon: 'M5 13l4 4L19 7' },
+  cancelled:       { label: 'Cancelled',       btnLabel: 'Cancel',          dot: 'bg-red-500',     bg: 'bg-red-50',     text: 'text-red-700',     border: 'border-l-red-400',     btnStyle: 'bg-red-500 hover:bg-red-600 text-white shadow-red-200/50',       btnIcon: 'M6 18L18 6M6 6l12 12' },
+};
+
+const ACTIVE_STATUSES: OrderStatus[] = ['pending', 'preparing'];
+
+/* ═══════════════════════════ Helpers ═════════════════════════ */
+
+function nextStatus(s: OrderStatus): OrderStatus | null {
+  const i = STATUS_FLOW.indexOf(s);
+  return i >= 0 && i < STATUS_FLOW.length - 1 ? STATUS_FLOW[i + 1] ?? null : null;
+}
+
+interface TableBill {
+  tableId: string;
+  tableName: string;
+  status: OrderStatus;
+  orders: Order[];
+  allItems: OrderItem[];
+  total: number;
+  subtotal: number;
+  tax: number;
+  orderCount: number;
+  latestCreatedAt: string;
+}
+
+function makeBill(orders: Order[], status: OrderStatus): TableBill {
+  const first = orders[0]!;
+  return {
+    tableId: first.tableId,
+    tableName: first.tableName,
+    status,
+    orders,
+    allItems: orders.flatMap(o => o.items),
+    total: orders.reduce((s, o) => s + o.total, 0),
+    subtotal: orders.reduce((s, o) => s + o.subtotal, 0),
+    tax: orders.reduce((s, o) => s + o.tax, 0),
+    orderCount: orders.length,
+    latestCreatedAt: orders.reduce((latest, o) =>
+      new Date(o.createdAt) > new Date(latest) ? o.createdAt : latest, first.createdAt),
+  };
+}
+
+function groupOrdersByTable(orders: Order[], status: OrderStatus): TableBill[] {
+  const byTable = new Map<string, Order[]>();
+  const takeaways: TableBill[] = [];
+  for (const o of orders) {
+    if (!o.tableId) {
+      takeaways.push(makeBill([o], status));
+    } else {
+      if (!byTable.has(o.tableId)) byTable.set(o.tableId, []);
+      byTable.get(o.tableId)!.push(o);
+    }
+  }
+  const tableBills = Array.from(byTable.values()).map(grp => makeBill(grp, status));
+  return [...tableBills, ...takeaways];
+}
+
+const BOARD_COL_META: { key: OrderStatus; label: string; dot: string; headerBg: string; headerText: string; emptyMsg: string }[] = [
+  { key: 'pending',         label: 'Pending',         dot: 'bg-amber-500',   headerBg: 'bg-amber-50',   headerText: 'text-amber-700',   emptyMsg: 'No pending orders' },
+  { key: 'preparing',       label: 'Preparing',       dot: 'bg-violet-500',  headerBg: 'bg-violet-50',  headerText: 'text-violet-700',  emptyMsg: 'No orders preparing' },
+  { key: 'payment_pending', label: 'Payment Pending', dot: 'bg-emerald-500', headerBg: 'bg-emerald-50', headerText: 'text-emerald-700', emptyMsg: 'No bills awaiting payment' },
+];
+
+/* ═══════════════════════════ Page ════════════════════════════ */
+
+export default function OrdersPage() {
+  const qc = useQueryClient();
+  const formatCurrency = useCurrency();
+  const { onNewOrder, onOrderStatusUpdate } = useSocket();
+  const { clearPaymentRequest, addPaymentRequest } = usePaymentRequests();
+
+  // 'board' shows the 3-column Kanban; 'completed'/'cancelled' show card grids
+  const [view, setView] = useState<'board' | 'completed' | 'cancelled'>('board');
+  const [search, setSearch] = useState('');
+  const [detail, setDetail] = useState<Order | null>(null);
+  const [showCashierOrder, setShowCashierOrder] = useState(false);
+
+  /* ── Query (fetch all, filter locally for accurate counts) ── */
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['orders'],
+    queryFn: () => orderService.getAll({ limit: 500 }),
+    refetchInterval: 30_000,
+  });
+
+  /* ── Mutations ── */
+  const advanceMut = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: OrderStatus }) =>
+      orderService.updateStatus(id, status),
+    onMutate: async ({ id, status }) => {
+      // Cancel outgoing refetches so they don't overwrite our optimistic update
+      await qc.cancelQueries({ queryKey: ['orders'] });
+      const prev = qc.getQueryData<{ data: Order[] }>(['orders']);
+      // Optimistically move the order to the new status
+      if (prev) {
+        qc.setQueryData(['orders'], {
+          ...prev,
+          data: prev.data.map(o => o.id === id ? { ...o, status, updatedAt: new Date().toISOString() } : o),
+        });
+      }
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      // Rollback on failure
+      if (ctx?.prev) qc.setQueryData(['orders'], ctx.prev);
+      toast.error('Failed to update status');
+    },
+    onSuccess: () => {
+      toast.success('Status updated');
+    },
+    onSettled: (_data, _err, vars) => {
+      // Always refetch to sync with server
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      // Only invalidate running tables for dine-in orders
+      const order = all.find(o => o.id === vars.id);
+      if (order?.tableId) {
+        qc.invalidateQueries({ queryKey: ['runningTables'] });
+      }
+    },
+  });
+
+  const cancelMut = useMutation({
+    mutationFn: (id: string) => orderService.cancel(id),
+    onSuccess: (_data, id) => {
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      // Only invalidate running tables for dine-in orders
+      const order = all.find(o => o.id === id);
+      if (order?.tableId) {
+        qc.invalidateQueries({ queryKey: ['runningTables'] });
+      }
+      setDetail(null);
+      toast.success('Order cancelled');
+    },
+    onError: () => toast.error('Failed to cancel order'),
+  });
+
+  const cashierOrderMut = useMutation({
+    mutationFn: (data: Parameters<typeof orderService.createOrder>[0]) =>
+      orderService.createOrder(data),
+    onSuccess: (_data, vars) => {
+      toast.success('Order created');
+      setShowCashierOrder(false);
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      // Only invalidate running tables/tables for dine-in orders
+      if (vars.tableId) {
+        qc.invalidateQueries({ queryKey: ['runningTables'] });
+        qc.invalidateQueries({ queryKey: ['tables'] });
+      }
+    },
+    onError: () => toast.error('Failed to create order'),
+  });
+
+  /* ── Real-time ── */
+  useEffect(() => {
+    const u1 = onNewOrder((order) => {
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      // Only invalidate running tables for dine-in orders
+      if (order?.tableId) {
+        qc.invalidateQueries({ queryKey: ['runningTables'] });
+      }
+    });
+    const u2 = onOrderStatusUpdate(() => {
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['runningTables'] });
+    });
+    return () => { u1(); u2(); };
+  }, [onNewOrder, onOrderStatusUpdate, qc]);
+
+  const all = data?.data ?? [];
+
+  /* Keep detail panel in sync after mutations */
+  useEffect(() => {
+    if (detail) {
+      const fresh = all.find(o => o.id === detail.id);
+      if (fresh && fresh.updatedAt !== detail.updatedAt) setDetail(fresh);
+    }
+  }, [all, detail]);
+
+  /* ── Derived data ── */
+  const counts = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const o of all) m[o.status] = (m[o.status] || 0) + 1;
+    return m;
+  }, [all]);
+
+  const activeCount = useMemo(
+    () => all.filter(o => ACTIVE_STATUSES.includes(o.status)).length,
+    [all],
+  );
+
+  const pendingPayments = useMemo(
+    () => all.filter(o => o.status === 'payment_pending').reduce((s, o) => s + o.total, 0),
+    [all],
+  );
+
+  const runningTablesCount = useMemo(() => {
+    const tableIds = new Set<string>();
+    for (const o of all) {
+      if (o.tableId && ACTIVE_STATUSES.includes(o.status)) tableIds.add(o.tableId);
+    }
+    return tableIds.size;
+  }, [all]);
+
+  /* ── Search helper ── */
+  const matchesSearch = useCallback((o: Order) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (
+      o.id.toLowerCase().includes(q) ||
+      o.tableName.toLowerCase().includes(q) ||
+      o.items.some(i => i.menuItemName.toLowerCase().includes(q))
+    );
+  }, [search]);
+
+  /* ── Board columns (pending / preparing / payment_pending) ── */
+  const boardColumns = useMemo(() => {
+    const BOARD_STATUSES: OrderStatus[] = ['pending', 'preparing', 'payment_pending'];
+    const cols: Record<string, Order[]> = { pending: [], preparing: [], payment_pending: [] };
+    for (const o of all) {
+      if (BOARD_STATUSES.includes(o.status) && matchesSearch(o)) {
+        cols[o.status]?.push(o);
+      }
+    }
+    // Sort each column by createdAt desc
+    for (const k of BOARD_STATUSES) {
+      cols[k]?.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
+    return cols;
+  }, [all, matchesSearch]);
+
+  /* ── Group ALL board orders by table ── */
+  const pendingBills = useMemo(
+    () => groupOrdersByTable(boardColumns.pending || [], 'pending'),
+    [boardColumns.pending],
+  );
+  const preparingBills = useMemo(
+    () => groupOrdersByTable(boardColumns.preparing || [], 'preparing'),
+    [boardColumns.preparing],
+  );
+  const ppTableBills = useMemo(
+    () => groupOrdersByTable(boardColumns.payment_pending || [], 'payment_pending'),
+    [boardColumns.payment_pending],
+  );
+  const boardBills = useMemo<Record<string, TableBill[]>>(() => ({
+    pending: pendingBills,
+    preparing: preparingBills,
+    payment_pending: ppTableBills,
+  }), [pendingBills, preparingBills, ppTableBills]);
+
+  /* ── Completed / Cancelled lists (for grid views) ── */
+  /* Pre-compute BOTH so data is ready instantly on tab switch */
+  const completedGrid = useMemo(() => {
+    let list = all.filter(o => o.status === 'completed' && matchesSearch(o));
+    list.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+
+    // Group completed orders by table (batch settlement within 60s)
+    const bills: TableBill[] = [];
+    const byTable = new Map<string, Order[]>();
+    for (const o of list) {
+      if (!o.tableId) {
+        // Takeaway: each order is its own bill card
+        bills.push(makeBill([o], 'completed'));
+        continue;
+      }
+      const key = o.tableId;
+      if (!byTable.has(key)) byTable.set(key, []);
+      byTable.get(key)!.push(o);
+    }
+    for (const orders of byTable.values()) {
+      orders.sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime());
+      let batch: Order[] = [orders[0]!];
+      for (let i = 1; i < orders.length; i++) {
+        const curr = orders[i]!;
+        const prev = orders[i - 1]!;
+        const gap = new Date(curr.updatedAt).getTime() - new Date(prev.updatedAt).getTime();
+        if (gap <= 60_000) {
+          batch.push(curr);
+        } else {
+          bills.push(makeBill(batch, 'completed'));
+          batch = [curr];
+        }
+      }
+      bills.push(makeBill(batch, 'completed'));
+    }
+    type GridItem = { kind: 'bill'; bill: TableBill; ts: number } | { kind: 'order'; order: Order; ts: number };
+    const items: GridItem[] = bills.map(b => ({
+      kind: 'bill' as const,
+      bill: b,
+      ts: Math.max(...b.orders.map(o => new Date(o.updatedAt).getTime())),
+    }));
+    items.sort((a, b) => b.ts - a.ts);
+    return { items };
+  }, [all, matchesSearch]);
+
+  const cancelledGrid = useMemo(() => {
+    let list = all.filter(o => o.status === 'cancelled' && matchesSearch(o));
+    list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    type GridItem = { kind: 'bill'; bill: TableBill; ts: number } | { kind: 'order'; order: Order; ts: number };
+    const items: GridItem[] = list.map(o => ({ kind: 'order' as const, order: o, ts: new Date(o.createdAt).getTime() }));
+    return { items };
+  }, [all, matchesSearch]);
+
+  const gridData = view === 'completed' ? completedGrid : cancelledGrid;
+
+  const pending = counts['pending'] || 0;
+
+  return (
+    <div className="space-y-5">
+      {/* ═══ Header ═══ */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2.5">
+            Orders
+            {pending > 0 && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold animate-pulse">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                {pending} new
+              </span>
+            )}
+          </h1>
+          <p className="text-sm text-text-secondary mt-0.5">
+            Track and manage incoming orders in real-time
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowCashierOrder(true)}
+            className="btn-primary rounded-xl text-sm px-4 py-2.5 shadow-sm active:scale-[0.97] flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+            Create Order
+          </button>
+          <div className="relative w-full sm:w-72">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Search by ID, table, or item…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="input pl-10 py-2.5 text-sm"
+          />
+          </div>
+        </div>
+      </div>
+
+      {/* ═══ Quick Stats ═══ */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[
+          { label: 'Total Orders', value: String(all.length), color: 'text-text-primary', iconBg: 'bg-sky-500', icon: 'M16 4H18a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2M8 2h8v4H8V2M9 12h6M9 16h4', ring: '' },
+          { label: 'Active', value: String(activeCount), color: 'text-violet-600', iconBg: 'bg-violet-500', icon: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z', ring: '' },
+          { label: 'Running Tables', value: String(runningTablesCount), color: 'text-amber-600', iconBg: 'bg-amber-500', icon: 'M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z', ring: runningTablesCount > 0 ? 'ring-1 ring-amber-200' : '' },
+          { label: 'Pending Payments', value: formatCurrency(pendingPayments), color: 'text-emerald-600', iconBg: 'bg-emerald-500', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6', ring: pendingPayments > 0 ? 'ring-1 ring-emerald-200' : '' },
+        ].map(stat => (
+          <div key={stat.label} className={`card p-4 transition-shadow ${stat.ring}`}>
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-xl ${stat.iconBg} flex items-center justify-center shrink-0 shadow-sm`}>
+                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                  <path d={stat.icon} />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] text-text-muted font-medium uppercase tracking-wider leading-none">{stat.label}</p>
+                <p className={`text-xl font-bold ${stat.color} mt-1 leading-none tabular-nums`}>{stat.value}</p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ═══ Running Tables ═══ */}
+      <RunningTablesSection />
+
+      {/* ═══ View Tabs ═══ */}
+      <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+        {([
+          { key: 'board' as const, label: 'Order Board', dot: 'bg-violet-500', count: (counts['pending'] || 0) + (counts['preparing'] || 0) + (counts['payment_pending'] || 0) },
+          { key: 'completed' as const, label: 'Completed', dot: 'bg-gray-400', count: counts['completed'] || 0 },
+          { key: 'cancelled' as const, label: 'Cancelled', dot: 'bg-red-500', count: counts['cancelled'] || 0 },
+        ]).map(tab => {
+          const active = view === tab.key;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => { setView(tab.key); refetch(); }}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-medium whitespace-nowrap transition-all ${
+                active
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'bg-surface text-text-secondary hover:bg-surface-elevated'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full shrink-0 ${active ? 'bg-white/70' : tab.dot}`} />
+              <span>{tab.label}</span>
+              {tab.count > 0 && (
+                <span className={`text-[11px] tabular-nums min-w-[20px] h-5 inline-flex items-center justify-center px-1.5 rounded-full ${
+                  active ? 'bg-white/20' : 'bg-surface-elevated text-text-muted'
+                }`}>
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ═══ Board / Grid ═══ */}
+      {isError ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+          <p className="text-red-700 font-semibold">Failed to load orders</p>
+          <p className="text-red-500 text-sm mt-1">Please check your connection and try refreshing.</p>
+          <button onClick={() => refetch()} className="mt-3 px-4 py-2 text-sm font-medium text-red-700 bg-red-100 rounded-lg hover:bg-red-200 transition-colors">Retry</button>
+        </div>
+      ) : isLoading ? (
+        <OrderSkeleton />
+      ) : view === 'board' ? (
+        /* ── 3-column Kanban Board ── */
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {BOARD_COL_META.map(col => {
+            const bills = boardBills[col.key] || [];
+            return (
+              <div key={col.key} className="flex flex-col min-h-[200px]">
+                {/* Column Header */}
+                <div className={`flex items-center justify-between px-3.5 py-2.5 rounded-t-xl ${col.headerBg}`}>
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2.5 h-2.5 rounded-full ${col.dot}`} />
+                    <span className={`text-sm font-semibold ${col.headerText}`}>{col.label}</span>
+                  </div>
+                  <span className={`text-xs font-bold tabular-nums px-2 py-0.5 rounded-full ${col.headerBg} ${col.headerText}`}>
+                    {bills.length}
+                  </span>
+                </div>
+                {/* Column Body */}
+                <div className="flex-1 bg-surface/50 rounded-b-xl border border-t-0 border-border/50 p-2.5 space-y-2.5 overflow-y-auto max-h-[calc(100vh-380px)]">
+                  {bills.length === 0 ? (
+                    <p className="text-center text-xs text-text-muted py-8">{col.emptyMsg}</p>
+                  ) : (
+                    <AnimatePresence mode="popLayout">
+                      {bills.map(bill => (
+                        <TableBillCard
+                          key={`bill-${bill.tableId || bill.orders[0]?.id}-${bill.status}`}
+                          bill={bill}
+                          onAdvanceAll={() => {
+                            const ns = nextStatus(bill.status);
+                            if (ns) {
+                              for (const o of bill.orders) {
+                                advanceMut.mutate({ id: o.id, status: ns });
+                              }
+                            }
+                            if (bill.status === 'payment_pending') {
+                              clearPaymentRequest(bill.tableId);
+                            }
+                          }}
+                          onSendWaiter={bill.status === 'payment_pending'
+                            ? () => addPaymentRequest(bill.tableId, bill.tableName, bill.total, bill.orderCount)
+                            : undefined}
+                          onSelectOrder={o => setDetail(o)}
+                          isAdvancing={advanceMut.isPending}
+                        />
+                      ))}
+                    </AnimatePresence>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (gridData.items.length === 0) ? (
+        <EmptyState search={search} view={view as 'completed' | 'cancelled'} />
+      ) : (
+        /* ── Card grid for completed / cancelled ── */
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <AnimatePresence mode="popLayout">
+            {gridData.items.map(item =>
+              item.kind === 'bill' ? (
+                <TableBillCard
+                  key={`bill-${item.bill.tableId}-${item.bill.status}-${item.bill.orders[0]?.id}`}
+                  bill={item.bill}
+                  onAdvanceAll={() => {}}
+                  onSelectOrder={o => setDetail(o)}
+                  isAdvancing={false}
+                />
+              ) : (
+                <OrderCard
+                  key={item.order.id}
+                  order={item.order}
+                  onSelect={() => setDetail(item.order)}
+                  onAdvance={() => {
+                    const ns = nextStatus(item.order.status);
+                    if (ns) advanceMut.mutate({ id: item.order.id, status: ns });
+                  }}
+                  isAdvancing={advanceMut.isPending}
+                />
+              )
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+
+      {/* ═══ Detail Slide-over ═══ */}
+      <AnimatePresence>
+        {detail && (
+          <OrderDetail
+            order={detail}
+            onClose={() => setDetail(null)}
+            onAdvance={s => advanceMut.mutate({ id: detail.id, status: s })}
+            onCancel={() => cancelMut.mutate(detail.id)}
+            isAdvancing={advanceMut.isPending}
+            isCancelling={cancelMut.isPending}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* ═══ Cashier Order Modal ═══ */}
+      <CashierOrderModal
+        open={showCashierOrder}
+        onClose={() => setShowCashierOrder(false)}
+        onSubmit={(data) => cashierOrderMut.mutate(data)}
+        isSubmitting={cashierOrderMut.isPending}
+      />
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Sub-components
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── Table Bill Card (grouped by table) ─────────────────── */
+
+function TableBillCard({
+  bill,
+  onAdvanceAll,
+  onSendWaiter,
+  onSelectOrder,
+  isAdvancing,
+}: {
+  bill: TableBill;
+  onAdvanceAll: () => void;
+  onSendWaiter?: () => void;
+  onSelectOrder: (order: Order) => void;
+  isAdvancing: boolean;
+}) {
+  const formatCurrency = useCurrency();
+  const { paymentRequests } = usePaymentRequests();
+  const isCompleted = bill.status === 'completed';
+  const isPP = bill.status === 'payment_pending';
+  const ns = nextStatus(bill.status);
+  const meta = SM[bill.status];
+
+  // Check if waiter was already sent (persisted in payment request context)
+  const hasPaymentRequest = paymentRequests.some(r => r.tableId === bill.tableId);
+  const [waiterState, setWaiterState] = useState<'idle' | 'sent' | 'ready'>(
+    hasPaymentRequest ? 'ready' : 'idle'
+  );
+
+  const handleSendWaiter = useCallback(() => {
+    setWaiterState('sent');
+    if (onSendWaiter) onSendWaiter();
+    setTimeout(() => setWaiterState('ready'), 1500);
+  }, [onSendWaiter]);
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.15 } }}
+      className={`card border-l-[3px] ${meta.border} hover:shadow-elevated transition-all duration-200`}
+    >
+      <div className="p-4 flex flex-col gap-3">
+        {/* Header: Table Name + Status */}
+        <div className="flex items-start justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-text-secondary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+              </svg>
+              <p className="text-sm font-bold text-text-primary">{bill.tableName}</p>
+            </div>
+            <p className="text-[11px] text-text-muted mt-1">
+              {bill.orderCount} order{bill.orderCount > 1 ? 's' : ''} · {timeAgo(bill.latestCreatedAt)}
+            </p>
+            {bill.orders[0]?.customerName && (
+              <div className="flex items-center gap-1.5 mt-1">
+                <svg className="w-3 h-3 text-text-muted shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                <span className="text-[11px] font-medium text-text-secondary leading-none">{bill.orders[0].customerName}</span>
+                {bill.orders[0]?.customerPhone && (
+                  <>
+                    <span className="text-[11px] text-text-muted leading-none">·</span>
+                    <span className="text-[11px] text-text-muted leading-none">{bill.orders[0].customerPhone}</span>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold leading-none shrink-0 ${meta.bg} ${meta.text}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
+            {meta.label}
+          </span>
+        </div>
+
+        {/* Orders grouped */}
+        <div className="space-y-2">
+          {bill.orders.map(order => (
+            <div
+              key={order.id}
+              onClick={() => onSelectOrder(order)}
+              className="bg-surface-elevated/60 rounded-lg p-2.5 cursor-pointer hover:bg-surface-elevated transition-colors"
+            >
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="font-mono text-[11px] font-semibold text-text-secondary">
+                  #{order.orderNumber || order.id.slice(-6).toUpperCase()}
+                </span>
+                <span className="text-[11px] text-text-muted">{timeAgo(order.createdAt)}</span>
+              </div>
+              <div className="space-y-0.5">
+                {order.items.map(item => (
+                  <div key={item.id} className="flex items-baseline justify-between gap-2 text-[13px]">
+                    <span className="truncate text-text-secondary">
+                      <span className="text-text-primary font-medium tabular-nums">{item.quantity}×</span>
+                      <span className="ml-1">{item.menuItemName}</span>
+                    </span>
+                    <span className="text-text-muted text-xs tabular-nums shrink-0">
+                      {formatCurrency(item.totalPrice)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="text-right mt-1 pt-1 border-t border-gray-100">
+                <span className="text-xs font-semibold text-text-primary tabular-nums">
+                  {formatCurrency(order.total)}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer: Combined total + action buttons */}
+        <div className="flex items-center justify-between pt-3 border-t border-surface-elevated/80 -mb-0.5">
+          <div>
+            <p className="text-[11px] text-text-muted leading-none">Total Bill</p>
+            <span className="text-[17px] font-bold text-text-primary tabular-nums leading-tight">
+              {formatCurrency(bill.total)}
+            </span>
+          </div>
+          <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+            {isCompleted ? (
+              <span className="text-[13px] font-semibold px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 leading-none bg-emerald-50 text-emerald-600">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Settled
+              </span>
+            ) : isPP ? (
+              <>
+                {waiterState === 'idle' && (
+                  <button
+                    onClick={handleSendWaiter}
+                    className="text-[13px] font-semibold px-4 py-2 rounded-lg shadow-sm transition-all duration-200 active:scale-95 inline-flex items-center gap-1.5 leading-none bg-blue-500 hover:bg-blue-600 text-white shadow-blue-200/50"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                    Send Waiter
+                  </button>
+                )}
+                {waiterState === 'sent' && (
+                  <span className="text-[13px] font-semibold px-4 py-2 rounded-lg inline-flex items-center gap-1.5 leading-none bg-blue-50 text-blue-600">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Waiter Sent
+                  </span>
+                )}
+                {waiterState === 'ready' && (
+                  <button
+                    onClick={onAdvanceAll}
+                    disabled={isAdvancing}
+                    className="text-[13px] font-semibold px-4 py-2 rounded-lg shadow-sm transition-all duration-200 disabled:opacity-50 active:scale-95 inline-flex items-center gap-1.5 leading-none bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-200/50"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Payment Completed
+                  </button>
+                )}
+              </>
+            ) : ns ? (
+              <button
+                onClick={onAdvanceAll}
+                disabled={isAdvancing}
+                className={`text-[13px] font-semibold px-4 py-2 rounded-lg shadow-sm transition-all duration-200 disabled:opacity-50 active:scale-95 inline-flex items-center gap-1.5 leading-none ${SM[ns].btnStyle}`}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={SM[ns].btnIcon} />
+                </svg>
+                {SM[ns].btnLabel}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+/* ─── Order Card ──────────────────────────────────────────── */
+
+function OrderCard({
+  order,
+  onSelect,
+  onAdvance,
+  isAdvancing,
+}: {
+  order: Order;
+  onSelect: () => void;
+  onAdvance: () => void;
+  isAdvancing: boolean;
+}) {
+  const formatCurrency = useCurrency();
+  const meta = SM[order.status];
+  const ns = nextStatus(order.status);
+  const isPending = order.status === 'pending';
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.15 } }}
+      onClick={onSelect}
+      className={`card cursor-pointer border-l-[3px] ${meta.border} hover:shadow-elevated transition-all duration-200
+        ${isPending ? 'ring-1 ring-amber-200/70' : ''}`}
+    >
+      <div className="p-4 flex flex-col gap-3">
+        {/* Row 1: Order ID + Status badge */}
+        <div className="flex items-start justify-between">
+          <div className="min-w-0">
+            <p className="font-mono text-sm font-semibold text-text-primary tracking-wide leading-5">
+              #{order.orderNumber || order.id.slice(-6).toUpperCase()}
+            </p>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-text-secondary bg-surface-elevated px-2 py-0.5 rounded">
+                <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+                </svg>
+                {order.tableName}
+              </span>
+              <span className="text-[11px] text-text-muted leading-none">{timeAgo(order.createdAt)}</span>
+            </div>
+            {order.customerName && (
+              <div className="flex items-center gap-1.5 mt-1">
+                <svg className="w-3 h-3 text-text-muted shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                <span className="text-[11px] font-medium text-text-secondary leading-none">{order.customerName}</span>
+                {order.customerPhone && (
+                  <>
+                    <span className="text-[11px] text-text-muted leading-none">·</span>
+                    <span className="text-[11px] text-text-muted leading-none">{order.customerPhone}</span>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold leading-none shrink-0 ${meta.bg} ${meta.text}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${meta.dot} ${isPending ? 'animate-pulse' : ''}`} />
+            {meta.label}
+          </span>
+        </div>
+
+        {/* Items preview */}
+        <div className="space-y-1.5">
+          {order.items.slice(0, 3).map(item => (
+            <div key={item.id} className="text-sm leading-5">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="truncate text-text-secondary">
+                  <span className="inline-block w-6 text-right text-text-primary font-medium tabular-nums">{item.quantity}×</span>
+                  <span className="ml-1">{item.menuItemName}</span>
+                </span>
+                <span className="text-text-muted text-xs tabular-nums shrink-0">
+                  {formatCurrency(item.totalPrice)}
+                </span>
+              </div>
+              {item.customizations.length > 0 && (
+                <p className="text-[11px] text-text-muted pl-7 leading-4 mt-0.5 truncate">
+                  {item.customizations.map(c =>
+                    `${c.groupName}: ${c.options.map(o => o.name).join(', ')}`
+                  ).join(' · ')}
+                </p>
+              )}
+            </div>
+          ))}
+          {order.items.length > 3 && (
+            <p className="text-[11px] text-text-muted italic pl-7">
+              +{order.items.length - 3} more item{order.items.length - 3 > 1 ? 's' : ''}
+            </p>
+          )}
+        </div>
+
+        {/* Special instructions indicator */}
+        {(order.specialInstructions || order.items.some(i => i.specialInstructions)) && (
+          <div className="flex items-center gap-1.5 text-[11px] text-amber-600 -mt-1">
+            <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>Has special instructions</span>
+          </div>
+        )}
+
+        {/* Footer: total + action */}
+        <div className="flex items-center justify-between pt-3 border-t border-surface-elevated/80 -mb-0.5">
+          <span className="text-[15px] font-bold text-text-primary tabular-nums leading-none">
+            {formatCurrency(order.total)}
+          </span>
+          <div onClick={e => e.stopPropagation()}>
+            {ns ? (
+              <button
+                onClick={onAdvance}
+                disabled={isAdvancing}
+                className={`text-[13px] font-semibold px-4 py-2 rounded-lg shadow-sm transition-all duration-200 disabled:opacity-50 active:scale-95 inline-flex items-center gap-1.5 leading-none ${SM[ns].btnStyle}`}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={SM[ns].btnIcon} />
+                </svg>
+                {SM[ns].btnLabel}
+              </button>
+            ) : (
+              <span className={`text-xs font-semibold leading-none ${meta.text}`}>{meta.label}</span>
+            )}
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+/* ─── Detail Slide-over ──────────────────────────────────── */
+
+function OrderDetail({
+  order,
+  onClose,
+  onAdvance,
+  onCancel,
+  isAdvancing,
+  isCancelling,
+}: {
+  order: Order;
+  onClose: () => void;
+  onAdvance: (s: OrderStatus) => void;
+  onCancel: () => void;
+  isAdvancing: boolean;
+  isCancelling: boolean;
+}) {
+  const formatCurrency = useCurrency();
+  const meta = SM[order.status];
+  const ns = nextStatus(order.status);
+  const currentStep = STATUS_FLOW.indexOf(order.status);
+  const isCancelled = order.status === 'cancelled';
+  const isDone = order.status === 'completed' || isCancelled;
+
+  return (
+    <>
+      {/* Backdrop */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50"
+      />
+
+      {/* Panel */}
+      <motion.aside
+        initial={{ x: '100%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '100%' }}
+        transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+        className="fixed top-0 right-0 bottom-0 w-full max-w-md bg-white shadow-2xl z-50 flex flex-col"
+      >
+        {/* ── Header ── */}
+        <div className="px-6 py-5 border-b border-gray-100">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h2 className="text-lg font-bold text-text-primary leading-6">
+                  #{order.orderNumber || order.id.slice(-6).toUpperCase()}
+                </h2>
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold leading-none ${meta.bg} ${meta.text}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
+                  {meta.label}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 text-sm text-text-secondary mt-1.5">
+                <span>{order.tableName}</span>
+                <span className="text-text-muted">·</span>
+                <span>{timeAgo(order.createdAt)}</span>
+                <span className="text-text-muted">·</span>
+                <span>{new Date(order.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+              </div>
+              {order.customerName && (
+                <div className="flex items-center gap-1.5 mt-1">
+                  <svg className="w-3.5 h-3.5 text-text-muted shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  <span className="text-sm font-medium text-text-secondary">{order.customerName}</span>
+                  {order.customerPhone && (
+                    <>
+                      <span className="text-text-muted">·</span>
+                      <span className="text-sm text-text-muted">{order.customerPhone}</span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-text-muted hover:bg-surface-elevated hover:text-text-primary transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Progress bar */}
+          {!isCancelled && (
+            <div className="mt-5">
+              <div className="flex gap-1">
+                {STATUS_FLOW.map((s, i) => (
+                  <div
+                    key={s}
+                    className={`flex-1 h-1.5 rounded-full transition-colors ${
+                      i <= currentStep ? 'bg-primary' : 'bg-gray-200'
+                    }`}
+                  />
+                ))}
+              </div>
+              <div className="flex justify-between mt-2">
+                <span className="text-[10px] text-text-muted leading-none">Placed</span>
+                <span className="text-[10px] font-semibold text-primary leading-none">{meta.label}</span>
+                <span className="text-[10px] text-text-muted leading-none">Done</span>
+              </div>
+            </div>
+          )}
+
+          {/* Cancelled banner */}
+          {isCancelled && (
+            <div className="mt-4 px-3 py-2.5 rounded-lg bg-red-50 border border-red-100 text-sm text-red-700 font-medium">
+              This order has been cancelled
+            </div>
+          )}
+        </div>
+
+        {/* ── Body ── */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+          {/* Items */}
+          <section>
+            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-text-muted mb-3 leading-none">
+              Items ({order.items.length})
+            </h3>
+            <div className="space-y-2">
+              {order.items.map(item => (
+                <div key={item.id} className="p-3 rounded-xl bg-background border border-gray-100">
+                  {/* ── Item header: qty + name + price ── */}
+                  <div className="flex items-start gap-3">
+                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-primary/10 text-primary text-xs font-bold shrink-0 mt-px">
+                      {item.quantity}×
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-text-primary text-sm leading-5 truncate">
+                        {item.menuItemName}
+                      </p>
+                    </div>
+                    <span className="text-sm font-semibold text-text-primary tabular-nums shrink-0 leading-5">
+                      {formatCurrency(item.totalPrice)}
+                    </span>
+                  </div>
+
+                  {/* ── Customization groups (hierarchical) ── */}
+                  {item.customizations.length > 0 && (
+                    <div className="ml-10 mt-2 space-y-2">
+                      {item.customizations.map(group => (
+                        <div key={group.groupId}>
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted leading-none mb-1">
+                            {group.groupName}
+                          </p>
+                          <div className="space-y-0.5">
+                            {group.options.map(opt => (
+                              <div key={opt.id} className="flex items-center justify-between text-xs leading-5">
+                                <span className="text-text-secondary flex items-center gap-1.5">
+                                  <span className="w-1 h-1 rounded-full bg-primary/40 shrink-0" />
+                                  {opt.name}
+                                </span>
+                                {opt.priceModifier > 0 && (
+                                  <span className="text-text-muted tabular-nums shrink-0">
+                                    +{formatCurrency(opt.priceModifier)}
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* ── Special instructions ── */}
+                  {item.specialInstructions && (
+                    <div className="ml-10 mt-2">
+                      <p className="text-xs text-amber-600 italic leading-4 flex items-start gap-1.5">
+                        <svg className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        {sanitize(item.specialInstructions)}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Special Instructions */}
+          {order.specialInstructions && (
+            <section>
+              <h3 className="text-[11px] font-semibold uppercase tracking-wider text-text-muted mb-2 leading-none">
+                Special Instructions
+              </h3>
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-100 text-sm text-amber-800 leading-5 flex items-start gap-2.5">
+                <svg className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>{sanitize(order.specialInstructions)}</span>
+              </div>
+            </section>
+          )}
+
+          {/* Payment Summary */}
+          <section>
+            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-text-muted mb-3 leading-none">
+              Payment Summary
+            </h3>
+            <div className="rounded-xl bg-background border border-gray-100 p-4 space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-text-secondary">Subtotal</span>
+                <span className="text-text-primary tabular-nums">{formatCurrency(order.subtotal)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-text-secondary">Tax</span>
+                <span className="text-text-primary tabular-nums">{formatCurrency(order.tax)}</span>
+              </div>
+              <div className="h-px bg-gray-200" />
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-text-primary">Total</span>
+                <span className="font-bold text-primary text-lg tabular-nums leading-none">{formatCurrency(order.total)}</span>
+              </div>
+            </div>
+          </section>
+
+          {/* Order Meta */}
+          <section>
+            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-text-muted mb-3 leading-none">
+              Order Details
+            </h3>
+            <div className="space-y-2.5 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-text-muted">Created</span>
+                <span className="text-text-secondary tabular-nums">{new Date(order.createdAt).toLocaleString()}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-text-muted">Last updated</span>
+                <span className="text-text-secondary tabular-nums">{new Date(order.updatedAt).toLocaleString()}</span>
+              </div>
+              {order.customerName && (
+                <div className="flex items-center justify-between">
+                  <span className="text-text-muted">Customer Name</span>
+                  <span className="text-text-secondary font-medium">{order.customerName}</span>
+                </div>
+              )}
+              {order.customerPhone && (
+                <div className="flex items-center justify-between">
+                  <span className="text-text-muted">Phone</span>
+                  <a href={`tel:${order.customerPhone}`} className="text-primary font-medium hover:underline">{order.customerPhone}</a>
+                </div>
+              )}
+              {order.estimatedReadyTime && (
+                <div className="flex items-center justify-between">
+                  <span className="text-text-muted">Est. ready</span>
+                  <span className="text-text-secondary tabular-nums">{new Date(order.estimatedReadyTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+                </div>
+              )}
+              {order.preparedAt && (
+                <div className="flex items-center justify-between">
+                  <span className="text-text-muted">Prepared at</span>
+                  <span className="text-text-secondary tabular-nums">{new Date(order.preparedAt).toLocaleString()}</span>
+                </div>
+              )}
+              {order.completedAt && (
+                <div className="flex items-center justify-between">
+                  <span className="text-text-muted">Completed at</span>
+                  <span className="text-text-secondary tabular-nums">{new Date(order.completedAt).toLocaleString()}</span>
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+
+        {/* ── Footer ── */}
+        {!isDone && (
+          <div className="px-6 py-4 border-t border-gray-100 flex gap-3 bg-white">
+            <button
+              onClick={onCancel}
+              disabled={isCancelling}
+              className="flex-1 py-3 rounded-xl text-[15px] font-semibold inline-flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] disabled:opacity-50 bg-red-50 text-red-600 hover:bg-red-100 border border-red-200"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              {isCancelling ? 'Cancelling…' : 'Cancel Order'}
+            </button>
+            {ns && (
+              <button
+                onClick={() => onAdvance(ns)}
+                disabled={isAdvancing}
+                className={`flex-1 py-3 rounded-xl text-[15px] font-semibold inline-flex items-center justify-center gap-2 shadow-sm transition-all duration-200 active:scale-[0.98] disabled:opacity-50 ${SM[ns].btnStyle}`}
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={SM[ns].btnIcon} />
+                </svg>
+                {isAdvancing ? 'Updating…' : `Mark ${SM[ns].btnLabel}`}
+              </button>
+            )}
+          </div>
+        )}
+      </motion.aside>
+    </>
+  );
+}
+
+/* ─── Empty State ────────────────────────────────────────── */
+
+function EmptyState({ search, view }: { search: string; view: 'completed' | 'cancelled' }) {
+  const label = view === 'completed' ? 'completed' : 'cancelled';
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+      <div className="w-16 h-16 rounded-2xl bg-surface-elevated flex items-center justify-center mb-4">
+        <svg className="w-8 h-8 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+        </svg>
+      </div>
+      <h3 className="font-semibold text-text-primary mb-1">No orders found</h3>
+      <p className="text-sm text-text-muted max-w-xs">
+        {search
+          ? `No results for "${search}". Try a different search term.`
+          : `No ${label} orders right now.`}
+      </p>
+    </div>
+  );
+}
+
+/* ─── Loading Skeleton ───────────────────────────────────── */
+
+function OrderSkeleton() {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="card p-4 border-l-[3px] border-l-gray-200 animate-pulse flex flex-col gap-3">
+          <div className="flex items-start justify-between">
+            <div className="space-y-2">
+              <div className="bg-surface-elevated h-4 w-20 rounded" />
+              <div className="bg-surface-elevated h-3 w-28 rounded" />
+            </div>
+            <div className="bg-surface-elevated h-6 w-16 rounded-full" />
+          </div>
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-3">
+              <div className="bg-surface-elevated h-3.5 w-6 rounded" />
+              <div className="bg-surface-elevated h-3.5 flex-1 rounded" />
+              <div className="bg-surface-elevated h-3 w-12 rounded" />
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="bg-surface-elevated h-3.5 w-6 rounded" />
+              <div className="bg-surface-elevated h-3.5 w-3/4 rounded" />
+              <div className="bg-surface-elevated h-3 w-12 rounded" />
+            </div>
+          </div>
+          <div className="border-t border-surface-elevated pt-3 flex items-center justify-between">
+            <div className="bg-surface-elevated h-5 w-16 rounded" />
+            <div className="bg-surface-elevated h-7 w-20 rounded-lg" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}

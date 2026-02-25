@@ -1,0 +1,3 @@
+ALTER TABLE "MenuItem" ADD COLUMN "discountPrice" DECIMAL(10, 2);
+ALTER TABLE "MenuItem" ADD COLUMN "badge" TEXT;
+ALTER TABLE "MenuItem" ADD COLUMN "allergens" TEXT[] DEFAULT ARRAY[]::TEXT[];

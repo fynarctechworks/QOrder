@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/4.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#FFFFFF" />
+    <meta name="description" content="Q Order Admin Dashboard - Manage your restaurant orders" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&display=swap">
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <title>Q Order Admin</title>
+    <script>
+      // Redirect customer /r/... routes to the customer app before any modules load
+      if (window.location.pathname.indexOf('/r/') === 0) {
+        var port = window.location.port;
+        var customerPort = port === '5173' ? '5174' : port;
+        var customerOrigin = window.location.protocol + '//' + window.location.hostname + ':' + customerPort;
+        window.location.replace(customerOrigin + window.location.pathname + window.location.search + window.location.hash);
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

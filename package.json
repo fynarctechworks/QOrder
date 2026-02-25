@@ -1,0 +1,34 @@
+{
+  "name": "qr-order-web",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "packageManager": "npm@10.0.0",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:customer\" \"npm run dev:admin\" \"npm run dev:backend\"",
+    "dev:customer": "npm -w @qr-order/customer run dev",
+    "dev:admin": "npm -w @qr-order/admin run dev",
+    "dev:backend": "npm -w @qr-order/backend run dev",
+    "build": "npm run build:customer && npm run build:admin && npm run build:backend",
+    "build:customer": "npm -w @qr-order/customer run build",
+    "build:admin": "npm -w @qr-order/admin run build",
+    "build:backend": "npm -w @qr-order/backend run build",
+    "type-check": "npm run type-check --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "db:migrate": "npm -w @qr-order/backend run db:migrate",
+    "db:generate": "npm -w @qr-order/backend run db:generate",
+    "db:seed": "npm -w @qr-order/backend run db:seed",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "dotenv": "^16.6.1"
+  }
+}
