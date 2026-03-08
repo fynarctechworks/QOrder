@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { useQueryClient } from '@tanstack/react-query';
 import type { OrderStatusUpdate, SocketEvents } from '../types';
 
 interface SocketContextValue {
@@ -20,6 +21,7 @@ interface SocketContextValue {
   leaveTableRoom: (tableId: string) => void;
   requestPayment: (data: PaymentRequestPayload) => void;
   onOrderStatusUpdate: (callback: (update: OrderStatusUpdate) => void) => () => void;
+  onTableUpdated: (callback: (data: { tableId: string }) => void) => () => void;
   onPaymentAcknowledged: (callback: (data: { tableId: string }) => void) => () => void;
 }
 
@@ -43,10 +45,14 @@ interface SocketProviderProps {
 export function SocketProvider({ children }: SocketProviderProps) {
   const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
+  const queryClient = useQueryClient();
   const statusUpdateCallbacks = useRef<Set<(update: OrderStatusUpdate) => void>>(
     new Set()
   );
   const paymentAckCallbacks = useRef<Set<(data: { tableId: string }) => void>>(
+    new Set()
+  );
+  const tableUpdatedCallbacks = useRef<Set<(data: { tableId: string }) => void>>(
     new Set()
   );
   // Track which order rooms we've joined so we can re-join on reconnect
@@ -96,6 +102,17 @@ export function SocketProvider({ children }: SocketProviderProps) {
     // Listen for payment acknowledgement from admin
     socket.on('payment:acknowledged', (data: { tableId: string }) => {
       paymentAckCallbacks.current.forEach((callback) => callback(data));
+    });
+
+    // Listen for table status updates (e.g. session closed, table freed)
+    socket.on('table:updated', (data: { tableId: string }) => {
+      tableUpdatedCallbacks.current.forEach((callback) => callback(data));
+    });
+
+    // Listen for sync refresh from admin
+    socket.on('sync:refresh', () => {
+      if (import.meta.env.DEV) console.log('Sync refresh received from admin');
+      queryClient.invalidateQueries();
     });
 
     // Reconnect when tab becomes visible again
@@ -158,6 +175,16 @@ export function SocketProvider({ children }: SocketProviderProps) {
     []
   );
 
+  const onTableUpdated = useCallback(
+    (callback: (data: { tableId: string }) => void) => {
+      tableUpdatedCallbacks.current.add(callback);
+      return () => {
+        tableUpdatedCallbacks.current.delete(callback);
+      };
+    },
+    []
+  );
+
   const value = useMemo<SocketContextValue>(
     () => ({
       socket: socketRef.current,
@@ -168,9 +195,10 @@ export function SocketProvider({ children }: SocketProviderProps) {
       leaveTableRoom,
       requestPayment,
       onOrderStatusUpdate,
+      onTableUpdated,
       onPaymentAcknowledged,
     }),
-    [isConnected, joinOrderRoom, leaveOrderRoom, joinTableRoom, leaveTableRoom, requestPayment, onOrderStatusUpdate, onPaymentAcknowledged]
+    [isConnected, joinOrderRoom, leaveOrderRoom, joinTableRoom, leaveTableRoom, requestPayment, onOrderStatusUpdate, onTableUpdated, onPaymentAcknowledged]
   );
 
   return (

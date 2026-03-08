@@ -2,10 +2,16 @@ import { apiClient } from './apiClient';
 
 export interface Payment {
   id: string;
-  method: 'CASH' | 'CARD' | 'UPI' | 'WALLET';
+  method: 'CASH' | 'CARD' | 'UPI' | 'WALLET' | 'ONLINE';
   amount: number;
   reference?: string;
   notes?: string;
+  gatewayProvider?: string;
+  gatewayPaymentId?: string;
+  status?: string;
+  refundId?: string;
+  refundAmount?: number;
+  refundedAt?: string;
   createdAt: string;
 }
 
@@ -158,6 +164,15 @@ class SessionService {
   async getPrintInvoice(sessionId: string): Promise<InvoiceData> {
     return apiClient.get<InvoiceData>(
       `/sessions/${sessionId}/print`,
+    );
+  }
+
+  /**
+   * Send bill via WhatsApp
+   */
+  async sendWhatsAppBill(sessionId: string): Promise<{ sent: boolean; phone?: string }> {
+    return apiClient.post<{ sent: boolean; phone?: string }>(
+      `/sessions/${sessionId}/whatsapp-bill`, {},
     );
   }
 }

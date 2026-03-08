@@ -1,13 +1,27 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { menuController, orderController, restaurantController, tableController } from '../controllers/index.js';
+import { menuController, orderController, restaurantController, tableController, groupOrderController } from '../controllers/index.js';
+import { discountController } from '../controllers/discountController.js';
+import { serviceRequestController } from '../controllers/serviceRequestController.js';
+import { feedbackController } from '../controllers/feedbackController.js';
+import { receiptController } from '../controllers/receiptController.js';
+import { paymentGatewayController } from '../controllers/paymentGatewayController.js';
+import { otpController } from '../controllers/otpController.js';
 import { validate } from '../middlewares/validate.js';
-import { orderLimiter } from '../middlewares/rateLimiter.js';
+import { orderLimiter, otpLimiter, couponLimiter, apiLimiter } from '../middlewares/rateLimiter.js';
 import { resolveRestaurant } from '../middlewares/resolveRestaurant.js';
+import { validateGeoFence } from '../middlewares/geoValidation.js';
+import { tableRateLimiter } from '../middlewares/tableRateLimiter.js';
+import { idempotency } from '../middlewares/idempotency.js';
 import { prisma } from '../lib/index.js';
 import { 
   createOrderSchema, 
   restaurantSlugSchema,
   idParamSchema,
+  createGroupOrderSchema,
+  joinGroupSchema,
+  addGroupCartItemSchema,
+  updateGroupCartItemSchema,
+  groupParticipantActionSchema,
 } from '../validators/index.js';
 
 const router = Router();
@@ -50,8 +64,14 @@ router.get(
 // Get table by QR code (for initial scan) - must be before /:id routes
 router.get(
   '/tables/qr/:qrCode',
+  apiLimiter,
   tableController.getTableByQRCode
 );
+
+// ── Phone OTP verification (customer-facing) ──
+router.post('/otp/send', otpLimiter, otpController.sendOtp);
+router.post('/otp/verify', otpLimiter, otpController.verifyOtp);
+router.get('/:restaurantId/tables/:tableId/phone-status', otpController.getPhoneStatus);
 
 // Get restaurant categories (for customer app) - specific routes before generic /:id
 router.get(
@@ -104,6 +124,9 @@ router.post(
   resolveRestaurant,
   orderLimiter,
   validate(createOrderSchema),
+  tableRateLimiter(),
+  validateGeoFence,
+  idempotency,
   orderController.createOrder
 );
 
@@ -160,5 +183,159 @@ router.patch(
   },
   orderController.cancelOrder
 );
+
+// ==================== GROUP ORDERS ====================
+
+// Create group order
+router.post(
+  '/group',
+  orderLimiter,
+  validate(createGroupOrderSchema),
+  // Geo-fence: resolve restaurant from body.restaurantId and validate
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { restaurantId } = req.body;
+      if (restaurantId) {
+        (req as any).restaurantId = restaurantId;
+      }
+      next();
+    } catch (err) { next(err); }
+  },
+  tableRateLimiter(),
+  validateGeoFence,
+  groupOrderController.create
+);
+
+// Get group order by code
+router.get('/group/:code', groupOrderController.getByCode);
+
+// Join group order
+router.post(
+  '/group/:code/join',
+  validate(joinGroupSchema),
+  // Geo-fence: resolve restaurant from the group order
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const group = await prisma.groupOrder.findUnique({
+        where: { code: req.params.code!.toUpperCase() },
+        select: { restaurantId: true },
+      });
+      if (group) {
+        (req as any).restaurantId = group.restaurantId;
+      }
+      next();
+    } catch (err) { next(err); }
+  },
+  validateGeoFence,
+  groupOrderController.join
+);
+
+// Add item to participant's cart
+router.post(
+  '/group/:code/participants/:participantId/cart',
+  validate(addGroupCartItemSchema),
+  groupOrderController.addCartItem
+);
+
+// Update cart item
+router.patch(
+  '/group/:code/participants/:participantId/cart/:itemId',
+  validate(updateGroupCartItemSchema),
+  groupOrderController.updateCartItem
+);
+
+// Remove cart item
+router.delete(
+  '/group/:code/participants/:participantId/cart/:itemId',
+  groupOrderController.removeCartItem
+);
+
+// Mark participant ready
+router.post(
+  '/group/:code/participants/:participantId/ready',
+  groupOrderController.markReady
+);
+
+// Submit group order (host only)
+router.post(
+  '/group/:code/submit',
+  orderLimiter,
+  validate(groupParticipantActionSchema),
+  // Geo-fence: resolve restaurant (and tableId for rate-limiting) from the group order
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const group = await prisma.groupOrder.findUnique({
+        where: { code: req.params.code!.toUpperCase() },
+        select: { restaurantId: true, tableId: true },
+      });
+      if (group) {
+        (req as any).restaurantId = group.restaurantId;
+        if (group.tableId) {
+          req.body.tableId = group.tableId;
+        }
+      }
+      next();
+    } catch (err) { next(err); }
+  },
+  tableRateLimiter(),
+  validateGeoFence,
+  groupOrderController.submit
+);
+
+// Cancel group order (host only)
+router.post(
+  '/group/:code/cancel',
+  validate(groupParticipantActionSchema),
+  groupOrderController.cancel
+);
+
+// ─── Discounts: Validate coupon ───
+router.post('/:restaurantId/discounts/validate-coupon', couponLimiter, discountController.validateCoupon);
+router.get('/:restaurantId/discounts/auto-apply', apiLimiter, discountController.getAutoApply);
+
+// ─── Service Requests: Customer creates ───
+router.post('/:restaurantId/service-requests', serviceRequestController.create);
+
+// ─── Feedback: Customer submits ───
+router.post('/:restaurantId/feedback', feedbackController.create);
+
+// ─── Receipt: Customer requests e-bill ───
+router.post('/orders/:orderId/receipt', receiptController.send);
+
+// ─── Payment Gateway: Online payment endpoints ───
+router.get('/:restaurantId/payment/config', paymentGatewayController.getCheckoutConfig);
+router.post('/:restaurantId/payment/create-order', paymentGatewayController.createOrder);
+router.post('/:restaurantId/payment/verify', paymentGatewayController.verifyPayment);
+
+// ─── Queue Display: Public endpoint for TV/display showing active orders ───
+router.get('/:restaurantId/queue', apiLimiter, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { restaurantId } = req.params;
+    const orders = await prisma.order.findMany({
+      where: {
+        restaurantId,
+        status: { in: ['PENDING', 'PREPARING', 'READY'] },
+      },
+      select: {
+        id: true,
+        orderNumber: true,
+        status: true,
+        customerName: true,
+        createdAt: true,
+        updatedAt: true,
+        estimatedTime: true,
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 50,
+    });
+
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: { name: true, coverImage: true },
+    });
+
+    res.json({ success: true, data: { restaurant, orders } });
+  } catch (err) { next(err); }
+});
 
 export default router;

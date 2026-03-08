@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { orderController } from '../controllers/index.js';
 import { authenticate, authorize } from '../middlewares/auth.js';
+import { resolveBranch } from '../middlewares/resolveBranch.js';
 import { validate } from '../middlewares/validate.js';
 import { orderLimiter } from '../middlewares/rateLimiter.js';
 import { 
@@ -16,6 +17,7 @@ const router = Router();
 router.get(
   '/',
   authenticate,
+  resolveBranch,
   validate(orderQuerySchema, 'query'),
   orderController.getOrders
 );
@@ -23,12 +25,14 @@ router.get(
 router.get(
   '/active',
   authenticate,
+  resolveBranch,
   orderController.getActiveOrders
 );
 
 router.get(
   '/stats',
   authenticate,
+  resolveBranch,
   authorize('OWNER', 'ADMIN', 'MANAGER'),
   orderController.getOrderStats
 );
@@ -36,8 +40,25 @@ router.get(
 router.get(
   '/analytics',
   authenticate,
+  resolveBranch,
   authorize('OWNER', 'ADMIN', 'MANAGER'),
   orderController.getAnalytics
+);
+
+router.get(
+  '/analytics/advanced',
+  authenticate,
+  resolveBranch,
+  authorize('OWNER', 'ADMIN', 'MANAGER'),
+  orderController.getAdvancedAnalytics
+);
+
+router.get(
+  '/export/csv',
+  authenticate,
+  resolveBranch,
+  authorize('OWNER', 'ADMIN', 'MANAGER'),
+  orderController.exportCsv
 );
 
 router.get(
@@ -53,6 +74,19 @@ router.patch(
   validate(idParamSchema, 'params'),
   validate(updateOrderStatusSchema),
   orderController.updateOrderStatus
+);
+
+router.patch(
+  '/:id/kitchen-ready',
+  authenticate,
+  validate(idParamSchema, 'params'),
+  orderController.markKitchenReady
+);
+
+router.patch(
+  '/:id/items/:itemId/kitchen-ready',
+  authenticate,
+  orderController.markItemKitchenReady
 );
 
 router.patch(
@@ -84,6 +118,7 @@ router.post(
 router.post(
   '/cashier',
   authenticate,
+  resolveBranch,
   validate(createOrderSchema),
   orderController.createCashierOrder
 );

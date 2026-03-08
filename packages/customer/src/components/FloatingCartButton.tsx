@@ -1,11 +1,13 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useCartStore, selectTotalItems } from '../state/cartStore';
 import { useUIStore } from '../state/uiStore';
 import { resolveImg } from '../utils/resolveImg';
 
 function FloatingCartButtonComponent() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const { restaurantSlug, tableId } = useParams();
@@ -87,9 +89,9 @@ function FloatingCartButtonComponent() {
             </div>
           )}
           <div className="text-left">
-            <span className="font-bold text-[15px] leading-tight block">View cart</span>
+            <span className="font-bold text-[15px] leading-tight block">{t('menu.viewCart')}</span>
             <span className="text-xs text-white/75 font-medium">
-              {totalItems} {totalItems === 1 ? 'Item' : 'Items'}
+              {totalItems} {totalItems === 1 ? t('common.item') : t('common.item_plural')}
             </span>
           </div>
         </div>

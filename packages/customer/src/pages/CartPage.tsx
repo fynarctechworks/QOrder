@@ -1,15 +1,20 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion, useMotionValue, useTransform, PanInfo } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import toast from 'react-hot-toast';
 import { useRestaurant } from '../context/RestaurantContext';
 import { useCartStore } from '../state/cartStore';
 import { orderService } from '../services/orderService';
+import { featureService } from '../services/featureService';
+import { paymentService } from '../services/paymentService';
+import { useRazorpay } from '../hooks/useRazorpay';
 import { formatPrice as fmtPrice } from '../utils/formatPrice';
 import type { CartItem } from '../types';
 import { resolveImg } from '../utils/resolveImg';
 import CustomerInfoSheet from '../components/CustomerInfoSheet';
+import { useGeolocation } from '../hooks/useGeolocation';
 
 // Default tax rate — overridden by restaurant.settings.taxRate when available
 const DEFAULT_TAX_RATE = 0.1;
@@ -160,6 +165,7 @@ function SwipeableCartItem({
 /* ════════════════════════════════════════════════════════════ */
 
 export default function CartPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { restaurantSlug, tableId } = useParams();
@@ -168,6 +174,11 @@ export default function CartPage() {
   const [showInstructions, setShowInstructions] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
   const [showCustomerSheet, setShowCustomerSheet] = useState(false);
+  const [couponCode, setCouponCode] = useState('');
+  const [couponResult, setCouponResult] = useState<{ valid: boolean; discount?: { discountId: string; couponId?: string; discountAmount: number; discountName: string }; error?: string } | null>(null);
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [autoDiscount, setAutoDiscount] = useState<{ discountId: string; discountAmount: number; discountName: string } | null>(null);
+  const autoDiscountFetched = useRef(false);
 
   const items = useCartStore((s) => s.items);
   const updateItemQuantity = useCartStore((s) => s.updateItemQuantity);
@@ -176,16 +187,58 @@ export default function CartPage() {
   const generateIdempotencyKey = useCartStore((s) => s.generateIdempotencyKey);
   const currency = restaurant?.currency || 'USD';
 
+  /* geolocation for geo-fence */
+  const { getCoords, error: geoError, position: geoPosition, refresh: refreshGeo } = useGeolocation();
+  const geoFenceEnabled = !!restaurant?.geoFenceEnabled;
+  const geoBlocked = geoFenceEnabled && !geoPosition;
+
+  /* ─── Online payment config (pay_before mode) ─── */
+  const { data: paymentConfig } = useQuery({
+    queryKey: ['paymentConfig', restaurant?.id],
+    queryFn: () => paymentService.getConfig(restaurant!.id),
+    enabled: !!restaurant?.id,
+    staleTime: 60_000,
+  });
+
+  const payBeforeEnabled = paymentConfig?.enabled && paymentConfig.paymentMode === 'pay_before';
+
+  const { initiatePayment } = useRazorpay({
+    config: paymentConfig ?? null,
+    restaurantId: restaurant?.id || '',
+    onSuccess: () => {
+      toast.success(t('cart.paymentSuccess'));
+    },
+    onError: (msg) => toast.error(msg),
+  });
+
+  /* ─── Auto-apply discount ─── */
+  const rawSubtotal = useMemo(() => items.reduce((sum, i) => sum + i.totalPrice, 0), [items]);
+  useEffect(() => {
+    if (!restaurant?.id || rawSubtotal <= 0) { setAutoDiscount(null); return; }
+    // Skip auto-apply if a manual coupon is active
+    if (couponResult?.valid) return;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      featureService.getAutoApply(restaurant.id, rawSubtotal)
+        .then((res) => { if (!controller.signal.aborted) setAutoDiscount(res ?? null); })
+        .catch(() => { if (!controller.signal.aborted) setAutoDiscount(null); });
+    }, autoDiscountFetched.current ? 400 : 0); // debounce after first fetch
+    autoDiscountFetched.current = true;
+    return () => { controller.abort(); clearTimeout(timeout); };
+  }, [restaurant?.id, rawSubtotal, couponResult?.valid]);
+
   /* totals */
   const taxRate = restaurant?.settings?.taxRate ?? DEFAULT_TAX_RATE;
+  const activeDiscount = couponResult?.valid ? couponResult.discount : autoDiscount;
+  const discountAmount = activeDiscount?.discountAmount ?? 0;
   const { subtotal, tax, total, estimatedTime, totalQty } = useMemo(() => {
     const subtotal = items.reduce((sum, i) => sum + i.totalPrice, 0);
     const tax = subtotal * taxRate;
-    const total = subtotal + tax;
+    const total = subtotal - discountAmount + tax;
     const maxPrepTime = Math.max(...items.map((i) => i.menuItem.prepTime ?? 0), 0);
     const totalQty = items.reduce((s, i) => s + i.quantity, 0);
     return { subtotal, tax, total, estimatedTime: maxPrepTime, totalQty };
-  }, [items, taxRate]);
+  }, [items, taxRate, discountAmount]);
 
   /* order mutation */
   const orderMutation = useMutation({
@@ -193,18 +246,52 @@ export default function CartPage() {
       if (!restaurant?.id || !tableId) throw new Error('Missing restaurant or table information');
       const key = idempotencyKey || generateIdempotencyKey();
       if (!idempotencyKey) setIdempotencyKey(key);
-      return orderService.create(restaurant.id, tableId, items, specialInstructions.trim() || undefined, key, restaurantSlug || restaurant.slug, customerName, customerPhone);
+      // Fetch the latest session token (it rotates when a previous order completes).
+      // We must sync sessionStorage *synchronously* here because the React useEffect
+      // in RestaurantContext won't fire until after this async function yields.
+      await queryClient.refetchQueries({ queryKey: ['table', restaurant.id, tableId] });
+      const freshTable = queryClient.getQueryData<{ sessionToken?: string | null }>(['table', restaurant.id, tableId]);
+      if (freshTable?.sessionToken) {
+        sessionStorage.setItem(`sessionToken:${tableId}`, freshTable.sessionToken);
+      }
+      return orderService.create(restaurant.id, tableId, items, specialInstructions.trim() || undefined, key, restaurantSlug || restaurant.slug, customerName, customerPhone, getCoords(), couponResult?.valid ? couponCode.trim() : undefined);
     },
-    onSuccess: () => {
+    onSuccess: (order: any) => {
+      // Save the rotated session token from the response so next order uses the new one
+      if (order?.newSessionToken && tableId) {
+        sessionStorage.setItem(`sessionToken:${tableId}`, order.newSessionToken);
+      }
       clearCart();
       setShowCustomerSheet(false);
       // Invalidate orders cache so OrdersPage shows new order immediately
       queryClient.invalidateQueries({ queryKey: ['orders'] });
-      toast.success('Order placed successfully!');
-      navigate(`/r/${restaurantSlug}/t/${tableId}/menu`);
+
+      // If pay_before is enabled, trigger online payment immediately after order creation
+      if (payBeforeEnabled && order?.sessionId) {
+        initiatePayment({
+          orderId: order.id,
+          sessionId: order.sessionId,
+          amount: order.total ?? total,
+          currency: restaurant?.currency || 'INR',
+          customerName: order.customerName,
+          customerPhone: order.customerPhone,
+          description: `Order #${order.orderNumber || order.id}`,
+        });
+        navigate(`/r/${restaurantSlug}/t/${tableId}/menu`);
+      } else {
+        toast.success(t('cart.orderPlaced'));
+        navigate(`/r/${restaurantSlug}/t/${tableId}/menu`);
+      }
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Failed to place order');
+      const msg = error instanceof Error ? error.message : t('cart.failedToPlace');
+      // If the session token expired (table was cleared), refresh it and prompt retry
+      if (msg.toLowerCase().includes('session expired')) {
+        queryClient.invalidateQueries({ queryKey: ['table'] });
+        toast.error(t('cart.sessionRefreshed'));
+      } else {
+        toast.error(msg);
+      }
       setIdempotencyKey(null);
     },
   });
@@ -215,7 +302,7 @@ export default function CartPage() {
   );
 
   const handlePlaceOrder = () => {
-    if (!items.length) return toast.error('Your cart is empty');
+    if (!items.length) return toast.error(t('cart.cartEmpty'));
     setShowCustomerSheet(true);
   };
 
@@ -234,7 +321,7 @@ export default function CartPage() {
           <div className="bg-primary">
             <div className="px-5 pt-4 pb-4 flex items-center justify-center relative">
               <div className="absolute left-5 w-10 h-10 rounded-full bg-white/20 animate-pulse" />
-              <h1 className="text-lg font-bold text-white">Cart</h1>
+              <h1 className="text-lg font-bold text-white">{t('cart.title')}</h1>
             </div>
           </div>
         </header>
@@ -272,7 +359,7 @@ export default function CartPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
                 </svg>
               </button>
-              <h1 className="text-lg font-bold text-white">Cart</h1>
+              <h1 className="text-lg font-bold text-white">{t('cart.title')}</h1>
             </div>
           </div>
         </header>
@@ -284,15 +371,15 @@ export default function CartPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
           </div>
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Your cart is empty</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">{t('cart.empty')}</h2>
           <p className="text-sm text-gray-500 text-center mb-8 max-w-[260px] leading-relaxed">
-            Looks like you haven't added anything yet. Browse the menu to get started!
+            {t('cart.emptySubtext')}
           </p>
           <button
             onClick={goBack}
             className="bg-primary hover:bg-primary-hover text-white font-semibold text-sm px-8 py-3 rounded-xl transition-colors shadow-sm"
           >
-            Browse Menu
+            {t('cart.browseMenu')}
           </button>
         </div>
       </div>
@@ -315,10 +402,34 @@ export default function CartPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-            <h1 className="text-lg font-bold text-white">Cart</h1>
+            <h1 className="text-lg font-bold text-white">{t('cart.title')}</h1>
           </div>
         </div>
       </header>
+
+      {/* ─── Geo-fence location warning ─── */}
+      {geoBlocked && (
+        <div className="mx-4 mt-3 flex items-start gap-3 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
+          <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-amber-800">
+              {geoError ? t('cart.locationDenied', 'Location access was denied') : t('cart.locationRequired', 'Location access is required to place an order')}
+            </p>
+            <p className="text-xs text-amber-600 mt-0.5">
+              {geoError ? t('cart.locationDeniedHint', 'Please enable location in your browser settings and try again.') : t('cart.locationRequiredHint', 'This restaurant requires location verification for orders.')}
+            </p>
+          </div>
+          <button
+            onClick={refreshGeo}
+            className="flex-shrink-0 text-xs font-semibold text-amber-700 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            {t('cart.enableLocation', 'Enable')}
+          </button>
+        </div>
+      )}
 
       {/* ─── Desktop two‑column ─── */}
       <div className="pt-4 lg:px-8 lg:py-6">
@@ -357,7 +468,7 @@ export default function CartPage() {
                 className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors group"
               >
                 <span className="text-sm font-semibold text-primary group-hover:text-primary-hover">
-                  Add more items
+                  {t('menu.addMore')}
                 </span>
                 <svg className="w-4 h-4 text-primary group-hover:translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -379,7 +490,7 @@ export default function CartPage() {
                   </div>
                   <div className="text-left">
                     <p className="text-sm font-semibold text-gray-900">
-                      {specialInstructions ? 'Edit cooking instructions' : 'Add cooking instructions'}
+                      {specialInstructions ? t('menu.editInstructions') : t('menu.addInstructions')}
                     </p>
                     {specialInstructions && (
                       <p className="text-xs text-gray-400 truncate max-w-[200px]">
@@ -409,7 +520,7 @@ export default function CartPage() {
                       <textarea
                         value={specialInstructions}
                         onChange={(e) => setSpecialInstructions(e.target.value)}
-                        placeholder="e.g. Less spicy, no onions, extra sauce..."
+                        placeholder={t('menu.instructionsPlaceholder')}
                         className="w-full border border-gray-200 rounded-xl p-3 text-sm text-gray-700 placeholder:text-gray-300 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary resize-none h-20 transition-colors"
                         maxLength={500}
                       />
@@ -432,30 +543,88 @@ export default function CartPage() {
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-gray-900">
-                    Estimated prep time
+                    {t('menu.estPrepTime')}
                   </p>
-                  <p className="text-xs text-gray-400">{estimatedTime} minutes</p>
+                  <p className="text-xs text-gray-400">{estimatedTime} {t('menu.minutes')}</p>
                 </div>
               </div>
             )}
+
+            {/* ── Coupon code ── */}
+            <div className="mt-3 mx-4 lg:mx-0 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="px-4 py-3.5">
+                {/* Auto-applied discount banner */}
+                {autoDiscount && !couponResult?.valid && (
+                  <div className="mb-3 flex items-center gap-2 bg-green-50 text-green-700 px-3 py-2.5 rounded-xl text-sm">
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="font-medium">{autoDiscount.discountName}</span>
+                    <span className="ml-auto font-semibold">-{fmtPrice(autoDiscount.discountAmount, currency)}</span>
+                  </div>
+                )}
+                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">{t('menu.haveCoupon')}</h3>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={couponCode}
+                    onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponResult(null); }}
+                    placeholder={t('menu.enterCode')}
+                    className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary font-mono"
+                  />
+                  <button
+                    onClick={async () => {
+                      if (!couponCode.trim() || !restaurant?.id) return;
+                      setCouponLoading(true);
+                      try {
+                        const res = await featureService.validateCoupon(restaurant.id, couponCode.trim(), subtotal);
+                        setCouponResult(res);
+                        if (res.valid) toast.success(`Coupon applied: ${res.discount?.discountName}`);
+                        else toast.error(res.error || 'Invalid coupon');
+                      } catch { toast.error(t('cart.failedToPlace')); }
+                      finally { setCouponLoading(false); }
+                    }}
+                    disabled={couponLoading || !couponCode.trim()}
+                    className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-xl hover:bg-primary-hover transition-colors disabled:opacity-50"
+                  >
+                    {couponLoading ? '...' : t('cart.apply')}
+                  </button>
+                </div>
+                {couponResult?.valid && couponResult.discount && (
+                  <div className="mt-2 flex items-center justify-between bg-green-50 text-green-700 px-3 py-2 rounded-lg text-sm">
+                    <span>{couponResult.discount.discountName} — {fmtPrice(couponResult.discount.discountAmount, currency)} off</span>
+                    <button onClick={() => { setCouponResult(null); setCouponCode(''); }} className="text-green-500 hover:text-green-700 text-xs font-medium">{t('cart.remove')}</button>
+                  </div>
+                )}
+                {couponResult && !couponResult.valid && (
+                  <p className="mt-2 text-xs text-red-500">{couponResult.error}</p>
+                )}
+              </div>
+            </div>
 
             {/* ── Bill details ── */}
             <div className="mt-3 mx-4 lg:mx-0 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="px-4 py-3.5">
                 <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
-                  Bill Details
+                  {t('payment.title')}
                 </h3>
                 <div className="space-y-2.5">
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Item Total</span>
+                    <span className="text-gray-600">{t('cart.subtotal')}</span>
                     <span className="text-gray-900 font-medium">{fmtPrice(subtotal, currency)}</span>
                   </div>
+                  {discountAmount > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-green-600">{activeDiscount?.discountName ?? t('cart.discount')}</span>
+                      <span className="text-green-600 font-medium">-{fmtPrice(discountAmount, currency)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Taxes &amp; Charges</span>
+                    <span className="text-gray-600">{t('cart.tax')}</span>
                     <span className="text-gray-900 font-medium">{fmtPrice(tax, currency)}</span>
                   </div>
                   <div className="border-t border-gray-100 pt-2.5 flex justify-between">
-                    <span className="text-sm font-bold text-gray-900">To Pay</span>
+                    <span className="text-sm font-bold text-gray-900">{t('cart.total')}</span>
                     <span className="text-sm font-bold text-gray-900">{fmtPrice(total, currency)}</span>
                   </div>
                 </div>
@@ -466,9 +635,10 @@ export default function CartPage() {
             <div className="mt-4 mx-4 lg:hidden">
               <button
                 onClick={handlePlaceOrder}
-                className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white font-bold text-base py-4 rounded-2xl transition-colors shadow-sm"
+                disabled={geoBlocked}
+                className={`w-full flex items-center justify-center gap-2 font-bold text-base py-4 rounded-2xl transition-colors shadow-sm ${geoBlocked ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-primary hover:bg-primary-hover text-white'}`}
               >
-                Place Order &middot; {fmtPrice(total, currency)}
+                {t('cart.placeOrder')} &middot; {fmtPrice(total, currency)}
               </button>
             </div>
           </div>
@@ -478,15 +648,21 @@ export default function CartPage() {
             <div className="sticky top-[80px] space-y-4">
               {/* Bill summary card */}
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-                <h3 className="font-bold text-gray-900 text-base mb-4">Order Summary</h3>
+                <h3 className="font-bold text-gray-900 text-base mb-4">{t('cart.title')}</h3>
 
                 <div className="space-y-3 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Subtotal ({totalQty} items)</span>
+                    <span className="text-gray-500">{t('cart.subtotal')} ({totalQty})</span>
                     <span className="text-gray-900 font-medium">{fmtPrice(subtotal, currency)}</span>
                   </div>
+                  {discountAmount > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-green-600">{activeDiscount?.discountName ?? t('cart.discount')}</span>
+                      <span className="text-green-600 font-medium">-{fmtPrice(discountAmount, currency)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Taxes &amp; Charges</span>
+                    <span className="text-gray-500">{t('cart.tax')}</span>
                     <span className="text-gray-900 font-medium">{fmtPrice(tax, currency)}</span>
                   </div>
                   {estimatedTime > 0 && (
@@ -495,15 +671,15 @@ export default function CartPage() {
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        Est. Time
+                        {t('menu.estTime')}
                       </span>
-                      <span className="text-gray-900 font-medium">{estimatedTime} min</span>
+                      <span className="text-gray-900 font-medium">{estimatedTime} {t('menu.minutes')}</span>
                     </div>
                   )}
                 </div>
 
                 <div className="border-t border-gray-200 mt-4 pt-4 flex justify-between items-center">
-                  <span className="text-base font-bold text-gray-900">Total</span>
+                  <span className="text-base font-bold text-gray-900">{t('cart.total')}</span>
                   <span className="text-lg font-bold text-gray-900">{fmtPrice(total, currency)}</span>
                 </div>
               </div>
@@ -511,9 +687,10 @@ export default function CartPage() {
               {/* Place order button (desktop) */}
               <button
                 onClick={handlePlaceOrder}
-                className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-white font-bold text-base py-4 rounded-2xl transition-colors shadow-sm"
+                disabled={geoBlocked}
+                className={`w-full flex items-center justify-center gap-2 font-bold text-base py-4 rounded-2xl transition-colors shadow-sm ${geoBlocked ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-primary hover:bg-primary-hover text-white'}`}
               >
-                Place Order &middot; {fmtPrice(total, currency)}
+                {t('cart.placeOrder')} &middot; {fmtPrice(total, currency)}
               </button>
             </div>
           </div>
@@ -527,6 +704,8 @@ export default function CartPage() {
         onConfirm={handleConfirmOrder}
         isPending={orderMutation.isPending}
         totalLabel={fmtPrice(total, currency)}
+        restaurantId={restaurant?.id || ''}
+        tableId={tableId || ''}
       />
     </div>
   );

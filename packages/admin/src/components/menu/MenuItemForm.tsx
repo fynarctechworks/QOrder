@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, type FormEvent, type DragEvent, type ChangeEvent, type ReactNode } from 'react';
 import toast from 'react-hot-toast';
 import { menuService } from '../../services';
-import type { MenuItem, Category, CustomizationGroup, CustomizationOption, DietType } from '../../types';
+import type { MenuItem, Category, CustomizationGroup, CustomizationOption, DietType, TranslationsMap } from '../../types';
 import { resolveImg } from '../../utils/resolveImg';
+import TranslationsEditor from './TranslationsEditor';
 
 /* ─── Form data types ───────────────────────────────────────────────────── */
 
@@ -23,6 +24,7 @@ export interface MenuItemFormData {
   dietType: DietType | null;
   allowSpecialInstructions: boolean;
   customizationGroups: CustomizationGroup[];
+  translations: TranslationsMap;
 }
 
 interface MenuItemFormProps {
@@ -60,6 +62,7 @@ const EMPTY: MenuItemFormData = {
   dietType: null,
   allowSpecialInstructions: true,
   customizationGroups: [],
+  translations: {},
 };
 
 const BADGE_OPTIONS = ['', 'Bestseller', 'New', 'Spicy', "Chef's Pick", 'Limited'];
@@ -87,6 +90,7 @@ function fromItem(item: MenuItem): MenuItemFormData {
           options: g.options.map((o) => ({ ...o })),
         }))
       : [],
+    translations: item.translations || {},
   };
 }
 
@@ -608,12 +612,12 @@ export default function MenuItemForm({
             onClick={() => set('dietType', 'VEG')}
             className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 transition-all ${
               form.dietType === 'VEG'
-                ? 'border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm'
-                : 'border-gray-200 bg-white text-text-secondary hover:border-emerald-200 hover:bg-emerald-50/50'
+                ? 'border-primary bg-orange-50 text-primary shadow-sm'
+                : 'border-gray-200 bg-white text-text-secondary hover:border-orange-200 hover:bg-orange-50/50'
             }`}
           >
-            <span className="w-4 h-4 flex items-center justify-center rounded-sm border-2 border-emerald-600">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+            <span className="w-4 h-4 flex items-center justify-center rounded-sm border-2 border-primary">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary" />
             </span>
             <span className="text-sm font-medium">Veg</span>
           </button>
@@ -648,6 +652,17 @@ export default function MenuItemForm({
           </div>
         )}
       </div>
+
+      {/* ───── Translations ───────────────────────────────────────────── */}
+      <TranslationsEditor
+        translations={form.translations}
+        onChange={(t) => set('translations', t)}
+        fields={[
+          { key: 'name', label: 'Name' },
+          { key: 'description', label: 'Description', multiline: true },
+          { key: 'badge', label: 'Badge' },
+        ]}
+      />
 
       {/* ═══ Tags · Allergens · Ingredients (collapsible) ════════════════ */}
       <Section title="Tags · Allergens · Ingredients" defaultOpen={(form.tags.length + form.allergens.length + form.ingredients.length) > 0}>

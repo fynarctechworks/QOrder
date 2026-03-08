@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { sessionService } from '../services/index.js';
+import { whatsappService } from '../services/whatsappService.js';
 import { getIO } from '../socket/index.js';
+import { logger } from '../lib/index.js';
 import type { ApiResponse } from '../types/index.js';
 import type { PaymentMethod } from '@prisma/client';
 
@@ -82,6 +84,25 @@ export const sessionController = {
           sessionId: req.params.id,
           isFullyPaid: result.isFullyPaid,
         });
+
+        // When fully paid, also emit table:updated so TablesPage refreshes
+        if (result.isFullyPaid && result.session?.tableId) {
+          const tablePayload = {
+            tableId: result.session.tableId,
+            status: 'AVAILABLE',
+            sessionToken: result.newSessionToken,
+          };
+          io.to(`restaurant:${restaurantId}`).emit('table:updated', tablePayload);
+          // Notify customer app on the table room
+          io.to(`table:${result.session.tableId}`).emit('table:updated', tablePayload);
+        }
+      }
+
+      // Auto-send bill via WhatsApp when fully paid
+      if (result.isFullyPaid) {
+        whatsappService.sendBill(req.params.id, restaurantId).catch((err) => {
+          logger.error({ err, sessionId: req.params.id }, 'Failed to auto-send WhatsApp bill');
+        });
       }
 
       res.json({
@@ -117,10 +138,13 @@ export const sessionController = {
         if (result.oldTableId) {
           io.to(`restaurant:${restaurantId}`).emit('table:updated', {
             tableId: result.oldTableId,
+            status: 'AVAILABLE',
+            sessionToken: result.newSessionToken,
           });
         }
         io.to(`restaurant:${restaurantId}`).emit('table:updated', {
           tableId: targetTableId,
+          status: 'OCCUPIED',
         });
         io.to(`restaurant:${restaurantId}`).emit('session:updated', {
           sessionId: result.newSession.id,
@@ -160,6 +184,8 @@ export const sessionController = {
         if (result.sourceTableId) {
           io.to(`restaurant:${restaurantId}`).emit('table:updated', {
             tableId: result.sourceTableId,
+            status: 'AVAILABLE',
+            sessionToken: result.newSessionToken,
           });
         }
         if (result.targetTableId) {
@@ -196,6 +222,40 @@ export const sessionController = {
       res.json({
         success: true,
         data: invoice,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * Manually send bill via WhatsApp
+   */
+  async sendWhatsAppBill(
+    req: Request<{ id: string }>,
+    res: Response<ApiResponse>,
+    next: NextFunction
+  ) {
+    try {
+      const restaurantId = req.restaurantId!;
+      const result = await whatsappService.sendBill(req.params.id, restaurantId);
+
+      if (!result.sent) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'WHATSAPP_SEND_FAILED',
+            message: result.phone
+              ? 'Failed to send WhatsApp message. Check your WhatsApp API configuration.'
+              : 'No customer phone number found for this session.',
+          },
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        data: { sent: true, phone: result.phone },
       });
     } catch (error) {
       next(error);

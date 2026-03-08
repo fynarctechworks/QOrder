@@ -87,11 +87,12 @@ class ApiClient {
     return this.request<T>(endpoint, { method: 'GET', signal });
   }
 
-  async post<T>(endpoint: string, data?: unknown, signal?: AbortSignal): Promise<T> {
+  async post<T>(endpoint: string, data?: unknown, options?: { headers?: Record<string, string>; signal?: AbortSignal }): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'POST',
       body: data ? JSON.stringify(data) : undefined,
-      signal,
+      headers: options?.headers,
+      signal: options?.signal,
     });
   }
 

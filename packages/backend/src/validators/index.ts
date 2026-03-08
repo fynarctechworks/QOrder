@@ -45,7 +45,6 @@ export const resendVerificationSchema = z.object({
 export const updateRestaurantSchema = z.object({
   name: z.string().min(2).max(100).optional(),
   description: z.string().max(500).optional(),
-  logo: z.string().url().optional().nullable(),
   coverImage: z.string().url().optional().nullable(),
   address: z.string().max(200).optional(),
   phone: z.string().max(20).optional(),
@@ -54,20 +53,46 @@ export const updateRestaurantSchema = z.object({
   currency: z.string().length(3).optional(),
   taxRate: z.number().min(0).max(100).optional(),
   settings: z.record(z.unknown()).optional(),
+  // Geo-fence settings (top-level columns)
+  latitude: z.number().min(-90).max(90).optional().nullable(),
+  longitude: z.number().min(-180).max(180).optional().nullable(),
+  geoFenceRadius: z.number().int().min(0).max(5000).optional(),
 });
 
 export const updateRestaurantSettingsSchema = z.object({
   primaryColor: z.string().max(20).optional(),
-  minimumOrderAmount: z.number().min(0).optional(),
-  estimatedPrepTime: z.number().int().min(0).optional(),
-  acceptingOrders: z.boolean().optional(),
+  minimumOrderAmount: z.coerce.number().min(0).optional(),
+  estimatedPrepTime: z.coerce.number().int().min(0).optional(),
   acceptsOrders: z.boolean().optional(),
-  taxRate: z.number().min(0).max(100).optional(),
+  taxRate: z.coerce.number().min(0).max(100).optional(),
   orderNotificationSound: z.boolean().optional(),
   autoConfirmOrders: z.boolean().optional(),
   /** Required when acceptsOrders is set to false */
   password: z.string().optional(),
-}).strict();
+  /** Printer settings */
+  printerEnabled: z.boolean().optional(),
+  printerConnectionType: z.enum(['network', 'bluetooth', 'browser']).optional(),
+  printerIp: z.string().max(255).optional(),
+  printerPort: z.coerce.number().int().min(1).max(65535).optional(),
+  printerType: z.enum(['epson', 'star']).optional(),
+  printerWidth: z.coerce.number().int().min(1).max(100).optional(),
+  autoPrintOnComplete: z.boolean().optional(),
+  /** Role-based page permissions (base roles + custom roleTitle keys) */
+  rolePermissions: z.record(
+    z.string(),
+    z.array(z.string())
+  ).optional(),
+  /** Auto-lock settings */
+  autoLockEnabled: z.boolean().optional(),
+  autoLockTimeout: z.coerce.number().int().min(1).max(60).optional(),
+  lockPin: z.string().regex(/^\d{6}$/).optional(),
+  requirePhoneVerification: z.boolean().optional(),
+  /** Payment gateway settings */
+  paymentGatewayEnabled: z.boolean().optional(),
+  paymentMode: z.enum(['pay_before', 'pay_after']).optional(),
+  razorpayKeyId: z.string().max(255).optional(),
+  razorpayKeySecret: z.string().max(255).optional(),
+});
 
 // ==================== MENU ====================
 
@@ -77,6 +102,7 @@ export const createCategorySchema = z.object({
   image: z.string().optional().nullable(),
   sortOrder: z.number().int().default(0),
   isActive: z.boolean().default(true),
+  translations: z.record(z.string(), z.record(z.string(), z.string())).optional(),
 });
 
 export const updateCategorySchema = createCategorySchema.partial();
@@ -98,6 +124,7 @@ export const createMenuItemSchema = z.object({
   allergens: z.array(z.string()).default([]),
   badge: z.string().max(50).optional().nullable(),
   dietType: z.enum(['VEG', 'NON_VEG', 'EGG']).optional().nullable(),
+  translations: z.record(z.string(), z.record(z.string(), z.string())).optional(),
   modifierGroupIds: z.array(z.string().uuid()).optional(),
   // Inline customization groups (from admin form)
   customizationGroups: z.array(z.object({
@@ -145,6 +172,7 @@ export const createTableSchema = z.object({
   number: z.string().min(1, 'Table number is required').max(20),
   name: z.string().max(100).optional(),
   capacity: z.number().int().min(1).max(50).default(4),
+  sectionId: z.string().uuid().optional().nullable(),
 });
 
 export const updateTableSchema = z.object({
@@ -152,18 +180,68 @@ export const updateTableSchema = z.object({
   name: z.string().max(100).optional().nullable(),
   capacity: z.number().int().min(1).max(50).optional(),
   status: z.enum(['AVAILABLE', 'OCCUPIED', 'RESERVED', 'INACTIVE']).optional(),
+  sectionId: z.string().uuid().optional().nullable(),
 });
 
 export const bulkCreateTablesSchema = z.object({
   count: z.number().int().min(1).max(100),
   startNumber: z.number().int().min(1).default(1),
   capacity: z.number().int().min(1).max(50).default(4),
+  sectionId: z.string().uuid().optional().nullable(),
+});
+
+// ==================== SECTIONS ====================
+
+export const createSectionSchema = z.object({
+  name: z.string().min(1, 'Section name is required').max(100),
+  floor: z.number().int().optional().nullable(),
+  sortOrder: z.number().int().default(0),
+});
+
+export const updateSectionSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  floor: z.number().int().optional().nullable(),
+  sortOrder: z.number().int().optional(),
+  isActive: z.boolean().optional(),
+});
+
+// ==================== BRANCHES ====================
+
+export const createBranchSchema = z.object({
+  name: z.string().min(1, 'Branch name is required').max(100),
+  code: z
+    .string()
+    .min(1, 'Branch code is required')
+    .max(20)
+    .regex(/^[A-Za-z0-9_-]+$/, 'Code can only contain letters, numbers, hyphens, and underscores'),
+  address: z.string().max(200).optional(),
+  phone: z.string().max(20).optional(),
+  email: z.string().email().optional(),
+});
+
+export const updateBranchSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  code: z
+    .string()
+    .min(1)
+    .max(20)
+    .regex(/^[A-Za-z0-9_-]+$/, 'Code can only contain letters, numbers, hyphens, and underscores')
+    .optional(),
+  address: z.string().max(200).optional().nullable(),
+  phone: z.string().max(20).optional().nullable(),
+  email: z.string().email().optional().nullable(),
+  isActive: z.boolean().optional(),
+});
+
+export const branchUserAssignSchema = z.object({
+  userIds: z.array(z.string().uuid()).min(1, 'At least one user is required'),
 });
 
 // ==================== ORDERS ====================
 
 export const createOrderSchema = z.object({
   tableId: z.string().uuid().optional(),
+  sessionToken: z.string().uuid().optional(),
   items: z.array(z.object({
     menuItemId: z.string().uuid(),
     quantity: z.number().int().min(1).max(99),
@@ -175,15 +253,19 @@ export const createOrderSchema = z.object({
   customerName: z.string().max(100).optional(),
   customerPhone: z.string().max(20).optional(),
   notes: z.string().max(500).optional(),
+  couponCode: z.string().max(50).optional(),
+  // Geo-fence validation
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
 });
 
 export const updateOrderStatusSchema = z.object({
-  status: z.enum(['PENDING', 'PREPARING', 'PAYMENT_PENDING', 'COMPLETED', 'CANCELLED']),
+  status: z.enum(['PENDING', 'PREPARING', 'READY', 'PAYMENT_PENDING', 'COMPLETED', 'CANCELLED']),
   estimatedTime: z.number().int().positive().optional(),
 });
 
 export const orderQuerySchema = z.object({
-  status: z.enum(['PENDING', 'PREPARING', 'PAYMENT_PENDING', 'COMPLETED', 'CANCELLED']).optional(),
+  status: z.enum(['PENDING', 'PREPARING', 'READY', 'PAYMENT_PENDING', 'COMPLETED', 'CANCELLED']).optional(),
   tableId: z.string().uuid().optional(),
   dateFrom: z.string().datetime().optional(),
   dateTo: z.string().datetime().optional(),
@@ -196,15 +278,20 @@ export const orderQuerySchema = z.object({
 // ==================== USER ====================
 
 export const createUserSchema = z.object({
-  email: z.string().email(),
+  email: z.string().email().optional(),
   password: z.string().min(8),
   name: z.string().min(2).max(100),
   role: z.enum(['ADMIN', 'MANAGER', 'STAFF']).default('STAFF'),
+  roleTitle: z.string().max(50).optional(),
 });
 
 export const updateUserSchema = z.object({
   name: z.string().min(2).max(100).optional(),
+  email: z.string().email().nullable().optional(),
+  username: z.string().min(3).max(30).regex(/^[a-zA-Z0-9_]+$/, 'Username can only contain letters, numbers, and underscores').optional(),
+  password: z.string().min(8, 'Password must be at least 8 characters').optional(),
   role: z.enum(['ADMIN', 'MANAGER', 'STAFF']).optional(),
+  roleTitle: z.string().max(50).nullable().optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -221,6 +308,78 @@ export const menuItemQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   search: z.string().max(100).optional(),
 });
+
+// ==================== GROUP ORDERS ====================
+
+export const createGroupOrderSchema = z.object({
+  restaurantId: z.string().uuid(),
+  tableId: z.string().uuid().optional(),
+  sessionToken: z.string().uuid().optional(),
+  hostName: z.string().min(1, 'Host name is required').max(100),
+  hostPhone: z.string().max(20).optional(),
+  // Geo-fence validation
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+});
+
+export const joinGroupSchema = z.object({
+  name: z.string().min(1, 'Name is required').max(100),
+  phone: z.string().max(20).optional(),
+  // Geo-fence validation
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+});
+
+export const addGroupCartItemSchema = z.object({
+  menuItemId: z.string().uuid(),
+  quantity: z.number().int().min(1).max(99),
+  notes: z.string().max(200).optional(),
+  modifiers: z.array(z.object({
+    modifierId: z.string().uuid(),
+  })).optional(),
+});
+
+export const updateGroupCartItemSchema = z.object({
+  quantity: z.number().int().min(1).max(99),
+});
+
+export const groupParticipantActionSchema = z.object({
+  participantId: z.string().uuid(),
+  // Geo-fence validation (for group submit)
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+});
+
+// ==================== DISCOUNTS & COUPONS ====================
+
+export const createDiscountSchema = z.object({
+  name: z.string().min(1).max(100),
+  type: z.enum(['PERCENTAGE', 'FLAT']),
+  value: z.coerce.number().positive(),
+  minOrderAmount: z.coerce.number().positive().nullable().optional(),
+  maxDiscount: z.coerce.number().positive().nullable().optional(),
+  isAutoApply: z.boolean().optional(),
+  activeFrom: z.string().datetime().nullable().optional(),
+  activeTo: z.string().datetime().nullable().optional(),
+  activeDays: z.array(z.number().int().min(0).max(6)).optional(),
+  activeTimeFrom: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
+  activeTimeTo: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
+  maxUses: z.number().int().positive().nullable().optional(),
+  isActive: z.boolean().optional(),
+});
+
+export const updateDiscountSchema = createDiscountSchema.partial();
+
+export const createCouponSchema = z.object({
+  code: z.string().min(1).max(50),
+  discountId: z.string().uuid(),
+  maxUses: z.number().int().positive().nullable().optional(),
+  maxUsesPerCustomer: z.number().int().positive().optional(),
+  expiresAt: z.string().datetime().nullable().optional(),
+  isActive: z.boolean().optional(),
+});
+
+export const updateCouponSchema = createCouponSchema.partial();
 
 // ==================== COMMON ====================
 
@@ -250,7 +409,7 @@ export const mergeSessionsSchema = z.object({
 });
 
 export const idParamSchema = z.object({
-  id: z.string().uuid('Invalid ID format'),
+  id: z.string().min(1, 'ID is required'),
 });
 
 export const restaurantSlugSchema = z.object({
@@ -271,6 +430,49 @@ export const updateUsernameSchema = z.object({
 export const updateEmailSchema = z.object({
   email: z.string().email('A valid email address is required'),
   otp: z.string().min(1, 'Verification code is required'),
+});
+
+// ==================== CRM ====================
+
+export const updateCustomerSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  email: z.string().email('Invalid email format').max(200).optional().nullable(),
+  tags: z.array(z.string().min(1).max(30).regex(/^[a-zA-Z0-9 _-]+$/, 'Tags may only contain letters, numbers, spaces, hyphens and underscores')).max(20).optional(),
+  notes: z.string().max(2000).optional().nullable(),
+}).strict();
+
+// ─── Credit Account Validators ───────────────────
+
+export const createCreditAccountSchema = z.object({
+  name: z.string().min(1).max(100),
+  phone: z.string().max(20).optional(),
+  email: z.string().email().max(200).optional(),
+  creditLimit: z.number().min(0).optional(),
+  notes: z.string().max(2000).optional(),
+  customerId: z.string().uuid().optional(),
+});
+
+export const updateCreditAccountSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  phone: z.string().max(20).optional().nullable(),
+  email: z.string().email().max(200).optional().nullable(),
+  creditLimit: z.number().min(0).optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+  isActive: z.boolean().optional(),
+});
+
+export const creditChargeSchema = z.object({
+  amount: z.number().positive(),
+  orderId: z.string().uuid().optional(),
+  sessionId: z.string().uuid().optional(),
+  notes: z.string().max(2000).optional(),
+});
+
+export const creditRepaymentSchema = z.object({
+  amount: z.number().positive(),
+  method: z.string().max(20).optional(),
+  reference: z.string().max(200).optional(),
+  notes: z.string().max(2000).optional(),
 });
 
 export const changeProfilePasswordSchema = z.object({
@@ -304,5 +506,16 @@ export type MergeSessionsInput = z.infer<typeof mergeSessionsSchema>;
 export type UpdateUsernameInput = z.infer<typeof updateUsernameSchema>;
 export type UpdateEmailInput = z.infer<typeof updateEmailSchema>;
 export type ChangeProfilePasswordInput = z.infer<typeof changeProfilePasswordSchema>;
+export type CreateGroupOrderInput = z.infer<typeof createGroupOrderSchema>;
+export type JoinGroupInput = z.infer<typeof joinGroupSchema>;
+export type AddGroupCartItemInput = z.infer<typeof addGroupCartItemSchema>;
+export type UpdateGroupCartItemInput = z.infer<typeof updateGroupCartItemSchema>;
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
 export type ResendVerificationInput = z.infer<typeof resendVerificationSchema>;
+export type CreateBranchInput = z.infer<typeof createBranchSchema>;
+export type UpdateBranchInput = z.infer<typeof updateBranchSchema>;
+export type BranchUserAssignInput = z.infer<typeof branchUserAssignSchema>;
+export type CreateDiscountInput = z.infer<typeof createDiscountSchema>;
+export type UpdateDiscountInput = z.infer<typeof updateDiscountSchema>;
+export type CreateCouponInput = z.infer<typeof createCouponSchema>;
+export type UpdateCouponInput = z.infer<typeof updateCouponSchema>;

@@ -4,7 +4,7 @@ interface DietBadgeProps {
 }
 
 const DIET_CONFIG: Record<string, { border: string; fill: string; bg: string; borderColor: string; text: string; label: string }> = {
-  VEG:     { border: 'border-green-600',  fill: 'bg-green-600',  bg: 'bg-emerald-50', borderColor: 'border-emerald-200', text: 'text-emerald-700', label: 'Vegetarian' },
+  VEG:     { border: 'border-green-600',  fill: 'bg-green-600',  bg: 'bg-green-50', borderColor: 'border-green-200', text: 'text-green-700', label: 'Vegetarian' },
   EGG:     { border: 'border-amber-500',  fill: 'bg-amber-500',  bg: 'bg-amber-50',   borderColor: 'border-amber-200',   text: 'text-amber-700',   label: 'Egg' },
   NON_VEG: { border: 'border-red-600',    fill: 'bg-red-600',    bg: 'bg-red-50',     borderColor: 'border-red-200',     text: 'text-red-700',     label: 'Non-Vegetarian' },
 };

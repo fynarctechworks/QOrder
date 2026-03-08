@@ -3,19 +3,18 @@ import { motion, AnimatePresence } from 'framer-motion';
 import type { PaymentRequestPayload } from '../context/SocketContext';
 import { useCurrency } from '../hooks/useCurrency';
 
-// TODO: Add audio notification (beep) when new payment requests arrive.
-// Consider using the Web Audio API or an <audio> element with a short sound file.
-
 interface PaymentRequestsOverlayProps {
   isOpen: boolean;
   onClose: () => void;
   requests: PaymentRequestPayload[];
+  onDismiss?: (tableId: string) => void;
 }
 
 export default function PaymentRequestsOverlay({
   isOpen,
   onClose,
   requests,
+  onDismiss,
 }: PaymentRequestsOverlayProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const fmt = useCurrency();
@@ -135,6 +134,14 @@ export default function PaymentRequestsOverlay({
                         Awaiting
                       </span>
                     </div>
+                    {onDismiss && (
+                      <button
+                        onClick={() => onDismiss(req.tableId)}
+                        className="mt-2 w-full text-xs text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-lg py-1.5 transition-colors font-medium"
+                      >
+                        Dismiss
+                      </button>
+                    )}
                   </motion.div>
                 ))
               )}

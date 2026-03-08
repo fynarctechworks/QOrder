@@ -14,7 +14,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const from = location.state?.from?.pathname || '/dashboard';
+  const from = location.state?.from?.pathname || '/';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,7 +49,7 @@ export default function LoginPage() {
         {/* Logo & heading */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center mb-5">
-            <Logo size={64} className="rounded-2xl shadow-md" />
+            <Logo size={48} />
           </div>
           <h1 className="text-[22px] font-bold text-text-primary tracking-tight">
             Welcome back

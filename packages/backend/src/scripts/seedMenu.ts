@@ -763,7 +763,7 @@ async function seed() {
   const categoryMap: Record<string, string> = {};
   for (const cat of categories) {
     const created = await prisma.category.upsert({
-      where: { restaurantId_name: { restaurantId: RESTAURANT_ID, name: cat.name } },
+      where: { restaurantId_branchId_name: { restaurantId: RESTAURANT_ID, branchId: '', name: cat.name } },
       update: { description: cat.description, sortOrder: cat.sortOrder },
       create: {
         name: cat.name,
@@ -792,7 +792,7 @@ async function seed() {
     if (item.customizationGroup) {
       const mg = item.customizationGroup;
       const modGroup = await prisma.modifierGroup.upsert({
-        where: { restaurantId_name: { restaurantId: RESTAURANT_ID, name: mg.name } },
+        where: { restaurantId_branchId_name: { restaurantId: RESTAURANT_ID, branchId: '', name: mg.name } },
         update: {
           isRequired: mg.required,
           minSelect: mg.minSelections,

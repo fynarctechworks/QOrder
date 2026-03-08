@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { menuController } from '../controllers/index.js';
 import { authenticate, authorize } from '../middlewares/auth.js';
+import { resolveBranch } from '../middlewares/resolveBranch.js';
 import { validate } from '../middlewares/validate.js';
 import { 
   createCategorySchema, 
@@ -15,8 +16,9 @@ import {
 
 const router = Router();
 
-// All routes require authentication
+// All routes require authentication and branch resolution
 router.use(authenticate);
+router.use(resolveBranch);
 
 // ==================== CATEGORIES ====================
 

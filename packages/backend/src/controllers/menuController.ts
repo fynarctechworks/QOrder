@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { Prisma } from '@prisma/client';
 import { menuService } from '../services/index.js';
+import { applyTranslation, applyTranslations } from '../lib/index.js';
 import type { ApiResponse } from '../types/index.js';
 import type { 
   CreateCategoryInput, 
@@ -54,35 +55,80 @@ interface PrismaMenuItemRaw {
 /* ─── Transform Prisma menu-item shape → frontend shape ──────────────── */
 // Prisma returns:  modifierGroups[].modifierGroup.{ name, minSelect, maxSelect, isRequired, modifiers[] }
 // Frontends expect: customizationGroups[].{ name, required, minSelections, maxSelections, options[] }
-function transformMenuItem(item: PrismaMenuItemRaw | null) {
+function transformMenuItem(item: PrismaMenuItemRaw | null, lang?: string) {
   if (!item) return item;
-  const { modifierGroups, price, discountPrice, ...rest } = item;
+  const { modifierGroups, price, discountPrice, translations, ...rest } = item;
+
+  // Apply translations to the item itself
+  if (lang && lang !== 'en') {
+    applyTranslation(rest as Record<string, unknown>, lang, ['name', 'description', 'badge']);
+    // Apply translation to category if nested
+    if (rest.category && typeof rest.category === 'object') {
+      applyTranslation(rest.category as Record<string, unknown>, lang);
+    }
+  }
+
   return {
     ...rest,
     price: Number(price),
     discountPrice: discountPrice != null ? Number(discountPrice) : undefined,
     customizationGroups: (modifierGroups ?? []).map((mg) => {
       const g = mg.modifierGroup;
+      // Apply translations to modifier group
+      if (lang && lang !== 'en') {
+        applyTranslation(g as unknown as Record<string, unknown>, lang);
+      }
       return {
         id: g.id,
         name: g.name,
         required: g.isRequired,
         minSelections: g.minSelect,
         maxSelections: g.maxSelect,
-        options: (g.modifiers ?? []).map((m) => ({
-          id: m.id,
-          name: m.name,
-          priceModifier: typeof m.price === 'object' ? Number(m.price) : Number(m.price ?? 0),
-          isDefault: m.isDefault,
-          isAvailable: m.isActive ?? true,
-        })),
+        options: (g.modifiers ?? []).map((m) => {
+          // Apply translations to each modifier
+          if (lang && lang !== 'en') {
+            applyTranslation(m as unknown as Record<string, unknown>, lang);
+          }
+          return {
+            id: m.id,
+            name: m.name,
+            priceModifier: typeof m.price === 'object' ? Number(m.price) : Number(m.price ?? 0),
+            isDefault: m.isDefault,
+            isAvailable: m.isActive ?? true,
+          };
+        }),
       };
     }),
   };
 }
 
-function transformMenuItems(items: PrismaMenuItemRaw[]) {
-  return items.map(transformMenuItem);
+function transformMenuItems(items: PrismaMenuItemRaw[], lang?: string) {
+  return items.map((i) => transformMenuItem(i, lang));
+}
+
+/** Apply translations to the nested public menu structure (categories → items → modifierGroups → modifiers) */
+function translatePublicMenu(menu: Record<string, unknown>[], lang?: string) {
+  if (!lang || lang === 'en') return menu;
+  for (const category of menu) {
+    applyTranslation(category, lang);
+    const items = category.menuItems as Record<string, unknown>[] | undefined;
+    if (items) {
+      for (const item of items) {
+        applyTranslation(item, lang, ['name', 'description']);
+        const groups = item.modifierGroups as Array<{ modifierGroup: Record<string, unknown> }> | undefined;
+        if (groups) {
+          for (const mg of groups) {
+            applyTranslation(mg.modifierGroup, lang);
+            const mods = mg.modifierGroup.modifiers as Record<string, unknown>[] | undefined;
+            if (mods) {
+              applyTranslations(mods, lang);
+            }
+          }
+        }
+      }
+    }
+  }
+  return menu;
 }
 
 export const menuController = {
@@ -95,7 +141,7 @@ export const menuController = {
   ) {
     try {
       const restaurantId = req.restaurantId!;
-      const categories = await menuService.getCategories(restaurantId);
+      const categories = await menuService.getCategories(restaurantId, req.branchId);
 
       res.json({
         success: true,
@@ -131,7 +177,7 @@ export const menuController = {
   ) {
     try {
       const restaurantId = req.restaurantId!;
-      const category = await menuService.createCategory(restaurantId, req.body);
+      const category = await menuService.createCategory(restaurantId, req.body, req.branchId);
 
       res.status(201).json({
         success: true,
@@ -192,7 +238,7 @@ export const menuController = {
     try {
       const restaurantId = req.restaurantId!;
       const query = req.query as unknown as import('../validators/index.js').MenuItemQueryInput;
-      const result = await menuService.getMenuItems(restaurantId, query);
+      const result = await menuService.getMenuItems(restaurantId, query, req.branchId);
 
       res.json({
         success: true,
@@ -229,7 +275,7 @@ export const menuController = {
   ) {
     try {
       const restaurantId = req.restaurantId!;
-      const item = await menuService.createMenuItem(restaurantId, req.body);
+      const item = await menuService.createMenuItem(restaurantId, req.body, req.branchId);
 
       res.status(201).json({
         success: true,
@@ -269,7 +315,7 @@ export const menuController = {
   ) {
     try {
       const restaurantId = req.restaurantId!;
-      await menuService.deleteMenuItem(req.params.id, restaurantId);
+      await menuService.deleteMenuItem(req.params.id, restaurantId, req.branchId);
 
       res.json({
         success: true,
@@ -290,7 +336,8 @@ export const menuController = {
       const result = await menuService.updateAvailability(
         restaurantId, 
         req.body.itemIds, 
-        req.body.isAvailable
+        req.body.isAvailable,
+        req.branchId
       );
 
       res.json({
@@ -311,7 +358,7 @@ export const menuController = {
   ) {
     try {
       const restaurantId = req.restaurantId!;
-      const groups = await menuService.getModifierGroups(restaurantId);
+      const groups = await menuService.getModifierGroups(restaurantId, req.branchId);
 
       res.json({
         success: true,
@@ -329,7 +376,7 @@ export const menuController = {
   ) {
     try {
       const restaurantId = req.restaurantId!;
-      const group = await menuService.createModifierGroup(restaurantId, req.body);
+      const group = await menuService.createModifierGroup(restaurantId, req.body, req.branchId);
 
       res.status(201).json({
         success: true,
@@ -366,11 +413,13 @@ export const menuController = {
     next: NextFunction
   ) {
     try {
-      const menu = await menuService.getPublicMenu(req.params.slug);
+      const branchId = req.query.branchId as string | undefined;
+      const lang = req.query.lang as string | undefined;
+      const menu = await menuService.getPublicMenu(req.params.slug, branchId);
 
       res.json({
         success: true,
-        data: menu,
+        data: translatePublicMenu(menu as unknown as Record<string, unknown>[], lang),
       });
     } catch (error) {
       next(error);
@@ -384,11 +433,13 @@ export const menuController = {
     next: NextFunction
   ) {
     try {
-      const categories = await menuService.getCategories(req.params.id);
+      const branchId = req.query.branchId as string | undefined;
+      const lang = req.query.lang as string | undefined;
+      const categories = await menuService.getCategories(req.params.id, branchId);
 
       res.json({
         success: true,
-        data: categories,
+        data: applyTranslations(categories as unknown as Record<string, unknown>[], lang),
       });
     } catch (error) {
       next(error);
@@ -401,15 +452,17 @@ export const menuController = {
     next: NextFunction
   ) {
     try {
+      const branchId = req.query.branchId as string | undefined;
+      const lang = req.query.lang as string | undefined;
       const limit = Math.min(Number(req.query.limit) || 100, 500);
       const result = await menuService.getMenuItems(req.params.id, {
         limit,
         page: 1,
-      });
+      }, branchId);
 
       res.json({
         success: true,
-        data: transformMenuItems(result.items),
+        data: transformMenuItems(result.items, lang),
       });
     } catch (error) {
       next(error);
@@ -422,16 +475,18 @@ export const menuController = {
     next: NextFunction
   ) {
     try {
+      const branchId = req.query.branchId as string | undefined;
+      const lang = req.query.lang as string | undefined;
       const limit = Math.min(Number(req.query.limit) || 100, 500);
       const result = await menuService.getMenuItems(req.params.id, {
         limit,
         page: 1,
         categoryId: req.params.categoryId,
-      });
+      }, branchId);
 
       res.json({
         success: true,
-        data: transformMenuItems(result.items),
+        data: transformMenuItems(result.items, lang),
       });
     } catch (error) {
       next(error);
@@ -444,11 +499,12 @@ export const menuController = {
     next: NextFunction
   ) {
     try {
+      const lang = req.query.lang as string | undefined;
       const item = await menuService.getMenuItemById(req.params.itemId, req.params.id);
 
       res.json({
         success: true,
-        data: transformMenuItem(item),
+        data: transformMenuItem(item, lang),
       });
     } catch (error) {
       next(error);

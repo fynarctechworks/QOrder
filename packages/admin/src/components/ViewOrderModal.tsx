@@ -126,22 +126,22 @@ export default function ViewOrderModal({ tableId, onClose, onSettleBill }: ViewO
             </div>
 
             {/* Bill Summary */}
-            <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl p-5 border border-emerald-200">
-              <h3 className="text-sm font-semibold text-emerald-900 mb-3 uppercase tracking-wide">
+            <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-5 border border-orange-200">
+              <h3 className="text-sm font-semibold text-orange-900 mb-3 uppercase tracking-wide">
                 Bill Summary
               </h3>
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-emerald-700">Subtotal</span>
-                  <span className="font-medium text-emerald-900">{formatCurrency(sessionData.subtotal)}</span>
+                  <span className="text-primary">Subtotal</span>
+                  <span className="font-medium text-orange-900">{formatCurrency(sessionData.subtotal)}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-emerald-700">Tax</span>
-                  <span className="font-medium text-emerald-900">{formatCurrency(sessionData.tax)}</span>
+                  <span className="text-primary">Tax</span>
+                  <span className="font-medium text-orange-900">{formatCurrency(sessionData.tax)}</span>
                 </div>
-                <div className="pt-2 border-t border-emerald-300 flex items-center justify-between">
-                  <span className="text-base font-bold text-emerald-900">Total Amount</span>
-                  <span className="text-2xl font-black text-emerald-700">{formatCurrency(sessionData.total)}</span>
+                <div className="pt-2 border-t border-orange-300 flex items-center justify-between">
+                  <span className="text-base font-bold text-orange-900">Total Amount</span>
+                  <span className="text-2xl font-black text-primary">{formatCurrency(sessionData.total)}</span>
                 </div>
               </div>
             </div>

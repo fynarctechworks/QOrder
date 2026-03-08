@@ -1,7 +1,9 @@
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 export default function NotFoundPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -12,11 +14,11 @@ export default function NotFoundPage() {
         </div>
 
         <h1 className="text-2xl font-bold text-text-primary mb-3">
-          Page Not Found
+          {t('notFound.title')}
         </h1>
 
         <p className="text-text-secondary mb-8">
-          Oops! The page you're looking for doesn't exist or has been moved.
+          {t('notFound.description')}
         </p>
 
         <div className="space-y-3">
@@ -24,10 +26,10 @@ export default function NotFoundPage() {
             onClick={() => navigate(-1)}
             className="w-full btn-secondary"
           >
-            Go Back
+            {t('common.goBack')}
           </button>
           <p className="text-sm text-text-muted">
-            Scan a QR code at your table to start ordering
+            {t('notFound.scanQR')}
           </p>
         </div>
       </div>

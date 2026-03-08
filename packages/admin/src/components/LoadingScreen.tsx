@@ -1,5 +1,4 @@
 import { motion } from 'framer-motion';
-import Logo from './Logo';
 
 export default function LoadingScreen() {
   return (
@@ -17,7 +16,7 @@ export default function LoadingScreen() {
           }}
           className="w-16 h-16 mx-auto mb-4 flex items-center justify-center"
         >
-          <Logo size={64} />
+          <img src="/Q Order Logo QO.svg" alt="Logo" className="w-16 h-16 object-contain" />
         </motion.div>
         <div className="flex items-center justify-center gap-1">
           {[0, 1, 2].map((i) => (

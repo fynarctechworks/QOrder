@@ -29,7 +29,7 @@ export default function QRCodeModal({
     QRCode.toCanvas(canvasRef.current, url, {
       width: 280,
       margin: 2,
-      color: { dark: '#1F3D36', light: '#ffffff' },
+      color: { dark: '#000000', light: '#ffffff' },
       errorCorrectionLevel: 'H',
     });
 
@@ -39,7 +39,7 @@ export default function QRCodeModal({
       QRCode.toDataURL(url, {
         width: 1024,
         margin: 3,
-        color: { dark: '#1F3D36', light: '#ffffff' },
+        color: { dark: '#000000', light: '#ffffff' },
         errorCorrectionLevel: 'H',
       }).then(setDataUrl);
     }

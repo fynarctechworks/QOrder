@@ -8,15 +8,27 @@ import type { ApiResponse } from '../types/index.js';
 
 export const errorHandler: ErrorRequestHandler = (
   err: Error,
-  _req: Request,
+  req: Request,
   res: Response<ApiResponse>,
   _next: NextFunction
 ): void => {
-  // Structured logging — always log errors
+  // Structured logging — always log errors with request context
   if (err instanceof AppError) {
-    logger.warn({ statusCode: err.statusCode, code: err.code, err }, err.message);
+    logger.warn({ statusCode: err.statusCode, code: err.code, method: req.method, url: req.originalUrl, userId: req.user?.id, userRole: req.user?.role, err }, err.message);
   } else {
-    logger.error({ err }, 'Unhandled error');
+    logger.error({ method: req.method, url: req.originalUrl, err }, 'Unhandled error');
+  }
+
+  // Handle JSON parse errors (malformed request body)
+  if (err instanceof SyntaxError && 'body' in err) {
+    res.status(400).json({
+      success: false,
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid JSON in request body',
+      },
+    });
+    return;
   }
 
   // Handle Zod validation errors

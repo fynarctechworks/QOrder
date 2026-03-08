@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../services/apiClient';
+import { settingsService } from '../services/settingsService';
 import './PrintInvoice.css';
 
 interface PrintInvoiceProps {
@@ -52,6 +53,21 @@ export default function PrintInvoice({
     queryFn: () => apiClient.get<InvoiceData>(`/sessions/${sessionId}/print`),
   });
 
+  const { data: restaurantData } = useQuery({
+    queryKey: ['settings'],
+    queryFn: settingsService.get,
+    staleTime: 30_000,
+  });
+  const pls = (restaurantData?.settings ?? {}) as Record<string, unknown>;
+  const logoUrl = (pls.printShowLogo !== false && pls.printLogoUrl) ? ((pls.printLogoUrl as string).startsWith('/uploads') ? `${window.location.origin}${pls.printLogoUrl}` : pls.printLogoUrl as string) : '';
+  const headerText = (pls.printShowAddress !== false && pls.printHeaderText) ? pls.printHeaderText as string : '';
+  const footerText = (pls.printFooterText as string) || 'Thank you for dining with us!';
+  const showAddress = (pls.printShowAddress as boolean) ?? true;
+  const showModifiers = (pls.printShowItemModifiers as boolean) ?? true;
+  const showInstructions = (pls.printShowSpecialInstructions as boolean) ?? true;
+  const showSubtotal = (pls.printShowSubtotal as boolean) ?? true;
+  const showTax = (pls.printShowTax as boolean) ?? true;
+
   const handlePrint = () => {
     window.print();
   };
@@ -60,8 +76,7 @@ export default function PrintInvoice({
     // Auto-print after loading
     if (invoice) {
       const timer = setTimeout(() => {
-        // Optional: Auto-print after 500ms
-        // window.print();
+        window.print();
       }, 500);
       return () => clearTimeout(timer);
     }
@@ -126,15 +141,28 @@ export default function PrintInvoice({
       <div className="invoice-paper">
         {/* Header */}
         <div className="invoice-header">
+          {logoUrl && (
+            <div style={{ textAlign: 'center', marginBottom: 8 }}>
+              <img src={logoUrl} alt="logo" style={{ maxWidth: 120, maxHeight: 60 }} />
+            </div>
+          )}
           <h1 className="restaurant-name">{invoice.restaurant.name}</h1>
-          {invoice.restaurant.address && (
-            <p className="restaurant-info">{invoice.restaurant.address}</p>
-          )}
-          {invoice.restaurant.phone && (
-            <p className="restaurant-info">Tel: {invoice.restaurant.phone}</p>
-          )}
-          {invoice.restaurant.email && (
-            <p className="restaurant-info">{invoice.restaurant.email}</p>
+          {headerText ? (
+            <p className="restaurant-info" style={{ whiteSpace: 'pre-line' }}>{headerText}</p>
+          ) : (
+            showAddress && (
+              <>
+                {invoice.restaurant.address && (
+                  <p className="restaurant-info">{invoice.restaurant.address}</p>
+                )}
+                {invoice.restaurant.phone && (
+                  <p className="restaurant-info">Tel: {invoice.restaurant.phone}</p>
+                )}
+                {invoice.restaurant.email && (
+                  <p className="restaurant-info">{invoice.restaurant.email}</p>
+                )}
+              </>
+            )
           )}
         </div>
 
@@ -182,7 +210,7 @@ export default function PrintInvoice({
                 <tr key={index}>
                   <td className="item-name">
                     <div>{item.name}</div>
-                    {item.modifiers.length > 0 && (
+                    {showModifiers && item.modifiers.length > 0 && (
                       <div className="modifiers">
                         {item.modifiers.map((mod, idx) => (
                           <div key={idx} className="modifier-item">
@@ -191,7 +219,7 @@ export default function PrintInvoice({
                         ))}
                       </div>
                     )}
-                    {item.notes && <div className="item-notes">Note: {item.notes}</div>}
+                    {showInstructions && item.notes && <div className="item-notes">Note: {item.notes}</div>}
                   </td>
                   <td className="text-center">{item.quantity}</td>
                   <td className="text-right">{formatCurrency(item.unitPrice)}</td>
@@ -206,14 +234,18 @@ export default function PrintInvoice({
 
         {/* Totals */}
         <div className="totals-section">
-          <div className="total-row">
-            <span>Subtotal:</span>
-            <span>{formatCurrency(invoice.subtotal)}</span>
-          </div>
-          <div className="total-row">
-            <span>Tax:</span>
-            <span>{formatCurrency(invoice.tax)}</span>
-          </div>
+          {showSubtotal && (
+            <div className="total-row">
+              <span>Subtotal:</span>
+              <span>{formatCurrency(invoice.subtotal)}</span>
+            </div>
+          )}
+          {showTax && (
+            <div className="total-row">
+              <span>Tax:</span>
+              <span>{formatCurrency(invoice.tax)}</span>
+            </div>
+          )}
           <div className="total-row total-final">
             <span>Total:</span>
             <span>{formatCurrency(invoice.total)}</span>
@@ -253,8 +285,7 @@ export default function PrintInvoice({
 
         {/* Footer */}
         <div className="invoice-footer">
-          <p className="thank-you">Thank you for dining with us!</p>
-          <p className="footer-text">Please visit again</p>
+          <p className="thank-you">{footerText}</p>
         </div>
       </div>
     </div>

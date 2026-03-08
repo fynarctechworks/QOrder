@@ -18,14 +18,21 @@ router.post(
         return res.status(400).json({ message: 'No file uploaded' });
       }
 
+      // Rename file to include restaurant prefix for ownership tracking
+      const restaurantId = req.user!.restaurantId;
+      const originalPath = req.file.path;
+      const prefixedFilename = `${restaurantId}_${req.file.filename}`;
+      const newPath = path.join(path.dirname(originalPath), prefixedFilename);
+      fs.renameSync(originalPath, newPath);
+
       // Return the URL path to access the image
-      const imageUrl = `/uploads/${req.file.filename}`;
+      const imageUrl = `/uploads/${prefixedFilename}`;
       
-      logger.info({ filename: req.file.filename }, 'Image uploaded successfully');
+      logger.info({ filename: prefixedFilename, restaurantId }, 'Image uploaded successfully');
 
       res.json({
         imageUrl,
-        filename: req.file.filename,
+        filename: prefixedFilename,
       });
     } catch (error) {
       logger.error({ error }, 'Image upload error');
@@ -44,6 +51,14 @@ router.delete('/image/:filename', authenticate, (req: Request, res: Response) =>
     }
     // Sanitize filename to prevent path traversal attacks
     const safeFilename = path.basename(filename);
+
+    // Ownership check: file must be prefixed with the user's restaurantId
+    const restaurantId = req.user!.restaurantId;
+    if (!safeFilename.startsWith(`${restaurantId}_`)) {
+      logger.warn({ filename: safeFilename, restaurantId, userId: req.user?.id }, 'Unauthorized image delete attempt');
+      res.status(403).json({ message: 'Not authorized to delete this file' });
+      return;
+    }
 
     // Verify file is within the uploads directory (prevent traversal)
     const uploadsDir = path.resolve(__dirname, '../../uploads');

@@ -4,6 +4,7 @@ import type { MenuItem, SelectedCustomization, SelectedOption } from '../types';
 import { useUIStore } from '../state/uiStore';
 import { DietBadge } from './DietBadge';
 import { resolveImg } from '../utils/resolveImg';
+import { useTranslation } from 'react-i18next';
 
 interface ItemDetailDrawerProps {
   item: MenuItem | null;
@@ -32,6 +33,7 @@ function ItemDetailDrawerComponent({
   const [specialInstructions, setSpecialInstructions] = useState('');
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [showInstructions, setShowInstructions] = useState(false);
+  const { t } = useTranslation();
 
   // Reset state when item changes
   useEffect(() => {
@@ -98,7 +100,7 @@ function ItemDetailDrawerComponent({
     item.customizationGroups.forEach((group) => {
       const selections = selectedOptions[group.id] || [];
       if (group.required && selections.length < group.minSelections) {
-        errors.push(`Select at least ${group.minSelections} for "${group.name}"`);
+        errors.push(t('menu.selectAtLeast', { min: group.minSelections, name: group.name }));;
       }
     });
     setValidationErrors(errors);
@@ -206,21 +208,21 @@ function ItemDetailDrawerComponent({
                       <h3 className="text-sm font-bold text-gray-900">{group.name}</h3>
                       {group.required ? (
                         <span className="text-[10px] font-bold uppercase tracking-wide text-primary bg-primary/10 px-2 py-0.5 rounded">
-                          Required
+                          {t('common.required')}
                         </span>
                       ) : (
                         <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400 bg-gray-50 px-2 py-0.5 rounded">
-                          Optional
+                          {t('common.optional')}
                         </span>
                       )}
                     </div>
                     {group.maxSelections > 1 && (
                       <p className="text-[11px] text-gray-400 mb-3">
-                        Select up to {group.maxSelections}
+                        {t('menu.selectUpTo', { max: group.maxSelections })}
                       </p>
                     )}
                     {isRadio && (
-                      <p className="text-[11px] text-gray-400 mb-3">Select any one</p>
+                      <p className="text-[11px] text-gray-400 mb-3">{t('menu.selectAnyOne')}</p>
                     )}
 
                     {/* Options */}
@@ -288,7 +290,7 @@ function ItemDetailDrawerComponent({
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                   </svg>
-                  Add cooking instructions
+                  {t('menu.addInstructions')}
                   <svg
                     className={`w-3.5 h-3.5 transition-transform ${showInstructions ? 'rotate-180' : ''}`}
                     fill="none"
@@ -311,7 +313,7 @@ function ItemDetailDrawerComponent({
                       <textarea
                         value={specialInstructions}
                         onChange={(e) => setSpecialInstructions(e.target.value)}
-                        placeholder="e.g. Less spicy, no onions..."
+                        placeholder={t('menu.instructionsPlaceholder')}
                         className="mt-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-3 text-sm text-gray-900 placeholder-gray-400 outline-none focus:border-primary/40 focus:bg-white resize-none transition-colors"
                         rows={3}
                         maxLength={500}
@@ -366,7 +368,7 @@ function ItemDetailDrawerComponent({
                   onClick={handleAddToCart}
                   className="flex-1 flex items-center justify-between bg-primary hover:bg-primary-hover text-white rounded-xl px-5 py-3 transition-colors active:scale-[0.98]"
                 >
-                  <span className="text-sm font-bold">Add item</span>
+                  <span className="text-sm font-bold">{t('cart.addItem')}</span>
                   <span className="text-sm font-bold">{formatPrice(calculateTotal())}</span>
                 </button>
               </div>

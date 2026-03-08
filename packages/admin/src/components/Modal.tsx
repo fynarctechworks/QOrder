@@ -5,9 +5,10 @@ interface ModalProps {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  maxWidth?: string;
 }
 
-export default function Modal({ open, title, onClose, children }: ModalProps) {
+export default function Modal({ open, title, onClose, children, maxWidth }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
@@ -73,7 +74,7 @@ export default function Modal({ open, title, onClose, children }: ModalProps) {
       <div
         ref={dialogRef}
         tabIndex={-1}
-        className="relative bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto p-6 outline-none"
+        className={`relative bg-white rounded-xl shadow-xl w-full ${maxWidth || 'max-w-lg'} mx-4 max-h-[90vh] overflow-y-auto p-6 outline-none`}
       >
         <div className="flex items-center justify-between mb-4">
           <h2 id={titleId} className="text-lg font-bold text-text-primary">{title}</h2>

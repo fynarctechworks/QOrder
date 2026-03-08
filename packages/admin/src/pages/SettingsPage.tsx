@@ -3,10 +3,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { settingsService } from '../services/settingsService';
+import { apiClient } from '../services/apiClient';
 import { profileService } from '../services/profileService';
 import type { UserProfile } from '../services/profileService';
 import { useAuthStore } from '../state/authStore';
+import { useBranchStore } from '../state/branchStore';
 import Toggle from '../components/Toggle';
+import StaffManagementTab from '../components/StaffManagementTab';
+import PermissionsTab from '../components/PermissionsTab';
+import SectionsTab from '../components/SectionsTab';
 
 /* ═══════════════════════════ Types ════════════════════════════ */
 
@@ -17,6 +22,41 @@ interface FormState {
   minOrderAmount: string;
   prepTime: string;
   acceptsOrders: boolean;
+  // Printer
+  printerEnabled: boolean;
+  printerConnectionType: 'network' | 'bluetooth' | 'browser';
+  printerIp: string;
+  printerPort: string;
+  printerType: 'epson' | 'star';
+  printerWidth: string;
+  autoPrintOnComplete: boolean;
+  // Auto-lock
+  autoLockEnabled: boolean;
+  autoLockTimeout: string;
+  lockPin: string;
+  // Customer verification
+  requirePhoneVerification: boolean;
+  // Geo-fence
+  geoLatitude: string;
+  geoLongitude: string;
+  geoFenceRadius: string;
+  geoFenceEnabled: boolean;
+  // Payment gateway
+  paymentGatewayEnabled: boolean;
+  paymentMode: 'pay_before' | 'pay_after';
+  razorpayKeyId: string;
+  razorpayKeySecret: string;
+  // Print layout
+  printLogoUrl: string;
+  printHeaderText: string;
+  printFooterText: string;
+  printShowLogo: boolean;
+  printShowAddress: boolean;
+  printShowCustomerInfo: boolean;
+  printShowItemModifiers: boolean;
+  printShowSpecialInstructions: boolean;
+  printShowSubtotal: boolean;
+  printShowTax: boolean;
 }
 
 const DEFAULTS: FormState = {
@@ -26,6 +66,35 @@ const DEFAULTS: FormState = {
   minOrderAmount: '0',
   prepTime: '15',
   acceptsOrders: true,
+  printerEnabled: false,
+  printerConnectionType: 'network',
+  printerIp: '',
+  printerPort: '9100',
+  printerType: 'epson',
+  printerWidth: '48',
+  autoPrintOnComplete: true,
+  autoLockEnabled: false,
+  autoLockTimeout: '2',
+  lockPin: '',
+  requirePhoneVerification: false,
+  geoLatitude: '',
+  geoLongitude: '',
+  geoFenceRadius: '50',
+  geoFenceEnabled: false,
+  paymentGatewayEnabled: false,
+  paymentMode: 'pay_after',
+  razorpayKeyId: '',
+  razorpayKeySecret: '',
+  printLogoUrl: '',
+  printHeaderText: '',
+  printFooterText: 'Thank you!',
+  printShowLogo: true,
+  printShowAddress: true,
+  printShowCustomerInfo: true,
+  printShowItemModifiers: true,
+  printShowSpecialInstructions: true,
+  printShowSubtotal: true,
+  printShowTax: true,
 };
 
 const CURRENCIES = [
@@ -55,7 +124,7 @@ function getCurrencySymbol(currencyCode: string): string {
   }
 }
 
-type SectionTab = 'profile' | 'restaurant' | 'orders';
+type SectionTab = 'profile' | 'restaurant' | 'orders' | 'payments' | 'printer' | 'security' | 'staff' | 'permissions' | 'sections';
 
 const TABS: { key: SectionTab; label: string; icon: string }[] = [
   {
@@ -72,6 +141,36 @@ const TABS: { key: SectionTab; label: string; icon: string }[] = [
     key: 'orders',
     label: 'Orders',
     icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01',
+  },
+  {
+    key: 'payments',
+    label: 'Payments',
+    icon: 'M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z',
+  },
+  {
+    key: 'printer',
+    label: 'Printer',
+    icon: 'M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z',
+  },
+  {
+    key: 'security',
+    label: 'Security',
+    icon: 'M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z',
+  },
+  {
+    key: 'staff',
+    label: 'Staff',
+    icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z',
+  },
+  {
+    key: 'permissions',
+    label: 'Permissions',
+    icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z',
+  },
+  {
+    key: 'sections',
+    label: 'Sections',
+    icon: 'M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z',
   },
 ];
 
@@ -132,10 +231,92 @@ function SectionCard({
   );
 }
 
+/** Printer Test Button */
+function PrinterTestButton({
+  printerIp,
+  printerPort,
+  printerType,
+  printerWidth,
+}: {
+  printerIp: string;
+  printerPort: number;
+  printerType: string;
+  printerWidth: number;
+}) {
+  const [testing, setTesting] = useState(false);
+  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const handleTest = async () => {
+    if (!printerIp) {
+      setResult({ success: false, message: 'Please enter a printer IP address first.' });
+      return;
+    }
+    setTesting(true);
+    setResult(null);
+    try {
+      const res = await settingsService.testPrinter({ printerIp, printerPort, printerType, printerWidth });
+      setResult(res);
+    } catch (err: any) {
+      setResult({ success: false, message: err.message || 'Test print failed' });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <button
+        type="button"
+        onClick={handleTest}
+        disabled={testing}
+        className="inline-flex items-center gap-2 px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-white text-sm font-semibold rounded-xl shadow-sm transition-all disabled:opacity-50 active:scale-[0.97]"
+      >
+        {testing ? (
+          <>
+            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            Testing...
+          </>
+        ) : (
+          <>
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z" />
+            </svg>
+            Test Print
+          </>
+        )}
+      </button>
+
+      {result && (
+        <div className={`flex items-start gap-2 p-3 rounded-xl text-sm ${
+          result.success
+            ? 'bg-orange-50 text-primary border border-orange-200'
+            : 'bg-red-50 text-red-700 border border-red-200'
+        }`}>
+          <svg className="w-4 h-4 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={
+              result.success
+                ? 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z'
+                : 'M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+            } />
+          </svg>
+          <span>{result.message}</span>
+        </div>
+      )}
+
+      <p className="text-xs text-text-muted">
+        Sends a small test receipt to your printer. Make sure the printer is powered on and connected to the same network.
+      </p>
+    </div>
+  );
+}
+
 /** Skeleton */
 function SettingsSkeleton() {
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 w-fit min-w-[36rem]">
       {/* Header skeleton */}
       <div className="animate-pulse">
         <div className="h-7 w-32 bg-gray-200 rounded mb-2" />
@@ -175,10 +356,16 @@ function SettingsSkeleton() {
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
+  const activeBranchId = useBranchStore((s) => s.activeBranchId);
   const [activeTab, setActiveTab] = useState<SectionTab>('profile');
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
+
+  // ── Lock PIN confirmation ──
+  const [confirmLockPin, setConfirmLockPin] = useState('');
+  const pinBoxRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const confirmPinBoxRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // ── Profile state ──
   const [editingUsername, setEditingUsername] = useState(false);
@@ -208,7 +395,7 @@ export default function SettingsPage() {
   });
 
   const { data: restaurant, isLoading, isError: settingsError } = useQuery({
-    queryKey: ['settings'],
+    queryKey: ['settings', activeBranchId],
     queryFn: settingsService.get,
     staleTime: 0,
     refetchOnWindowFocus: true,
@@ -227,6 +414,35 @@ export default function SettingsPage() {
       minOrderAmount: String(s.minimumOrderAmount ?? 0),
       prepTime: String(s.estimatedPrepTime ?? 15),
       acceptsOrders: (s.acceptsOrders as boolean) ?? true,
+      printerEnabled: (s.printerEnabled as boolean) ?? false,
+      printerConnectionType: (s.printerConnectionType as 'network' | 'bluetooth' | 'browser') ?? 'network',
+      printerIp: (s.printerIp as string) ?? '',
+      printerPort: String(s.printerPort ?? 9100),
+      printerType: (s.printerType as 'epson' | 'star') ?? 'epson',
+      printerWidth: String(s.printerWidth ?? 48),
+      autoPrintOnComplete: (s.autoPrintOnComplete as boolean) ?? true,
+      autoLockEnabled: (s.autoLockEnabled as boolean) ?? false,
+      autoLockTimeout: String(s.autoLockTimeout ?? 2),
+      lockPin: (s.lockPin as string) ?? '',
+      requirePhoneVerification: (s.requirePhoneVerification as boolean) ?? false,
+      geoLatitude: restaurant.latitude != null ? String(restaurant.latitude) : '',
+      geoLongitude: restaurant.longitude != null ? String(restaurant.longitude) : '',
+      geoFenceRadius: String(restaurant.geoFenceRadius ?? 50),
+      geoFenceEnabled: restaurant.latitude != null && restaurant.longitude != null,
+      paymentGatewayEnabled: (s.paymentGatewayEnabled as boolean) ?? false,
+      paymentMode: (s.paymentMode as 'pay_before' | 'pay_after') ?? 'pay_after',
+      razorpayKeyId: (s.razorpayKeyId as string) ?? '',
+      razorpayKeySecret: '',
+      printLogoUrl: (s.printLogoUrl as string) ?? '',
+      printHeaderText: (s.printHeaderText as string) ?? '',
+      printFooterText: (s.printFooterText as string) ?? 'Thank you!',
+      printShowLogo: (s.printShowLogo as boolean) ?? true,
+      printShowAddress: (s.printShowAddress as boolean) ?? true,
+      printShowCustomerInfo: (s.printShowCustomerInfo as boolean) ?? true,
+      printShowItemModifiers: (s.printShowItemModifiers as boolean) ?? true,
+      printShowSpecialInstructions: (s.printShowSpecialInstructions as boolean) ?? true,
+      printShowSubtotal: (s.printShowSubtotal as boolean) ?? true,
+      printShowTax: (s.printShowTax as boolean) ?? true,
     });
   }, [restaurant]);
 
@@ -241,6 +457,35 @@ export default function SettingsPage() {
       minOrderAmount: String(s.minimumOrderAmount ?? 0),
       prepTime: String(s.estimatedPrepTime ?? 15),
       acceptsOrders: (s.acceptsOrders as boolean) ?? true,
+      printerEnabled: (s.printerEnabled as boolean) ?? false,
+      printerConnectionType: (s.printerConnectionType as 'network' | 'bluetooth' | 'browser') ?? 'network',
+      printerIp: (s.printerIp as string) ?? '',
+      printerPort: String(s.printerPort ?? 9100),
+      printerType: (s.printerType as 'epson' | 'star') ?? 'epson',
+      printerWidth: String(s.printerWidth ?? 48),
+      autoPrintOnComplete: (s.autoPrintOnComplete as boolean) ?? true,
+      autoLockEnabled: (s.autoLockEnabled as boolean) ?? false,
+      autoLockTimeout: String(s.autoLockTimeout ?? 2),
+      lockPin: (s.lockPin as string) ?? '',
+      requirePhoneVerification: (s.requirePhoneVerification as boolean) ?? false,
+      geoLatitude: restaurant.latitude != null ? String(restaurant.latitude) : '',
+      geoLongitude: restaurant.longitude != null ? String(restaurant.longitude) : '',
+      geoFenceRadius: String(restaurant.geoFenceRadius ?? 50),
+      geoFenceEnabled: restaurant.latitude != null && restaurant.longitude != null,
+      paymentGatewayEnabled: (s.paymentGatewayEnabled as boolean) ?? false,
+      paymentMode: (s.paymentMode as 'pay_before' | 'pay_after') ?? 'pay_after',
+      razorpayKeyId: (s.razorpayKeyId as string) ?? '',
+      razorpayKeySecret: '',
+      printLogoUrl: (s.printLogoUrl as string) ?? '',
+      printHeaderText: (s.printHeaderText as string) ?? '',
+      printFooterText: (s.printFooterText as string) ?? 'Thank you!',
+      printShowLogo: (s.printShowLogo as boolean) ?? true,
+      printShowAddress: (s.printShowAddress as boolean) ?? true,
+      printShowCustomerInfo: (s.printShowCustomerInfo as boolean) ?? true,
+      printShowItemModifiers: (s.printShowItemModifiers as boolean) ?? true,
+      printShowSpecialInstructions: (s.printShowSpecialInstructions as boolean) ?? true,
+      printShowSubtotal: (s.printShowSubtotal as boolean) ?? true,
+      printShowTax: (s.printShowTax as boolean) ?? true,
     };
   }, [restaurant]);
 
@@ -252,12 +497,63 @@ export default function SettingsPage() {
   // Password kept in a ref so the mutation closure always sees the latest value
   const passwordRef = useRef('');
 
+  // Logo upload
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLogoUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const res = await apiClient.upload<{ imageUrl: string }>('/upload/image', formData);
+      update('printLogoUrl', res.imageUrl);
+      toast.success('Logo uploaded');
+    } catch {
+      toast.error('Failed to upload logo');
+    } finally {
+      setLogoUploading(false);
+      if (logoInputRef.current) logoInputRef.current.value = '';
+    }
+  };
+
   const mutation = useMutation({
     mutationFn: () => {
       const settings: Record<string, unknown> = {
         acceptsOrders: form.acceptsOrders,
         minimumOrderAmount: parseFloat(form.minOrderAmount) || 0,
         estimatedPrepTime: parseInt(form.prepTime, 10) || 15,
+        // Printer settings
+        printerEnabled: form.printerEnabled,
+        printerConnectionType: form.printerConnectionType,
+        printerIp: form.printerIp.trim(),
+        printerPort: parseInt(form.printerPort, 10) || 9100,
+        printerType: form.printerType,
+        printerWidth: parseInt(form.printerWidth, 10) || 48,
+        autoPrintOnComplete: form.autoPrintOnComplete,
+        // Auto-lock settings
+        autoLockEnabled: form.autoLockEnabled,
+        autoLockTimeout: parseInt(form.autoLockTimeout, 10) || 2,
+        lockPin: form.lockPin || undefined,
+        // Customer verification
+        requirePhoneVerification: form.requirePhoneVerification,
+        // Payment gateway
+        paymentGatewayEnabled: form.paymentGatewayEnabled,
+        paymentMode: form.paymentMode,
+        razorpayKeyId: form.razorpayKeyId.trim(),
+        ...(form.razorpayKeySecret.trim() ? { razorpayKeySecret: form.razorpayKeySecret.trim() } : {}),
+        // Print layout
+        printLogoUrl: form.printLogoUrl,
+        printHeaderText: form.printHeaderText,
+        printFooterText: form.printFooterText,
+        printShowLogo: form.printShowLogo,
+        printShowAddress: form.printShowAddress,
+        printShowCustomerInfo: form.printShowCustomerInfo,
+        printShowItemModifiers: form.printShowItemModifiers,
+        printShowSpecialInstructions: form.printShowSpecialInstructions,
+        printShowSubtotal: form.printShowSubtotal,
+        printShowTax: form.printShowTax,
       };
 
       // Include password when turning off accept orders
@@ -269,12 +565,16 @@ export default function SettingsPage() {
         name: form.name,
         currency: form.currency,
         taxRate: parseFloat(form.taxRate) || 0,
+        // Geo-fence: send null to disable, or numbers to enable
+        latitude: form.geoFenceEnabled && form.geoLatitude ? parseFloat(form.geoLatitude) : null,
+        longitude: form.geoFenceEnabled && form.geoLongitude ? parseFloat(form.geoLongitude) : null,
+        geoFenceRadius: form.geoFenceEnabled ? parseInt(form.geoFenceRadius, 10) || 50 : undefined,
         settings: settings as any,
       });
     },
     onSuccess: (data) => {
       // Immediately update the cached data
-      queryClient.setQueryData(['settings'], data);
+      queryClient.setQueryData(['settings', activeBranchId], data);
       // Also invalidate to trigger refetch in other components using this data
       queryClient.invalidateQueries({ queryKey: ['settings'] });
       queryClient.invalidateQueries({ queryKey: ['restaurant'] });
@@ -282,6 +582,7 @@ export default function SettingsPage() {
       // Reset password state
       passwordRef.current = '';
       setConfirmPassword('');
+      setConfirmLockPin('');
       setPasswordError('');
       setShowPasswordModal(false);
     },
@@ -298,6 +599,15 @@ export default function SettingsPage() {
 
   /** Handle save — if accept orders is being turned OFF, show password prompt */
   const handleSave = () => {
+    // Validate PIN confirmation if a new PIN is being set
+    if (form.lockPin.length > 0 && form.lockPin.length < 6) {
+      toast.error('PIN must be exactly 6 digits');
+      return;
+    }
+    if (form.lockPin.length === 6 && form.lockPin !== initial.lockPin && confirmLockPin !== form.lockPin) {
+      toast.error('PIN and confirmation do not match');
+      return;
+    }
     // Check if acceptsOrders is being turned off (was on initially, now off)
     if (form.acceptsOrders === false && initial.acceptsOrders === true) {
       setShowPasswordModal(true);
@@ -485,7 +795,7 @@ export default function SettingsPage() {
   if (isLoading && profileLoading) return <SettingsSkeleton />;
 
   if (profileError || settingsError) return (
-    <div className="max-w-3xl space-y-6">
+    <div className="w-fit min-w-[36rem] space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-text-primary tracking-tight">Settings</h1>
       </div>
@@ -499,7 +809,7 @@ export default function SettingsPage() {
   /* ═════════════════════════ RENDER ═════════════════════════ */
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 w-fit min-w-[36rem]">
 
       {/* ── Header ──────────────────────────────────────────── */}
       <div>
@@ -511,21 +821,21 @@ export default function SettingsPage() {
 
       {/* ── Tab Navigation ──────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-1.5">
-        <div className="flex gap-1">
+        <div className="flex flex-wrap gap-1">
           {TABS.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+              className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
                 activeTab === tab.key
                   ? 'bg-primary text-white shadow-sm'
                   : 'text-text-secondary hover:bg-gray-50 hover:text-text-primary'
               }`}
             >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={tab.icon} />
               </svg>
-              <span className="hidden sm:inline">{tab.label}</span>
+              <span>{tab.label}</span>
             </button>
           ))}
         </div>
@@ -777,6 +1087,96 @@ export default function SettingsPage() {
                 </div>
               </Field>
             </SectionCard>
+
+            {/* Geo-Fence Security */}
+            <SectionCard
+              icon="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"
+              title="Geo-Fence Security"
+              subtitle="Prevent remote ordering by requiring customers to be near your restaurant"
+            >
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                    form.geoFenceEnabled ? 'bg-green-100' : 'bg-gray-200'
+                  }`}>
+                    <svg className={`w-5 h-5 ${form.geoFenceEnabled ? 'text-green-600' : 'text-gray-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-text-primary">Enable Geo-Fence</p>
+                    <p className="text-xs text-text-muted">
+                      {form.geoFenceEnabled
+                        ? 'Only customers near your restaurant can place orders'
+                        : 'Anyone with the QR code link can order from anywhere'}
+                    </p>
+                  </div>
+                </div>
+                <Toggle
+                  checked={form.geoFenceEnabled}
+                  onChange={() => update('geoFenceEnabled', !form.geoFenceEnabled)}
+                  size="md"
+                />
+              </div>
+
+              {form.geoFenceEnabled && (
+                <div className="space-y-4 pt-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Field label="Restaurant Latitude" hint="e.g. 12.9716">
+                      <input
+                        type="number"
+                        value={form.geoLatitude}
+                        onChange={(e) => update('geoLatitude', e.target.value)}
+                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                        step="any"
+                        min="-90"
+                        max="90"
+                        placeholder="Latitude"
+                      />
+                    </Field>
+                    <Field label="Restaurant Longitude" hint="e.g. 77.5946">
+                      <input
+                        type="number"
+                        value={form.geoLongitude}
+                        onChange={(e) => update('geoLongitude', e.target.value)}
+                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                        step="any"
+                        min="-180"
+                        max="180"
+                        placeholder="Longitude"
+                      />
+                    </Field>
+                  </div>
+                  <Field label="Allowed Radius" hint="Maximum distance in meters from your restaurant">
+                    <div className="relative">
+                      <input
+                        type="number"
+                        value={form.geoFenceRadius}
+                        onChange={(e) => update('geoFenceRadius', e.target.value)}
+                        className="w-full px-4 py-2.5 pr-10 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                        min="10"
+                        max="5000"
+                        step="10"
+                      />
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-medium text-text-muted">m</span>
+                    </div>
+                  </Field>
+                  <div className="p-3 bg-blue-50 rounded-xl">
+                    <p className="text-xs text-blue-700 leading-relaxed">
+                      📍 <strong>How to get coordinates:</strong> Open Google Maps, right-click on your restaurant location, and click the coordinates to copy them. Enter the latitude and longitude above.
+                    </p>
+                  </div>
+                  {(!form.geoLatitude || !form.geoLongitude) && (
+                    <div className="p-3 bg-amber-50 rounded-xl">
+                      <p className="text-xs text-amber-700 leading-relaxed">
+                        ⚠️ Please enter both latitude and longitude for the geo-fence to work. Without coordinates, the geo-fence will not be active even if enabled.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </SectionCard>
           </motion.div>
         )}
 
@@ -799,9 +1199,9 @@ export default function SettingsPage() {
               <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
                 <div className="flex items-center gap-3">
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                    form.acceptsOrders ? 'bg-emerald-100' : 'bg-red-100'
+                    form.acceptsOrders ? 'bg-orange-100' : 'bg-red-100'
                   }`}>
-                    <svg className={`w-5 h-5 ${form.acceptsOrders ? 'text-emerald-600' : 'text-red-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className={`w-5 h-5 ${form.acceptsOrders ? 'text-primary' : 'text-red-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={form.acceptsOrders ? 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' : 'M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636'} />
                     </svg>
                   </div>
@@ -850,8 +1250,1001 @@ export default function SettingsPage() {
                 </Field>
               </div>
             </SectionCard>
+
+            {/* Customer Phone Verification */}
+            <SectionCard
+              icon="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z"
+              title="Customer Phone Verification"
+              subtitle="Require customers to provide and verify their phone number before ordering"
+            >
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                    form.requirePhoneVerification ? 'bg-blue-100' : 'bg-gray-200'
+                  }`}>
+                    <svg className={`w-5 h-5 ${form.requirePhoneVerification ? 'text-blue-600' : 'text-gray-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-text-primary">Require OTP Verification</p>
+                    <p className="text-xs text-text-muted">
+                      {form.requirePhoneVerification
+                        ? 'Customers must verify phone via SMS before ordering (~$0.05/verification)'
+                        : 'Phone number collected with format validation only (free)'}
+                    </p>
+                  </div>
+                </div>
+                <Toggle
+                  checked={form.requirePhoneVerification}
+                  onChange={() => update('requirePhoneVerification', !form.requirePhoneVerification)}
+                  size="md"
+                />
+              </div>
+              <div className="px-1">
+                <p className="text-xs text-text-muted leading-relaxed">
+                  {form.requirePhoneVerification
+                    ? '📱 Customers will receive a 6-digit SMS code to verify their number. Requires Twilio credentials in server configuration.'
+                    : '📋 Customers enter their phone number with format validation. A message reminds them that order updates will be sent to this number.'}
+                </p>
+              </div>
+            </SectionCard>
           </motion.div>
         )}
+      </AnimatePresence>
+
+      {/* ══════════ Printer Tab ══════════ */}
+      <AnimatePresence mode="wait">
+        {activeTab === 'printer' && (
+          <motion.div
+            key="printer"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            className="space-y-5"
+          >
+            <SectionCard
+              icon="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z"
+              title="Receipt Printer"
+              subtitle="Configure your printer for automatic receipt printing"
+            >
+              {/* Enable printer toggle */}
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                    form.printerEnabled ? 'bg-orange-100' : 'bg-gray-200'
+                  }`}>
+                    <svg className={`w-5 h-5 ${form.printerEnabled ? 'text-primary' : 'text-gray-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-text-primary">Enable Printer</p>
+                    <p className="text-xs text-text-muted">
+                      {form.printerEnabled ? 'Printer is active' : 'Printer is disabled'}
+                    </p>
+                  </div>
+                </div>
+                <Toggle
+                  checked={form.printerEnabled}
+                  onChange={() => update('printerEnabled', !form.printerEnabled)}
+                  size="md"
+                />
+              </div>
+
+              {form.printerEnabled && (
+                <>
+                  {/* ── Connection Type Selector ── */}
+                  <div>
+                    <p className="text-sm font-semibold text-text-primary mb-1">Connection Type</p>
+                    <p className="text-xs text-text-muted mb-3">Choose how your printer connects</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* Network / WiFi */}
+                      <button
+                        type="button"
+                        onClick={() => update('printerConnectionType', 'network')}
+                        className={`relative p-4 rounded-xl border-2 text-left transition-all ${
+                          form.printerConnectionType === 'network'
+                            ? 'border-primary bg-orange-50 shadow-sm'
+                            : 'border-gray-200 bg-white hover:border-gray-300'
+                        }`}
+                      >
+                        {form.printerConnectionType === 'network' && (
+                          <div className="absolute top-2.5 right-2.5 w-5 h-5 bg-primary rounded-full flex items-center justify-center">
+                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                          </div>
+                        )}
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-2.5 ${
+                          form.printerConnectionType === 'network' ? 'bg-orange-100' : 'bg-gray-100'
+                        }`}>
+                          <svg className={`w-5 h-5 ${form.printerConnectionType === 'network' ? 'text-primary' : 'text-gray-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z" />
+                          </svg>
+                        </div>
+                        <p className="text-sm font-semibold text-text-primary">Network / WiFi</p>
+                        <p className="text-[11px] text-text-muted mt-0.5">Connect via IP address over your local network</p>
+                      </button>
+
+                      {/* Bluetooth */}
+                      <button
+                        type="button"
+                        onClick={() => update('printerConnectionType', 'bluetooth')}
+                        className={`relative p-4 rounded-xl border-2 text-left transition-all ${
+                          form.printerConnectionType === 'bluetooth'
+                            ? 'border-blue-500 bg-blue-50 shadow-sm'
+                            : 'border-gray-200 bg-white hover:border-gray-300'
+                        }`}
+                      >
+                        {form.printerConnectionType === 'bluetooth' && (
+                          <div className="absolute top-2.5 right-2.5 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
+                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                          </div>
+                        )}
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-2.5 ${
+                          form.printerConnectionType === 'bluetooth' ? 'bg-blue-100' : 'bg-gray-100'
+                        }`}>
+                          <svg className={`w-5 h-5 ${form.printerConnectionType === 'bluetooth' ? 'text-blue-600' : 'text-gray-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2l4 4-4 4m0-8v16m0 0l4-4-4-4m0 8l-4-4 4-4" />
+                          </svg>
+                        </div>
+                        <p className="text-sm font-semibold text-text-primary">Bluetooth</p>
+                        <p className="text-[11px] text-text-muted mt-0.5">Pair with portable Bluetooth thermal printers</p>
+                      </button>
+
+                      {/* Browser Print */}
+                      <button
+                        type="button"
+                        onClick={() => update('printerConnectionType', 'browser')}
+                        className={`relative p-4 rounded-xl border-2 text-left transition-all ${
+                          form.printerConnectionType === 'browser'
+                            ? 'border-emerald-500 bg-emerald-50 shadow-sm'
+                            : 'border-gray-200 bg-white hover:border-gray-300'
+                        }`}
+                      >
+                        {form.printerConnectionType === 'browser' && (
+                          <div className="absolute top-2.5 right-2.5 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center">
+                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                          </div>
+                        )}
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-2.5 ${
+                          form.printerConnectionType === 'browser' ? 'bg-emerald-100' : 'bg-gray-100'
+                        }`}>
+                          <svg className={`w-5 h-5 ${form.printerConnectionType === 'browser' ? 'text-emerald-600' : 'text-gray-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z" />
+                          </svg>
+                        </div>
+                        <p className="text-sm font-semibold text-text-primary">Browser Print</p>
+                        <p className="text-[11px] text-text-muted mt-0.5">Use any printer connected to your computer (USB, WiFi, etc.)</p>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* ── Network / WiFi Settings ── */}
+                  {form.printerConnectionType === 'network' && (
+                    <>
+                      <div className="p-4 bg-orange-50/50 border border-orange-100 rounded-xl">
+                        <div className="flex items-start gap-2">
+                          <svg className="w-4 h-4 text-primary mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <p className="text-xs text-text-muted">
+                            Connects directly to ESC/POS thermal printers over your local network using TCP/IP. The printer must be on the same network as the server.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <Field label="Printer IP Address" hint="e.g. 192.168.1.100">
+                          <input
+                            type="text"
+                            value={form.printerIp}
+                            onChange={(e) => update('printerIp', e.target.value)}
+                            placeholder="192.168.1.100"
+                            className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all font-mono"
+                          />
+                        </Field>
+
+                        <Field label="Port" hint="Default: 9100">
+                          <input
+                            type="number"
+                            value={form.printerPort}
+                            onChange={(e) => update('printerPort', e.target.value)}
+                            className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all font-mono"
+                            min="1"
+                            max="65535"
+                          />
+                        </Field>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <Field label="Printer Brand" hint="Select your printer manufacturer">
+                          <select
+                            value={form.printerType}
+                            onChange={(e) => update('printerType', e.target.value as 'epson' | 'star')}
+                            className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                          >
+                            <option value="epson">Epson (TM-T82, TM-T88, etc.)</option>
+                            <option value="star">Star (TSP100, TSP650, etc.)</option>
+                          </select>
+                        </Field>
+
+                        <Field label="Paper Width" hint="Characters per line">
+                          <select
+                            value={form.printerWidth}
+                            onChange={(e) => update('printerWidth', e.target.value)}
+                            className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                          >
+                            <option value="48">80mm (48 chars) — Standard</option>
+                            <option value="32">58mm (32 chars) — Compact</option>
+                          </select>
+                        </Field>
+                      </div>
+
+                      {/* Test Print */}
+                      <PrinterTestButton
+                        printerIp={form.printerIp}
+                        printerPort={parseInt(form.printerPort, 10) || 9100}
+                        printerType={form.printerType}
+                        printerWidth={parseInt(form.printerWidth, 10) || 48}
+                      />
+                    </>
+                  )}
+
+                  {/* ── Bluetooth Settings ── */}
+                  {form.printerConnectionType === 'bluetooth' && (
+                    <>
+                      <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-xl">
+                        <div className="flex items-start gap-2">
+                          <svg className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <p className="text-xs text-text-muted">
+                            Uses Web Bluetooth to connect to portable Bluetooth thermal printers. Your browser must support Web Bluetooth (Chrome, Edge, Opera). Pair the printer with your device first via system Bluetooth settings.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <Field label="Printer Brand" hint="Select your printer manufacturer">
+                          <select
+                            value={form.printerType}
+                            onChange={(e) => update('printerType', e.target.value as 'epson' | 'star')}
+                            className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                          >
+                            <option value="epson">Epson (TM-T82, TM-T88, etc.)</option>
+                            <option value="star">Star (TSP100, SM-series, etc.)</option>
+                          </select>
+                        </Field>
+
+                        <Field label="Paper Width" hint="Characters per line">
+                          <select
+                            value={form.printerWidth}
+                            onChange={(e) => update('printerWidth', e.target.value)}
+                            className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                          >
+                            <option value="48">80mm (48 chars) — Standard</option>
+                            <option value="32">58mm (32 chars) — Compact</option>
+                          </select>
+                        </Field>
+                      </div>
+
+                      <div className="p-4 bg-gray-50 rounded-xl space-y-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center shrink-0">
+                            <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2l4 4-4 4m0-8v16m0 0l4-4-4-4m0 8l-4-4 4-4" />
+                            </svg>
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-text-primary">Bluetooth Pairing</p>
+                            <p className="text-xs text-text-muted">
+                              Make sure your Bluetooth printer is turned on and paired with this device via system settings. When printing, the browser will prompt you to select the Bluetooth device.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* ── Browser Print Settings ── */}
+                  {form.printerConnectionType === 'browser' && (
+                    <>
+                      <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-xl">
+                        <div className="flex items-start gap-2">
+                          <svg className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <p className="text-xs text-text-muted">
+                            Uses your browser&apos;s built-in print dialog. Works with any printer connected to your computer — USB, WiFi (AirPrint, Google Cloud Print), or Bluetooth. Select the desired printer in the print dialog that appears.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="p-4 bg-gray-50 rounded-xl">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0">
+                            <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-text-primary">No Additional Setup Required</p>
+                            <p className="text-xs text-text-muted">
+                              Any printer that works with your operating system will automatically be available in the browser print dialog. Just click print and select your printer.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <Field label="Paper Width" hint="Used for receipt formatting">
+                        <select
+                          value={form.printerWidth}
+                          onChange={(e) => update('printerWidth', e.target.value)}
+                          className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                        >
+                          <option value="48">80mm (48 chars) — Standard</option>
+                          <option value="32">58mm (32 chars) — Compact</option>
+                        </select>
+                      </Field>
+                    </>
+                  )}
+
+                  {/* Auto-print toggle (shared across all types) */}
+                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                        form.autoPrintOnComplete ? 'bg-blue-100' : 'bg-gray-200'
+                      }`}>
+                        <svg className={`w-5 h-5 ${form.autoPrintOnComplete ? 'text-blue-600' : 'text-gray-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-text-primary">Auto-Print on Completion</p>
+                        <p className="text-xs text-text-muted">
+                          Automatically print receipt when an order is marked as completed
+                        </p>
+                      </div>
+                    </div>
+                    <Toggle
+                      checked={form.autoPrintOnComplete}
+                      onChange={() => update('autoPrintOnComplete', !form.autoPrintOnComplete)}
+                      size="md"
+                    />
+                  </div>
+                </>
+              )}
+            </SectionCard>
+
+            {/* ── Receipt Layout ── */}
+            {form.printerEnabled && (
+              <SectionCard
+                icon="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"
+                title="Receipt Layout"
+                subtitle="Customize what appears on your printed receipts"
+              >
+                {/* Logo Upload */}
+                <div>
+                  <p className="text-sm font-semibold text-text-primary mb-1">Restaurant Logo</p>
+                  <p className="text-xs text-text-muted mb-3">Upload a logo to display at the top of receipts</p>
+                  <div className="flex items-center gap-4">
+                    {form.printLogoUrl ? (
+                      <div className="relative w-20 h-20 rounded-xl border border-gray-200 overflow-hidden bg-white flex items-center justify-center">
+                        <img
+                          src={form.printLogoUrl.startsWith('/uploads') ? `${(import.meta.env.VITE_API_URL || 'http://localhost:3000/api').replace('/api', '')}${form.printLogoUrl}` : form.printLogoUrl}
+                          alt="Receipt logo"
+                          className="max-w-full max-h-full object-contain"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => update('printLogoUrl', '')}
+                          className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="w-20 h-20 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center bg-gray-50">
+                        <svg className="w-8 h-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.41a2.25 2.25 0 013.182 0l2.909 2.91m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                        </svg>
+                      </div>
+                    )}
+                    <div className="flex flex-col gap-2">
+                      <button
+                        type="button"
+                        onClick={() => logoInputRef.current?.click()}
+                        disabled={logoUploading}
+                        className="px-4 py-2 text-sm font-medium text-primary bg-orange-50 rounded-lg hover:bg-orange-100 transition-colors disabled:opacity-50"
+                      >
+                        {logoUploading ? 'Uploading...' : form.printLogoUrl ? 'Change Logo' : 'Upload Logo'}
+                      </button>
+                      <p className="text-[11px] text-text-muted">JPEG, PNG, or WebP. Max 5MB.</p>
+                    </div>
+                    <input
+                      ref={logoInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={handleLogoUpload}
+                      className="hidden"
+                    />
+                  </div>
+                </div>
+
+                {/* Show Logo Toggle */}
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                  <div>
+                    <p className="text-sm font-medium text-text-primary">Show Logo on Receipt</p>
+                    <p className="text-xs text-text-muted">Display the uploaded logo at the top</p>
+                  </div>
+                  <Toggle
+                    checked={form.printShowLogo}
+                    onChange={() => update('printShowLogo', !form.printShowLogo)}
+                    size="md"
+                  />
+                </div>
+
+                {/* Header Text */}
+                <Field label="Header Text" hint="Additional text shown below restaurant name (e.g. address, phone)">
+                  <textarea
+                    value={form.printHeaderText}
+                    onChange={(e) => update('printHeaderText', e.target.value)}
+                    placeholder="123 Main St, City&#10;Phone: (555) 123-4567"
+                    rows={2}
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all resize-none"
+                  />
+                </Field>
+
+                {/* Footer Text */}
+                <Field label="Footer Text" hint="Message shown at the bottom of receipts">
+                  <input
+                    type="text"
+                    value={form.printFooterText}
+                    onChange={(e) => update('printFooterText', e.target.value)}
+                    placeholder="Thank you!"
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                  />
+                </Field>
+
+                {/* Section visibility toggles */}
+                <div>
+                  <p className="text-sm font-semibold text-text-primary mb-1">Receipt Sections</p>
+                  <p className="text-xs text-text-muted mb-3">Choose which sections to include on printed receipts</p>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                      <div>
+                        <p className="text-sm font-medium text-text-primary">Address &amp; Contact</p>
+                        <p className="text-xs text-text-muted">Header text under restaurant name</p>
+                      </div>
+                      <Toggle checked={form.printShowAddress} onChange={() => update('printShowAddress', !form.printShowAddress)} size="md" />
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                      <div>
+                        <p className="text-sm font-medium text-text-primary">Customer Info</p>
+                        <p className="text-xs text-text-muted">Customer name and phone number</p>
+                      </div>
+                      <Toggle checked={form.printShowCustomerInfo} onChange={() => update('printShowCustomerInfo', !form.printShowCustomerInfo)} size="md" />
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                      <div>
+                        <p className="text-sm font-medium text-text-primary">Item Modifiers</p>
+                        <p className="text-xs text-text-muted">Customizations and modifier options</p>
+                      </div>
+                      <Toggle checked={form.printShowItemModifiers} onChange={() => update('printShowItemModifiers', !form.printShowItemModifiers)} size="md" />
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                      <div>
+                        <p className="text-sm font-medium text-text-primary">Special Instructions</p>
+                        <p className="text-xs text-text-muted">Order and item-level notes</p>
+                      </div>
+                      <Toggle checked={form.printShowSpecialInstructions} onChange={() => update('printShowSpecialInstructions', !form.printShowSpecialInstructions)} size="md" />
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                      <div>
+                        <p className="text-sm font-medium text-text-primary">Subtotal</p>
+                        <p className="text-xs text-text-muted">Show subtotal before tax</p>
+                      </div>
+                      <Toggle checked={form.printShowSubtotal} onChange={() => update('printShowSubtotal', !form.printShowSubtotal)} size="md" />
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                      <div>
+                        <p className="text-sm font-medium text-text-primary">Tax</p>
+                        <p className="text-xs text-text-muted">Show tax amount line</p>
+                      </div>
+                      <Toggle checked={form.printShowTax} onChange={() => update('printShowTax', !form.printShowTax)} size="md" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Live Receipt Preview ── */}
+                <div>
+                  <p className="text-sm font-semibold text-text-primary mb-1">Receipt Preview</p>
+                  <p className="text-xs text-text-muted mb-3">Live preview of how your receipt will look</p>
+                  <div className="flex justify-center">
+                    <div
+                      className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden"
+                      style={{ width: 320, fontFamily: 'monospace', fontSize: 12, color: '#111' }}
+                    >
+                      <div style={{ padding: '20px 16px' }}>
+                        {/* Logo */}
+                        {form.printShowLogo && form.printLogoUrl && (
+                          <div style={{ textAlign: 'center', marginBottom: 8 }}>
+                            <img
+                              src={form.printLogoUrl.startsWith('/uploads') ? `${(import.meta.env.VITE_API_URL || 'http://localhost:3000/api').replace('/api', '')}${form.printLogoUrl}` : form.printLogoUrl}
+                              alt="logo"
+                              style={{ maxWidth: 100, maxHeight: 50, display: 'inline-block' }}
+                            />
+                          </div>
+                        )}
+                        {/* Restaurant Name */}
+                        <div style={{ textAlign: 'center', fontWeight: 700, fontSize: 15, marginBottom: 2 }}>
+                          {form.name || 'Restaurant Name'}
+                        </div>
+                        {/* Header text */}
+                        {form.printShowAddress && form.printHeaderText && (
+                          <div style={{ textAlign: 'center', color: '#666', fontSize: 11, whiteSpace: 'pre-line', marginBottom: 6 }}>
+                            {form.printHeaderText}
+                          </div>
+                        )}
+                        {/* Order info */}
+                        <div style={{ textAlign: 'center', color: '#666', fontSize: 11, marginBottom: 2 }}>Table 5</div>
+                        <div style={{ textAlign: 'center', color: '#666', fontSize: 11, marginBottom: 2 }}>Order: #1042</div>
+                        <div style={{ textAlign: 'center', color: '#666', fontSize: 11, marginBottom: 8 }}>
+                          {new Date().toLocaleString()}
+                        </div>
+                        {/* Divider */}
+                        <div style={{ borderTop: '1px dashed #999', margin: '6px 0' }} />
+                        {/* Customer info */}
+                        {form.printShowCustomerInfo && (
+                          <div style={{ fontSize: 11, color: '#444', marginBottom: 4 }}>👤 John Doe · 9876543210</div>
+                        )}
+                        {/* Special instructions */}
+                        {form.printShowSpecialInstructions && (
+                          <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 6, padding: '5px 8px', margin: '4px 0 6px', fontSize: 10, fontWeight: 600, color: '#92400e' }}>
+                            📝 No onions please
+                          </div>
+                        )}
+                        {/* Items */}
+                        {[
+                          { name: 'Butter Chicken', qty: 1, price: 320, mods: [{ group: 'Spice Level', opt: 'Medium' }], note: '' },
+                          { name: 'Garlic Naan', qty: 2, price: 120, mods: [], note: 'Extra crispy' },
+                          { name: 'Mango Lassi', qty: 1, price: 90, mods: [], note: '' },
+                        ].map((item, i) => (
+                          <div key={i} style={{ display: 'flex', gap: 6, padding: '5px 0', borderBottom: '1px solid #eee' }}>
+                            <span style={{ fontWeight: 700, minWidth: 24, height: 24, background: '#f3f4f6', borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0 }}>{item.qty}</span>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: 700, fontSize: 12 }}>{item.name}</div>
+                              {form.printShowItemModifiers && item.mods.map((m, j) => (
+                                <div key={j} style={{ color: '#888', fontSize: 10, marginTop: 1 }}>{m.group}: {m.opt}</div>
+                              ))}
+                              {form.printShowSpecialInstructions && item.note && (
+                                <div style={{ color: '#d97706', fontSize: 10, marginTop: 1, fontWeight: 600 }}>⚠ {item.note}</div>
+                              )}
+                            </div>
+                            <span style={{ fontWeight: 700, whiteSpace: 'nowrap', fontSize: 12 }}>{getCurrencySymbol(form.currency)}{item.price}</span>
+                          </div>
+                        ))}
+                        {/* Divider */}
+                        <div style={{ borderTop: '1px dashed #999', margin: '6px 0' }} />
+                        {/* Totals */}
+                        {form.printShowSubtotal && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0', fontSize: 12 }}>
+                            <span>Subtotal</span><span>{getCurrencySymbol(form.currency)}530</span>
+                          </div>
+                        )}
+                        {form.printShowTax && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0', fontSize: 12 }}>
+                            <span>Tax</span><span>{getCurrencySymbol(form.currency)}26.50</span>
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontWeight: 700, fontSize: 13 }}>
+                          <span>TOTAL</span><span>{getCurrencySymbol(form.currency)}556.50</span>
+                        </div>
+                        {/* Footer */}
+                        {form.printFooterText && (
+                          <>
+                            <div style={{ borderTop: '1px dashed #999', margin: '6px 0' }} />
+                            <div style={{ textAlign: 'center', fontSize: 12, color: '#444' }}>{form.printFooterText}</div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </SectionCard>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence mode="wait">
+        {activeTab === 'payments' && (
+          <motion.div
+            key="payments"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            className="space-y-5"
+          >
+            <SectionCard
+              icon="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z"
+              title="Online Payment Gateway"
+              subtitle="Accept payments via Razorpay (UPI, cards, wallets, netbanking)"
+            >
+              {/* Enable toggle */}
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                    form.paymentGatewayEnabled ? 'bg-green-100' : 'bg-gray-200'
+                  }`}>
+                    <svg className={`w-5 h-5 ${form.paymentGatewayEnabled ? 'text-green-600' : 'text-gray-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-text-primary">Enable Online Payments</p>
+                    <p className="text-xs text-text-muted">
+                      {form.paymentGatewayEnabled ? 'Customers can pay online via Razorpay' : 'Online payments are disabled'}
+                    </p>
+                  </div>
+                </div>
+                <Toggle
+                  checked={form.paymentGatewayEnabled}
+                  onChange={() => update('paymentGatewayEnabled', !form.paymentGatewayEnabled)}
+                  size="md"
+                />
+              </div>
+
+              {form.paymentGatewayEnabled && (
+                <>
+                  {/* Payment Mode */}
+                  <Field label="Payment Mode" hint="When should the customer pay?">
+                    <select
+                      value={form.paymentMode}
+                      onChange={(e) => update('paymentMode', e.target.value as 'pay_before' | 'pay_after')}
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                    >
+                      <option value="pay_after">Pay After Meal (dine-in default)</option>
+                      <option value="pay_before">Pay Before Order (QSR / takeaway)</option>
+                    </select>
+                  </Field>
+
+                  {/* Razorpay credentials */}
+                  <div className="grid grid-cols-1 gap-4">
+                    <Field label="Razorpay Key ID" hint="From Razorpay Dashboard → Settings → API Keys">
+                      <input
+                        type="text"
+                        value={form.razorpayKeyId}
+                        onChange={(e) => update('razorpayKeyId', e.target.value)}
+                        placeholder="rzp_live_xxxxxxxxxx"
+                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all font-mono"
+                      />
+                    </Field>
+
+                    <Field label="Razorpay Key Secret" hint="Leave blank to keep current secret">
+                      <input
+                        type="password"
+                        value={form.razorpayKeySecret}
+                        onChange={(e) => update('razorpayKeySecret', e.target.value)}
+                        placeholder="Enter new secret to change"
+                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all font-mono"
+                      />
+                    </Field>
+                  </div>
+
+                  {/* Info box */}
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                    <p className="text-xs text-blue-700 font-medium mb-1">How it works</p>
+                    <ul className="text-xs text-blue-600 space-y-1 list-disc list-inside">
+                      {form.paymentMode === 'pay_before' ? (
+                        <>
+                          <li>Customer places order → pays online → order sent to kitchen</li>
+                          <li>Best for QSR, cafes, and takeaway</li>
+                        </>
+                      ) : (
+                        <>
+                          <li>Customer orders freely → requests bill → pays online or cash</li>
+                          <li>Best for dine-in restaurants</li>
+                        </>
+                      )}
+                      <li>Supports UPI, cards, wallets, and netbanking via Razorpay</li>
+                    </ul>
+                  </div>
+                </>
+              )}
+            </SectionCard>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ══════════ Security Tab ══════════ */}
+      <AnimatePresence mode="wait">
+        {activeTab === 'security' && (
+          <motion.div
+            key="security"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            className="space-y-5"
+          >
+            <SectionCard
+              icon="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+              title="Auto Lock"
+              subtitle="Automatically lock the screen after a period of inactivity"
+            >
+              {/* Enable toggle */}
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                    form.autoLockEnabled ? 'bg-primary/10' : 'bg-gray-200'
+                  }`}>
+                    <svg className={`w-5 h-5 ${form.autoLockEnabled ? 'text-primary' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-text-primary">Auto Lock Screen</p>
+                    <p className="text-xs text-text-muted">
+                      {form.autoLockEnabled
+                        ? `Lock after ${form.autoLockTimeout} min of inactivity`
+                        : 'Screen will not lock automatically'}
+                    </p>
+                  </div>
+                </div>
+                <Toggle
+                  checked={form.autoLockEnabled}
+                  onChange={() => update('autoLockEnabled', !form.autoLockEnabled)}
+                  size="md"
+                />
+              </div>
+
+              {/* Timeout selector — only shown when enabled */}
+              {form.autoLockEnabled && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden space-y-4"
+                >
+                  <Field label="Lock Timeout" hint="Time of inactivity before the screen locks">
+                    <div className="relative">
+                      <select
+                        value={form.autoLockTimeout}
+                        onChange={(e) => update('autoLockTimeout', e.target.value)}
+                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all appearance-none cursor-pointer"
+                      >
+                        <option value="1">1 minute</option>
+                        <option value="2">2 minutes</option>
+                        <option value="3">3 minutes</option>
+                        <option value="5">5 minutes</option>
+                        <option value="10">10 minutes</option>
+                        <option value="15">15 minutes</option>
+                        <option value="30">30 minutes</option>
+                        <option value="60">60 minutes</option>
+                      </select>
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                        <svg className="w-4 h-4 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </div>
+                  </Field>
+                </motion.div>
+              )}
+            </SectionCard>
+
+            {/* Lock PIN */}
+            {form.autoLockEnabled && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                <SectionCard
+                  icon="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
+                  title="Lock PIN"
+                  subtitle="Set a 6-digit PIN for quick unlock. If forgotten, use your account password."
+                >
+                  <div className="space-y-4">
+                    {/* PIN status */}
+                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                          form.lockPin.length === 6 ? 'bg-orange-100' : 'bg-amber-100'
+                        }`}>
+                          {form.lockPin.length === 6 ? (
+                            <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                            </svg>
+                          ) : (
+                            <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-text-primary">
+                            {form.lockPin.length === 6 ? 'PIN is set' : 'No PIN configured'}
+                          </p>
+                          <p className="text-xs text-text-muted">
+                            {form.lockPin.length === 6
+                              ? 'You can use this PIN to quickly unlock the screen'
+                              : 'Without a PIN, you\'ll need your password to unlock'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* PIN input — box style */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium text-text-secondary">
+                          {form.lockPin.length === 6 ? 'Change PIN' : 'Set PIN'}
+                        </label>
+                        {form.lockPin.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => { update('lockPin', ''); setConfirmLockPin(''); }}
+                            className="text-xs font-medium text-red-500 hover:text-red-600 transition-colors"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex justify-center gap-2.5">
+                        {Array.from({ length: 6 }).map((_, i) => (
+                          <input
+                            key={`pin-${i}`}
+                            ref={(el) => { pinBoxRefs.current[i] = el; }}
+                            type="password"
+                            inputMode="numeric"
+                            autoComplete="off"
+                            maxLength={1}
+                            value={form.lockPin[i] ?? ''}
+                            onChange={(e) => {
+                              const v = e.target.value.replace(/\D/g, '');
+                              if (!v && !form.lockPin[i]) return;
+                              const digit = v.slice(-1);
+                              const arr = form.lockPin.split('');
+                              arr[i] = digit;
+                              // Fill gaps with empty
+                              while (arr.length < 6) arr.push('');
+                              const next = arr.join('').replace(/[^0-9]/g, '').slice(0, 6);
+                              update('lockPin', next);
+                              if (digit && i < 5) pinBoxRefs.current[i + 1]?.focus();
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Backspace' && !form.lockPin[i] && i > 0) {
+                                const arr = form.lockPin.split('');
+                                arr[i - 1] = '';
+                                update('lockPin', arr.join('').replace(/[^0-9]/g, ''));
+                                pinBoxRefs.current[i - 1]?.focus();
+                              }
+                            }}
+                            onPaste={(e) => {
+                              if (i !== 0) return;
+                              e.preventDefault();
+                              const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+                              update('lockPin', pasted);
+                              pinBoxRefs.current[Math.min(pasted.length, 5)]?.focus();
+                            }}
+                            className={`w-11 h-12 text-center text-lg font-bold rounded-xl border-2 transition-all duration-200 focus:outline-none bg-gray-50 ${
+                              form.lockPin[i]
+                                ? 'border-primary bg-primary/5 text-primary'
+                                : 'border-gray-200 text-text-primary'
+                            } focus:border-primary focus:ring-2 focus:ring-primary/20`}
+                          />
+                        ))}
+                      </div>
+                      <p className="text-xs text-text-muted text-center">
+                        {form.lockPin.length === 6
+                          ? <span className="text-primary font-medium flex items-center justify-center gap-1"><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>6 digits entered</span>
+                          : `${form.lockPin.length}/6 digits`}
+                      </p>
+                    </div>
+
+                    {/* Confirm PIN — box style, shown when a new 6-digit PIN is entered */}
+                    {form.lockPin.length === 6 && form.lockPin !== initial.lockPin && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-text-secondary">Confirm PIN</label>
+                        <div className="flex justify-center gap-2.5">
+                          {Array.from({ length: 6 }).map((_, i) => (
+                            <input
+                              key={`confirm-${i}`}
+                              ref={(el) => { confirmPinBoxRefs.current[i] = el; }}
+                              type="password"
+                              inputMode="numeric"
+                              autoComplete="off"
+                              maxLength={1}
+                              value={confirmLockPin[i] ?? ''}
+                              onChange={(e) => {
+                                const v = e.target.value.replace(/\D/g, '');
+                                if (!v && !confirmLockPin[i]) return;
+                                const digit = v.slice(-1);
+                                const arr = confirmLockPin.split('');
+                                arr[i] = digit;
+                                while (arr.length < 6) arr.push('');
+                                const next = arr.join('').replace(/[^0-9]/g, '').slice(0, 6);
+                                setConfirmLockPin(next);
+                                if (digit && i < 5) confirmPinBoxRefs.current[i + 1]?.focus();
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Backspace' && !confirmLockPin[i] && i > 0) {
+                                  const arr = confirmLockPin.split('');
+                                  arr[i - 1] = '';
+                                  setConfirmLockPin(arr.join('').replace(/[^0-9]/g, ''));
+                                  confirmPinBoxRefs.current[i - 1]?.focus();
+                                }
+                              }}
+                              onPaste={(e) => {
+                                if (i !== 0) return;
+                                e.preventDefault();
+                                const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+                                setConfirmLockPin(pasted);
+                                confirmPinBoxRefs.current[Math.min(pasted.length, 5)]?.focus();
+                              }}
+                              className={`w-11 h-12 text-center text-lg font-bold rounded-xl border-2 transition-all duration-200 focus:outline-none bg-gray-50 ${
+                                confirmLockPin[i]
+                                  ? confirmLockPin.length === 6 && confirmLockPin === form.lockPin
+                                    ? 'border-primary bg-orange-50 text-primary'
+                                    : confirmLockPin.length === 6 && confirmLockPin !== form.lockPin
+                                      ? 'border-red-400 bg-red-50 text-red-600'
+                                      : 'border-primary bg-primary/5 text-primary'
+                                  : 'border-gray-200 text-text-primary'
+                              } focus:border-primary focus:ring-2 focus:ring-primary/20`}
+                            />
+                          ))}
+                        </div>
+                        {confirmLockPin.length === 6 && confirmLockPin === form.lockPin && (
+                          <p className="text-xs text-primary font-medium text-center flex items-center justify-center gap-1">
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                            PINs match
+                          </p>
+                        )}
+                        {confirmLockPin.length === 6 && confirmLockPin !== form.lockPin && (
+                          <p className="text-xs text-red-500 font-medium text-center flex items-center justify-center gap-1">
+                            <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            PINs do not match
+                          </p>
+                        )}
+                        {confirmLockPin.length < 6 && (
+                          <p className="text-xs text-text-muted text-center">{confirmLockPin.length}/6 digits</p>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="p-3 bg-blue-50 rounded-xl flex items-start gap-2">
+                      <svg className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <div className="text-xs text-blue-700 space-y-1">
+                        <p><strong>Quick unlock:</strong> When locked, enter your 6-digit PIN to unlock instantly.</p>
+                        <p><strong>Forgot PIN?</strong> You can always use your account password to unlock and regain access.</p>
+                      </div>
+                    </div>
+                  </div>
+                </SectionCard>
+              </motion.div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ══════════ Staff Tab ══════════ */}
+      <AnimatePresence mode="wait">
+        {activeTab === 'staff' && <StaffManagementTab />}
+      </AnimatePresence>
+
+      {/* ══════════ Permissions Tab ══════════ */}
+      <AnimatePresence mode="wait">
+        {activeTab === 'permissions' && <PermissionsTab />}
+      </AnimatePresence>
+
+      {/* ══════════ Sections Tab ══════════ */}
+      <AnimatePresence mode="wait">
+        {activeTab === 'sections' && <SectionsTab />}
       </AnimatePresence>
 
       {/* ── Sticky Save Bar (bottom) ────────────────────────── */}

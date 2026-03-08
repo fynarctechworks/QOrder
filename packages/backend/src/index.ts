@@ -4,6 +4,7 @@ import { config } from './config/index.js';
 import { prisma, redis, logger } from './lib/index.js';
 import { initializeSocket } from './socket/index.js';
 import { authService } from './services/authService.js';
+import { sessionService } from './services/sessionService.js';
 
 async function bootstrap() {
   try {
@@ -12,9 +13,16 @@ async function bootstrap() {
     logger.info('Database connected');
 
     // Connect to Redis (only if not already connected)
-    if (redis.status !== 'ready' && redis.status !== 'connecting') {
+    if (redis.status === 'wait') {
       await redis.connect();
       logger.info('Redis connected');
+    } else if (redis.status === 'connecting' || redis.status === 'connect') {
+      // Wait for it to become ready
+      await new Promise<void>((resolve, reject) => {
+        redis.once('ready', resolve);
+        redis.once('error', reject);
+      });
+      logger.info('Redis connected (waited)');
     } else {
       logger.info('Redis already connected');
     }
@@ -45,6 +53,15 @@ async function bootstrap() {
         logger.warn({ err }, 'Periodic token cleanup failed');
       }
     }, 6 * 60 * 60 * 1000);
+
+    // Periodic session expiry cleanup — every 5 minutes
+    setInterval(async () => {
+      try {
+        await sessionService.expireStaleSessions();
+      } catch (err) {
+        logger.warn({ err }, 'Periodic session cleanup failed');
+      }
+    }, 5 * 60 * 1000);
 
     // Start server
     httpServer.listen(config.port, () => {

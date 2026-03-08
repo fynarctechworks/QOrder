@@ -11,6 +11,7 @@ import Toggle from '../components/Toggle';
 import DietBadge from '../components/DietBadge';
 import type { MenuItem, Category } from '../types';
 import { resolveImg } from '../utils/resolveImg';
+import { useBranchStore } from '../state/branchStore';
 
 /* ═══════════════════════════ Constants ════════════════════════ */
 
@@ -20,7 +21,7 @@ type DietFilter = 'all' | 'veg' | 'non-veg';
 
 const BADGE_COLORS: Record<string, { bg: string; text: string }> = {
   bestseller: { bg: 'bg-amber-100', text: 'text-amber-700' },
-  new:        { bg: 'bg-emerald-100', text: 'text-emerald-700' },
+  new:        { bg: 'bg-orange-100', text: 'text-primary' },
   spicy:      { bg: 'bg-red-100', text: 'text-red-700' },
   popular:    { bg: 'bg-violet-100', text: 'text-violet-700' },
   "chef's pick": { bg: 'bg-sky-100', text: 'text-sky-700' },
@@ -53,6 +54,7 @@ function toMenuItemData(data: MenuItemFormData): Partial<MenuItem> & { customiza
     allergens: data.allergens,
     badge: data.badge || undefined,
     dietType: data.dietType || null,
+    translations: Object.keys(data.translations).length > 0 ? data.translations : undefined,
     customizationGroups: data.customizationGroups.length > 0
       ? data.customizationGroups.map(g => ({
           id: realId(g.id),
@@ -186,6 +188,7 @@ function EmptyState({ hasSearch, onClear, onAdd }: { hasSearch: boolean; onClear
 export default function MenuPage() {
   const queryClient = useQueryClient();
   const formatCurrency = useCurrency();
+  const activeBranchId = useBranchStore((s) => s.activeBranchId);
 
   // ── Filter / pagination / search state ──
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -204,12 +207,12 @@ export default function MenuPage() {
 
   // ── Queries ──
   const { data: categories = [], isError: catError } = useQuery({
-    queryKey: ['categories'],
+    queryKey: ['categories', activeBranchId],
     queryFn: menuService.getCategories,
   });
 
   const { data: menuItems = [], isLoading, isError: menuError } = useQuery({
-    queryKey: ['menu'],
+    queryKey: ['menu', activeBranchId],
     queryFn: menuService.getItems,
   });
 
@@ -458,7 +461,7 @@ export default function MenuPage() {
             icon="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
             label="Available"
             value={stats.available}
-            accent="bg-emerald-500"
+            accent="bg-primary"
           />
           <StatCard
             icon="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
@@ -584,15 +587,15 @@ export default function MenuPage() {
               onClick={() => handleDietFilterChange('veg')}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all duration-200 ${
                 dietFilter === 'veg'
-                  ? 'bg-emerald-500 text-white shadow-sm'
-                  : 'bg-gray-100 text-text-secondary hover:bg-emerald-50 hover:text-emerald-700'
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'bg-gray-100 text-text-secondary hover:bg-orange-50 hover:text-primary'
               }`}
             >
               <span className={`w-3.5 h-3.5 flex items-center justify-center rounded-sm border-2 ${
-                dietFilter === 'veg' ? 'border-white' : 'border-emerald-600'
+                dietFilter === 'veg' ? 'border-white' : 'border-primary'
               }`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${
-                  dietFilter === 'veg' ? 'bg-white' : 'bg-emerald-600'
+                  dietFilter === 'veg' ? 'bg-white' : 'bg-primary'
                 }`} />
               </span>
               Veg
@@ -793,7 +796,7 @@ export default function MenuPage() {
                         onChange={() => toggleAvailabilityMutation.mutate({ id: item.id, isAvailable: !item.isAvailable })}
                         disabled={toggleAvailabilityMutation.isPending}
                       />
-                      <span className={`text-[11px] font-medium ${item.isAvailable ? 'text-emerald-600' : 'text-red-500'}`}>
+                      <span className={`text-[11px] font-medium ${item.isAvailable ? 'text-primary' : 'text-red-500'}`}>
                         {item.isAvailable ? 'Available' : 'Unavailable'}
                       </span>
                     </div>

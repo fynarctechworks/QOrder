@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { menuService } from '../../services/menuService';
-import type { Category } from '../../types';
+import type { Category, TranslationsMap } from '../../types';
+import TranslationsEditor from './TranslationsEditor';
 
 export interface CategoryFormData {
   name: string;
   description: string;
   image: string;
   isActive: boolean;
+  translations: TranslationsMap;
 }
 
 interface CategoryFormProps {
@@ -26,6 +28,7 @@ const EMPTY: CategoryFormData = {
   description: '',
   image: '',
   isActive: true,
+  translations: {},
 };
 
 function fromCategory(cat: Category): CategoryFormData {
@@ -34,6 +37,7 @@ function fromCategory(cat: Category): CategoryFormData {
     description: cat.description || '',
     image: cat.image || '',
     isActive: cat.isActive,
+    translations: cat.translations || {},
   };
 }
 
@@ -198,6 +202,16 @@ export default function CategoryForm({
           placeholder="Optional description"
         />
       </div>
+
+      {/* Translations */}
+      <TranslationsEditor
+        translations={form.translations}
+        onChange={(t) => setForm((f) => ({ ...f, translations: t }))}
+        fields={[
+          { key: 'name', label: 'Name' },
+          { key: 'description', label: 'Description', multiline: true },
+        ]}
+      />
 
       <label className="flex items-center gap-2 cursor-pointer">
         <input

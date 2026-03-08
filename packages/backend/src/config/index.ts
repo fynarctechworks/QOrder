@@ -19,6 +19,23 @@ const envSchema = z.object({
   SMTP_USER: z.string().default(''),
   SMTP_PASS: z.string().default(''),
   SMTP_FROM: z.string().default(''),
+
+  // Twilio (phone OTP + WhatsApp)
+  TWILIO_ACCOUNT_SID: z.string().default(''),
+  TWILIO_AUTH_TOKEN: z.string().default(''),
+  TWILIO_VERIFY_SERVICE_SID: z.string().default(''),
+  TWILIO_WHATSAPP_FROM: z.string().default(''),
+
+  // Razorpay (payment gateway)
+  RAZORPAY_KEY_ID: z.string().default(''),
+  RAZORPAY_KEY_SECRET: z.string().default(''),
+  RAZORPAY_WEBHOOK_SECRET: z.string().default(''),
+
+  // Gemini AI (chatbot)
+  GEMINI_API_KEY: z.string().default(''),
+
+  // OpenAI (chatbot alternative)
+  OPENAI_API_KEY: z.string().default(''),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -65,6 +82,23 @@ export const config = {
     user: parsed.data.SMTP_USER,
     pass: parsed.data.SMTP_PASS,
     from: parsed.data.SMTP_FROM || parsed.data.SMTP_USER,
+  },
+  twilio: {
+    accountSid: parsed.data.TWILIO_ACCOUNT_SID,
+    authToken: parsed.data.TWILIO_AUTH_TOKEN,
+    verifyServiceSid: parsed.data.TWILIO_VERIFY_SERVICE_SID,
+    whatsappFrom: parsed.data.TWILIO_WHATSAPP_FROM,
+  },
+  razorpay: {
+    keyId: parsed.data.RAZORPAY_KEY_ID,
+    keySecret: parsed.data.RAZORPAY_KEY_SECRET,
+    webhookSecret: parsed.data.RAZORPAY_WEBHOOK_SECRET,
+  },
+  gemini: {
+    apiKey: parsed.data.GEMINI_API_KEY,
+  },
+  openai: {
+    apiKey: parsed.data.OPENAI_API_KEY,
   },
   isProduction: parsed.data.NODE_ENV === 'production',
   isDevelopment: parsed.data.NODE_ENV === 'development',

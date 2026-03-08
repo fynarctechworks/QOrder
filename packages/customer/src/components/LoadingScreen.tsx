@@ -1,5 +1,4 @@
 import { memo } from 'react';
-import Logo from './Logo';
 
 function LoadingScreenComponent() {
   return (
@@ -9,7 +8,7 @@ function LoadingScreenComponent() {
         <div
           className="w-16 h-16 mx-auto mb-4 flex items-center justify-center animate-loading-pulse"
         >
-          <Logo size={64} />
+          <img src="/Q Order Logo QO.svg" alt="Logo" className="w-16 h-16 object-contain" />
         </div>
 
         {/* Loading dots */}

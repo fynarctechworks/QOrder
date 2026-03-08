@@ -15,6 +15,8 @@ import {
 } from '../utils/itemDetailHelpers';
 import { DietBadge, getDietType, filterDietTags } from '../components/DietBadge';
 import type { MenuItem, SelectedOption, CustomizationGroup as CustomizationGroupType } from '../types';
+import { useTranslation } from 'react-i18next';
+import { translateTag } from '../utils/translateTag';
 
 /* ─── Sub-components (co-located to keep risk low) ─────────────────────────── */
 
@@ -26,6 +28,7 @@ function HeroSection({
   item: MenuItem;
   onBack: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="relative w-full lg:w-1/2 lg:sticky lg:top-0 lg:h-screen">
       {item.image ? (
@@ -66,13 +69,13 @@ function HeroSection({
       <div className="absolute bottom-0 left-0 right-0 px-5 pb-5 lg:hidden">
         {!item.isAvailable && (
           <span className="inline-block mb-2 px-3 py-1 bg-primary/90 text-white text-xs font-bold rounded-full backdrop-blur-sm">
-            Currently Unavailable
+            {t('menu.unavailable')}
           </span>
         )}
         <div className="flex items-center gap-2 mb-2 flex-wrap">
           {item.badge && item.isAvailable && (
             <span className="inline-block px-3 py-1 bg-white/90 text-primary text-xs font-bold rounded-full backdrop-blur-sm">
-              {item.badge}
+              {translateTag(item.badge, t)}
             </span>
           )}
           {item.category?.name && (
@@ -104,6 +107,7 @@ function CustomizationGroup({
   onToggle: (groupId: string, option: SelectedOption, maxSelections: number) => void;
   fmtPrice: (price: number) => string;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="mb-7">
       <div className="flex items-center justify-between mb-3">
@@ -113,13 +117,13 @@ function CustomizationGroup({
           </h3>
           {group.maxSelections > 1 && (
             <p className="text-xs text-gray-400 mt-0.5">
-              Select up to {group.maxSelections}
+              {t('menu.selectUpTo', { max: group.maxSelections })}
             </p>
           )}
         </div>
         {group.required && (
           <span className="text-[10px] text-primary font-bold px-2.5 py-1 rounded-full bg-primary/8 border border-primary/15 uppercase tracking-wider">
-            Required
+            {t('common.required')}
           </span>
         )}
       </div>
@@ -195,6 +199,7 @@ function MobileBottomCTA({
   onAddToCart: () => void;
   onGoToCart: () => void;
 }) {
+  const { t } = useTranslation();
   return createPortal(
     <div className="fixed bottom-0 inset-x-0 z-[9998] lg:hidden safe-bottom">
       <div className="bg-white/90 backdrop-blur-xl border-t border-gray-200/60 px-5 py-3.5 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
@@ -228,7 +233,7 @@ function MobileBottomCTA({
               onClick={onGoToCart}
               className="flex-1 py-3.5 rounded-xl text-sm font-bold text-white bg-primary hover:bg-primary-hover active:scale-[0.98] transition-all shadow-lg shadow-primary/25"
             >
-              Go to Cart · {fmtPrice(total)}
+              {t('menu.goToCart')} · {fmtPrice(total)}
             </button>
           </div>
         ) : (
@@ -242,10 +247,10 @@ function MobileBottomCTA({
             }`}
           >
             {!isAvailable
-              ? 'Currently Unavailable'
+              ? t('menu.unavailable')
               : !canAddToCart
-                ? 'Select Required Options'
-                : `Add to Cart · ${fmtPrice(total)}`}
+                ? t('menu.selectRequired')
+                : `${t('menu.addToCart')} · ${fmtPrice(total)}`}
           </button>
         )}
       </div>
@@ -265,6 +270,7 @@ export default function ItemDetailPage() {
   const navigate = useNavigate();
   const { restaurant, isLoading: isContextLoading } = useRestaurant();
   const addItem = useCartStore((s) => s.addItem);
+  const { t, i18n } = useTranslation();
   const removeItem = useCartStore((s) => s.removeItem);
   const updateItemQuantity = useCartStore((s) => s.updateItemQuantity);
   const updateItemCustomizations = useCartStore((s) => s.updateItemCustomizations);
@@ -291,7 +297,7 @@ export default function ItemDetailPage() {
 
   // Fetch menu items
   const { data: menuItems = [], isLoading: isMenuLoading } = useQuery({
-    queryKey: ['menu', restaurant?.id],
+    queryKey: ['menu', restaurant?.id, i18n.language],
     queryFn: () => restaurantService.getMenuItems(restaurant!.id),
     enabled: !!restaurant?.id,
   });
@@ -465,13 +471,13 @@ export default function ItemDetailPage() {
             <div className="w-20 h-20 mx-auto mb-5 rounded-full bg-gray-50 flex items-center justify-center">
               <span className="text-4xl">🍽️</span>
             </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2">Item Not Found</h2>
-            <p className="text-gray-500 text-sm">The item you're looking for doesn't exist.</p>
+            <h2 className="text-xl font-bold text-gray-900 mb-2">{t('menu.itemNotFound')}</h2>
+            <p className="text-gray-500 text-sm">{t('menu.itemNotFoundDesc')}</p>
             <button
               onClick={() => navigate(-1)}
               className="mt-6 px-6 py-2.5 bg-primary text-white text-sm font-semibold rounded-xl hover:bg-primary-hover transition-colors"
             >
-              Go Back
+              {t('common.goBack')}
             </button>
           </div>
         </div>
@@ -496,7 +502,7 @@ export default function ItemDetailPage() {
                 <div className="hidden lg:flex items-center gap-2 flex-wrap mb-2">
                   {item.badge && item.isAvailable && (
                     <span className="px-3 py-1 bg-primary/10 text-primary text-xs font-bold rounded-full">
-                      {item.badge}
+                      {translateTag(item.badge, t)}
                     </span>
                   )}
                   {item.category?.name && (
@@ -524,7 +530,7 @@ export default function ItemDetailPage() {
                   )}
                   {!item.isAvailable && (
                     <span className="hidden lg:inline-block px-3 py-1 bg-primary/10 text-primary text-xs font-bold rounded-full border border-primary/20">
-                      Unavailable
+                      {t('menu.unavailable')}
                     </span>
                   )}
                 </div>
@@ -548,7 +554,7 @@ export default function ItemDetailPage() {
                         : 'bg-red-50 text-red-700'
                     }`}>
                       <DietBadge tags={item.tags} dietType={item.dietType} size="sm" />
-                      <span className="text-xs font-semibold">{dietType === 'veg' ? 'Vegetarian' : 'Non-Vegetarian'}</span>
+                      <span className="text-xs font-semibold">{dietType === 'veg' ? t('menu.vegetarian') : t('menu.nonVegetarian')}</span>
                     </div>
                   )}
                   {/* Prep time */}
@@ -557,7 +563,7 @@ export default function ItemDetailPage() {
                       <svg className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      <span className="text-xs font-semibold text-gray-500">{item.prepTime} min</span>
+                      <span className="text-xs font-semibold text-gray-500">{item.prepTime} {t('menu.minutes')}</span>
                     </div>
                   )}
                   {/* Calories */}
@@ -575,7 +581,7 @@ export default function ItemDetailPage() {
                       key={tag}
                       className="inline-flex items-center px-3 py-1.5 bg-gray-50 text-xs font-semibold text-gray-500 rounded-full"
                     >
-                      {tag}
+                      {translateTag(tag, t)}
                     </span>
                   ))}
                 </div>
@@ -590,8 +596,8 @@ export default function ItemDetailPage() {
                     </svg>
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-amber-800 mb-0.5">Allergen Info</p>
-                    <p className="text-xs text-amber-700 leading-relaxed">{item.allergens?.join(', ')}</p>
+                    <p className="text-xs font-bold text-amber-800 mb-0.5">{t('menu.allergenInfo')}</p>
+                    <p className="text-xs text-amber-700 leading-relaxed">{item.allergens?.map(a => translateTag(a, t)).join(', ')}</p>
                   </div>
                 </div>
               )}
@@ -599,7 +605,7 @@ export default function ItemDetailPage() {
               {/* ─── Ingredients ──────────────────────────────────────────── */}
               {hasIngredients && (
                 <div className="mb-6">
-                  <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-3">Ingredients</h3>
+                  <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-3">{t('menu.ingredients')}</h3>
                   <div className="flex flex-wrap gap-1.5">
                     {item.ingredients?.map((ingredient) => (
                       <span
@@ -633,13 +639,13 @@ export default function ItemDetailPage() {
               {item.allowSpecialInstructions !== false && (
                 <div className="mb-8">
                   <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-3">
-                    Special Instructions
+                    {t('cart.specialInstructions')}
                   </h3>
                   <div className="relative">
                     <textarea
                       value={specialInstructions}
                       onChange={(e) => setSpecialInstructions(e.target.value)}
-                      placeholder="Any allergies or special requests? Let us know..."
+                      placeholder={t('cart.specialInstructionsPlaceholder')}
                       className="w-full p-4 rounded-xl border-[1.5px] border-gray-100 bg-gray-50/50 text-sm text-gray-700 placeholder-gray-400 resize-none h-24 focus:outline-none focus:border-primary focus:bg-white focus:shadow-sm transition-all"
                       maxLength={500}
                     />
@@ -697,7 +703,7 @@ export default function ItemDetailPage() {
                       onClick={handleGoToCart}
                       className="flex-1 py-3.5 rounded-xl text-sm font-bold text-white bg-primary hover:bg-primary-hover active:scale-[0.98] transition-all shadow-lg shadow-primary/20"
                     >
-                      Go to Cart · {fmtPrice(total)}
+                      {t('menu.goToCart')} · {fmtPrice(total)}
                     </button>
                   </div>
                 ) : (
@@ -711,10 +717,10 @@ export default function ItemDetailPage() {
                     }`}
                   >
                     {!item.isAvailable
-                      ? 'Currently Unavailable'
+                      ? t('menu.unavailable')
                       : !canAddToCart
-                        ? 'Select Required Options'
-                        : `Add to Cart · ${fmtPrice(total)}`}
+                        ? t('menu.selectRequired')
+                        : `${t('menu.addToCart')} · ${fmtPrice(total)}`}
                   </button>
                 )}
               </div>

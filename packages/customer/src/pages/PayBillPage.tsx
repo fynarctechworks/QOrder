@@ -1,12 +1,20 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import toast from 'react-hot-toast';
 import { useRestaurant } from '../context/RestaurantContext';
 import { useSocket } from '../context/SocketContext';
 import { orderService } from '../services/orderService';
+import { paymentService } from '../services/paymentService';
 import { formatPrice as fmtPrice } from '../utils/formatPrice';
+import { useRazorpay } from '../hooks/useRazorpay';
+import WaiterCallPanel from '../components/WaiterCallPanel';
+import FeedbackModal from '../components/FeedbackModal';
+import ReceiptButton from '../components/ReceiptButton';
 
 export default function PayBillPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { restaurantSlug, tableId } = useParams<{ restaurantSlug: string; tableId: string }>();
   const { restaurant, table } = useRestaurant();
@@ -19,6 +27,7 @@ export default function PayBillPage() {
     } catch {}
     return 'idle';
   });
+  const [showFeedback, setShowFeedback] = useState(false);
 
   // Persist requestStatus so refresh keeps it
   useEffect(() => {
@@ -70,6 +79,44 @@ export default function PayBillPage() {
   const tax = completedOrders.reduce((sum, order) => sum + order.tax, 0);
   const total = completedOrders.reduce((sum, order) => sum + order.total, 0);
 
+  // ─── Online payment config ───
+  const { data: paymentConfig } = useQuery({
+    queryKey: ['paymentConfig', restaurant?.id],
+    queryFn: () => paymentService.getConfig(restaurant!.id),
+    enabled: !!restaurant?.id,
+    staleTime: 60_000,
+  });
+
+  const [paymentPaid, setPaymentPaid] = useState(false);
+
+  const { initiatePayment, isConfigured: onlinePayEnabled } = useRazorpay({
+    config: paymentConfig ?? null,
+    restaurantId: restaurant?.id || '',
+    onSuccess: () => {
+      setPaymentPaid(true);
+      setRequestStatus('acknowledged');
+      toast.success('Payment successful!');
+    },
+    onError: (msg) => toast.error(msg),
+  });
+
+  const handlePayOnline = () => {
+    if (!restaurant || !table || completedOrders.length === 0) return;
+    const session = completedOrders[0]?.sessionId;
+    if (!session) {
+      toast.error('No active session found');
+      return;
+    }
+    initiatePayment({
+      sessionId: session,
+      amount: total,
+      currency: restaurant.currency || 'INR',
+      customerName: completedOrders[0]?.customerName || undefined,
+      customerPhone: completedOrders[0]?.customerPhone || undefined,
+      description: `Bill for Table ${table.number}`,
+    });
+  };
+
   return (
     <div className="min-h-screen bg-background pb-24">
       {/* ─── Sticky header ─── */}
@@ -77,13 +124,13 @@ export default function PayBillPage() {
         <div className="bg-primary">
           <div className="px-5 pt-4 pb-4 flex items-center justify-between">
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-white/70 font-medium tracking-wide uppercase">Pay Bill</p>
+              <p className="text-xs text-white/70 font-medium tracking-wide uppercase">{t('payment.title')}</p>
               <h1 className="text-lg font-extrabold text-white tracking-tight truncate" style={{ fontFamily: "'Modern Negra', serif" }}>
-                {restaurant?.name || 'Q Order'}
+                {restaurant?.name || 'Restaurant'}
               </h1>
               {table && (
                 <p className="text-sm text-white/70 font-medium">
-                  Table {table.number}
+                  {t('menu.table', { number: table.number })}
                 </p>
               )}
             </div>
@@ -111,15 +158,15 @@ export default function PayBillPage() {
           <>
             {/* Bill summary */}
             <div className="bg-white rounded-2xl p-5 shadow-sm">
-              <h2 className="text-lg font-bold text-gray-900 mb-4">Bill Summary</h2>
+              <h2 className="text-lg font-bold text-gray-900 mb-4">{t('payment.title')}</h2>
               
               {completedOrders.length === 0 ? (
                 <div className="py-8 text-center">
                   <svg className="w-16 h-16 mx-auto text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                   </svg>
-                  <p className="text-gray-500">No completed orders yet</p>
-                  <p className="text-sm text-gray-400 mt-1">Place an order to see your bill here</p>
+                  <p className="text-gray-500">{t('payment.noCompletedOrders')}</p>
+                  <p className="text-sm text-gray-400 mt-1">{t('payment.noCompletedOrdersSubtext')}</p>
                 </div>
               ) : (
                 <>
@@ -145,19 +192,19 @@ export default function PayBillPage() {
                   {/* Totals */}
                   <div className="pt-4 border-t-2 border-gray-200 space-y-2">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">Subtotal</span>
+                      <span className="text-gray-600">{t('cart.subtotal')}</span>
                       <span className="font-medium text-gray-900">
                         {fmtPrice(subtotal, restaurant?.currency || 'USD')}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">Tax</span>
+                      <span className="text-gray-600">{t('cart.tax')}</span>
                       <span className="font-medium text-gray-900">
                         {fmtPrice(tax, restaurant?.currency || 'USD')}
                       </span>
                     </div>
                     <div className="flex items-center justify-between pt-2 border-t border-gray-200">
-                      <span className="text-base font-bold text-gray-900">Total</span>
+                      <span className="text-base font-bold text-gray-900">{t('cart.total')}</span>
                       <span className="text-xl font-bold text-primary">
                         {fmtPrice(total, restaurant?.currency || 'USD')}
                       </span>
@@ -167,9 +214,23 @@ export default function PayBillPage() {
               )}
             </div>
 
-            {/* Payment button */}
-            {completedOrders.length > 0 && (
+            {/* Payment buttons */}
+            {completedOrders.length > 0 && !paymentPaid && (
               <>
+                {/* ── Pay Online (when enabled for pay_after mode) ── */}
+                {onlinePayEnabled && paymentConfig?.paymentMode === 'pay_after' && requestStatus === 'idle' && (
+                  <button
+                    onClick={handlePayOnline}
+                    className="w-full mt-6 py-4 bg-green-600 text-white font-semibold rounded-2xl shadow-lg transition-all active:opacity-80 flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                    </svg>
+                    {t('payment.payOnlineAmount', { amount: fmtPrice(total, restaurant?.currency) })}
+                  </button>
+                )}
+
+                {/* ── Request Payment (manual) ── */}
                 {requestStatus === 'idle' ? (
                   <button
                     onClick={() => {
@@ -185,9 +246,9 @@ export default function PayBillPage() {
                         setRequestStatus('requested');
                       }
                     }}
-                    className="w-full mt-6 py-4 bg-primary text-white font-semibold rounded-2xl shadow-lg transition-all active:opacity-80"
+                    className={`w-full ${onlinePayEnabled && paymentConfig?.paymentMode === 'pay_after' ? 'mt-3 py-3 bg-white border-2 border-gray-300 text-gray-700' : 'mt-6 py-4 bg-primary text-white shadow-lg'} font-semibold rounded-2xl transition-all active:opacity-80`}
                   >
-                    Request Payment
+                    {onlinePayEnabled && paymentConfig?.paymentMode === 'pay_after' ? t('payment.orRequestAtCounter') : t('payment.requestPayment')}
                   </button>
                 ) : requestStatus === 'requested' ? (
                   <div className="w-full mt-6 py-4 bg-amber-50 border-2 border-amber-200 rounded-2xl text-center">
@@ -196,9 +257,9 @@ export default function PayBillPage() {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                       </svg>
-                      <span className="text-amber-700 font-bold text-base">Payment requested</span>
+                      <span className="text-amber-700 font-bold text-base">{t('payment.paymentRequested')}</span>
                     </div>
-                    <p className="text-amber-600 text-xs">Waiting for staff acknowledgement…</p>
+                    <p className="text-amber-600 text-xs">{t('payment.waitingStaff')}</p>
                   </div>
                 ) : (
                   <div className="w-full mt-6 py-4 bg-green-50 border-2 border-green-200 rounded-2xl text-center">
@@ -206,21 +267,71 @@ export default function PayBillPage() {
                       <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                       </svg>
-                      <span className="text-green-700 font-bold text-base">Waiter is coming shortly</span>
+                      <span className="text-green-700 font-bold text-base">{t('payment.waiterComing')}</span>
                     </div>
-                    <p className="text-green-600 text-xs">Please wait at your table</p>
+                    <p className="text-green-600 text-xs">{t('payment.pleaseWait')}</p>
                   </div>
                 )}
               </>
             )}
 
+            {/* Payment successful */}
+            {paymentPaid && (
+              <div className="w-full mt-6 py-4 bg-green-50 border-2 border-green-200 rounded-2xl text-center">
+                <div className="flex items-center justify-center gap-2 mb-1">
+                  <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-green-700 font-bold text-base">{t('payment.paymentSuccess')}</span>
+                </div>
+                <p className="text-green-600 text-xs">{t('payment.thankYou')}</p>
+              </div>
+            )}
+
             {/* Help text */}
             <p className="text-center text-xs text-gray-500 mt-4 px-4">
-              Click "Request Payment" to notify the staff. You can pay at the counter or request a card machine at your table.
+              {onlinePayEnabled && paymentConfig?.paymentMode === 'pay_after'
+                ? t('payment.helpText')
+                : t('payment.helpTextManual')}
             </p>
+
+            {/* ─── E-Receipt ─── */}
+            {completedOrders.length > 0 && completedOrders[0] && (
+              <div className="mt-6">
+                <ReceiptButton orderId={completedOrders[0].id} />
+              </div>
+            )}
+
+            {/* ─── Waiter Call ─── */}
+            <div className="mt-6">
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">{t('waiterCall.needHelp')}</h3>
+              <WaiterCallPanel />
+            </div>
           </>
         )}
       </div>
+
+      {/* ─── Feedback Modal (shown after payment acknowledged) ─── */}
+      {completedOrders.length > 0 && (
+        <>
+          {requestStatus === 'acknowledged' && !showFeedback && (
+            <div className="fixed bottom-6 left-4 right-4 z-40">
+              <button
+                onClick={() => setShowFeedback(true)}
+                className="w-full py-3 bg-primary/10 text-primary font-semibold rounded-2xl border-2 border-primary/20 flex items-center justify-center gap-2"
+              >
+                <span>⭐</span> Rate your experience
+              </button>
+            </div>
+          )}
+          {showFeedback && completedOrders[0] && (
+            <FeedbackModal
+              onClose={() => setShowFeedback(false)}
+              orderId={completedOrders[0].id}
+            />
+          )}
+        </>
+      )}
     </div>
   );
 }

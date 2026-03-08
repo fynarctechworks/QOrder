@@ -49,7 +49,8 @@ export function RestaurantProvider({ children }: RestaurantProviderProps) {
     queryKey: ['table', restaurant?.id, tableId],
     queryFn: () => restaurantService.getTable(restaurant!.id, tableId!),
     enabled: !!restaurant?.id && !!tableId,
-    staleTime: 1000 * 60 * 5,
+    staleTime: 1000 * 30, // 30s — keep short so rotated session tokens are picked up quickly
+    refetchOnMount: 'always',
   });
 
   // Set cart context when restaurant and table are loaded
@@ -66,6 +67,13 @@ export function RestaurantProvider({ children }: RestaurantProviderProps) {
       localStorage.setItem('lastTableId', tableId);
     }
   }, [restaurantSlug, tableId]);
+
+  // Store session token for QR abuse prevention
+  useEffect(() => {
+    if (table?.sessionToken && tableId) {
+      sessionStorage.setItem(`sessionToken:${tableId}`, table.sessionToken);
+    }
+  }, [table?.sessionToken, tableId]);
 
   // Persist restaurant name and table number for OrderStatusPage header
   useEffect(() => {

@@ -6,7 +6,7 @@ import path from 'path';
 export default defineConfig({
   server: {
     port: 5174,
-    strictPort: true,
+    strictPort: false,
   },
   plugins: [
     react(),
@@ -78,6 +78,7 @@ export default defineConfig({
     }
   },
   build: {
+    sourcemap: false,
     rollupOptions: {
       output: {
         manualChunks: {

@@ -4,12 +4,12 @@ export interface Restaurant {
   slug: string;
   name: string;
   description: string;
-  logoUrl: string;
   coverImageUrl: string;
   currency: string;
   isOpen: boolean;
   openingHours: OpeningHours[];
   settings: RestaurantSettings;
+  geoFenceEnabled?: boolean;
 }
 
 export interface OpeningHours {
@@ -108,6 +108,7 @@ export interface Order {
   restaurantId: string;
   tableId: string;
   tableName?: string;
+  sessionId?: string;
   items: OrderItem[];
   status: OrderStatus;
   subtotal: number;
@@ -150,11 +151,13 @@ export interface OrderStatusUpdate {
 export interface Table {
   id: string;
   restaurantId: string;
+  branchId?: string | null;
   number: string;
   name: string;
   capacity: number;
   status: TableStatus;
   qrCode: string;
+  sessionToken?: string | null;
 }
 
 export type TableStatus = 'available' | 'occupied' | 'reserved' | 'cleaning';
@@ -182,6 +185,7 @@ export interface SocketEvents {
   'order:join': (data: { orderId: string }) => void;
   'order:leave': (data: { orderId: string }) => void;
   'table:update': (table: Table) => void;
+  'table:updated': (data: { tableId: string }) => void;
   'join:table': (tableId: string) => void;
   'leave:table': (tableId: string) => void;
   'payment:request': (data: {
@@ -193,4 +197,14 @@ export interface SocketEvents {
     requestedAt: string;
   }) => void;
   'payment:acknowledged': (data: { tableId: string }) => void;
+  'sync:refresh': () => void;
+  // Group order events
+  'join:group': (code: string) => void;
+  'leave:group': (code: string) => void;
+  'group:joined': (data: { code: string; participantId: string; name: string; isHost: boolean }) => void;
+  'group:cartUpdated': (data: { code: string; participantId: string; participantName: string; action: string }) => void;
+  'group:ready': (data: { participantId: string; name: string }) => void;
+  'group:submitted': (data: { code: string; orderId: string }) => void;
+  'group:cancelled': (data: { code: string }) => void;
+  'group:expired': (data: { code: string }) => void;
 }

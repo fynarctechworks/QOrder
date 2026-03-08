@@ -1,0 +1,4 @@
+ALTER TABLE "Category" ADD COLUMN IF NOT EXISTS "translations" JSONB;
+ALTER TABLE "MenuItem" ADD COLUMN IF NOT EXISTS "translations" JSONB;
+ALTER TABLE "ModifierGroup" ADD COLUMN IF NOT EXISTS "translations" JSONB;
+ALTER TABLE "Modifier" ADD COLUMN IF NOT EXISTS "translations" JSONB;

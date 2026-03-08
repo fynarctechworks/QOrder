@@ -3,6 +3,7 @@ import { authController } from '../controllers/index.js';
 import { authenticate } from '../middlewares/auth.js';
 import { validate } from '../middlewares/validate.js';
 import { authLimiter } from '../middlewares/rateLimiter.js';
+import { csrfProtection } from '../middlewares/csrfProtection.js';
 import { 
   loginSchema, 
   registerSchema, 
@@ -44,12 +45,14 @@ router.post(
 
 router.post(
   '/refresh',
+  csrfProtection,
   authLimiter,
   authController.refresh
 );
 
 router.post(
   '/logout',
+  csrfProtection,
   authController.logout
 );
 

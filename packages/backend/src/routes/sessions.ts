@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { sessionController } from '../controllers/index.js';
 import { authenticate, authorize } from '../middlewares/auth.js';
+import { resolveBranch } from '../middlewares/resolveBranch.js';
 import { validate } from '../middlewares/index.js';
 import { addPaymentSchema, transferSessionSchema, mergeSessionsSchema, idParamSchema } from '../validators/index.js';
 
@@ -8,6 +9,7 @@ const router = Router();
 
 // All routes require authentication
 router.use(authenticate);
+router.use(resolveBranch);
 
 // Get or create session for a table
 router.get(
@@ -60,6 +62,14 @@ router.get(
   '/:id/print',
   validate(idParamSchema, 'params'),
   sessionController.getPrintInvoice
+);
+
+// Send bill via WhatsApp
+router.post(
+  '/:id/whatsapp-bill',
+  validate(idParamSchema, 'params'),
+  authorize('OWNER', 'ADMIN', 'MANAGER'),
+  sessionController.sendWhatsAppBill
 );
 
 export default router;

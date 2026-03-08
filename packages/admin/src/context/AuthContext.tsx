@@ -4,7 +4,7 @@ import {
   useEffect,
   type ReactNode,
 } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../state/authStore';
 import { authService } from '../services/authService';
 import type { User } from '../types';
@@ -20,6 +20,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const {
     user,
     login: setUser,
@@ -67,6 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const login = async (identifier: string, password: string) => {
+    queryClient.clear();
     const response = await authService.login(identifier, password);
     setUser(response.user);
   };
@@ -74,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     await authService.logout();
     clearUser();
+    queryClient.clear();
   };
 
   const value: AuthContextValue = {

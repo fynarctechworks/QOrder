@@ -41,6 +41,7 @@ export const profileService = {
         username: true,
         name: true,
         role: true,
+        roleTitle: true,
         restaurantId: true,
         createdAt: true,
       },
@@ -70,7 +71,7 @@ export const profileService = {
       data: { verificationCode: otp, verificationExpiry: expiry },
     });
 
-    await sendVerificationEmail(user.email, otp, user.name || user.email);
+    await sendVerificationEmail(user.email!, otp, user.name || user.email || 'User');
 
     return { message: 'Verification code sent to your email' };
   },

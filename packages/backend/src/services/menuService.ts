@@ -10,26 +10,35 @@ import type {
 } from '../validators/index.js';
 
 export const menuService = {
+  // ==================== HELPERS ====================
+
+  /** Invalidate ALL category + menu caches for a restaurant (including all branch variants) */
+  async invalidateMenuCache(restaurantId: string) {
+    await cache.delPattern(`categories:${restaurantId}*`);
+    await cache.delPattern(`menu:${restaurantId}*`);
+  },
+
   // ==================== CATEGORIES ====================
 
-  async getCategories(restaurantId: string) {
+  async getCategories(restaurantId: string, branchId?: string | null) {
     // Try cache first
-    const cacheKey = cache.keys.categories(restaurantId);
+    const cacheKey = cache.keys.categories(restaurantId, branchId);
     const cached = await cache.get<Awaited<ReturnType<typeof this.fetchCategories>>>(cacheKey);
     
     if (cached) return cached;
 
-    const categories = await this.fetchCategories(restaurantId);
+    const categories = await this.fetchCategories(restaurantId, branchId);
     await cache.set(cacheKey, categories, cache.ttl.medium);
     
     return categories;
   },
 
-  async fetchCategories(restaurantId: string) {
+  async fetchCategories(restaurantId: string, branchId?: string | null) {
     return prisma.category.findMany({
       where: { 
         restaurantId, 
-        isActive: true 
+        isActive: true,
+        ...(branchId ? { branchId } : {}),
       },
       orderBy: { sortOrder: 'asc' },
       select: {
@@ -38,6 +47,7 @@ export const menuService = {
         description: true,
         image: true,
         sortOrder: true,
+        translations: true,
         _count: {
           select: { 
             menuItems: { 
@@ -67,17 +77,17 @@ export const menuService = {
     return category;
   },
 
-  async createCategory(restaurantId: string, input: CreateCategoryInput) {
+  async createCategory(restaurantId: string, input: CreateCategoryInput, branchId?: string | null) {
     const category = await prisma.category.create({
       data: {
         ...input,
         restaurantId,
+        ...(branchId ? { branchId } : {}),
       },
     });
 
     // Invalidate cache
-    await cache.del(cache.keys.categories(restaurantId));
-    await cache.del(cache.keys.menu(restaurantId));
+    await this.invalidateMenuCache(restaurantId);
 
     return category;
   },
@@ -92,9 +102,8 @@ export const menuService = {
       data: input,
     });
 
-    // Invalidate cache
-    await cache.del(cache.keys.categories(restaurantId));
-    await cache.del(cache.keys.menu(restaurantId));
+    // Invalidate cache (use branch from existing record)
+    await this.invalidateMenuCache(restaurantId);
 
     return category;
   },
@@ -104,46 +113,52 @@ export const menuService = {
     const existing = await prisma.category.findFirst({ where: { id: categoryId, restaurantId } });
     if (!existing) throw AppError.notFound('Category');
 
-    // Check if category has active items
-    const itemCount = await prisma.menuItem.count({
+    // Check if category has active items — block deletion if so
+    const activeItemCount = await prisma.menuItem.count({
       where: { categoryId, restaurantId, isActive: true },
     });
 
-    if (itemCount > 0) {
-      throw AppError.badRequest('Cannot delete category with menu items. Move or delete items first.');
+    if (activeItemCount > 0) {
+      throw AppError.badRequest('Cannot delete category with active menu items. Move or delete items first.');
     }
+
+    // Delete any inactive items first, then delete the category
+    // OrderItem.menuItemId is nullable (SetNull) so past orders are preserved
+    await prisma.menuItem.deleteMany({
+      where: { categoryId, restaurantId, isActive: false },
+    });
 
     await prisma.category.delete({
       where: { id: categoryId },
     });
 
     // Invalidate cache
-    await cache.del(cache.keys.categories(restaurantId));
-    await cache.del(cache.keys.menu(restaurantId));
+    await this.invalidateMenuCache(restaurantId);
   },
 
   // ==================== MENU ITEMS ====================
 
-  async getMenuItems(restaurantId: string, query: MenuItemQueryInput) {
+  async getMenuItems(restaurantId: string, query: MenuItemQueryInput, branchId?: string | null) {
     const { categoryId, page, limit, search } = query;
 
     const where = {
       restaurantId,
       isActive: true,
+      ...(branchId ? { branchId } : {}),
       ...(categoryId ? { categoryId } : {}),
       ...(search ? { name: { contains: search, mode: Prisma.QueryMode.insensitive } } : {}),
     };
 
     // For the full unpaginated menu with no filters, use cache
     if (!categoryId && !search && page === 1 && limit >= 50) {
-      const cacheKey = cache.keys.menu(restaurantId);
+      const cacheKey = cache.keys.menu(restaurantId, branchId);
       const cached = await cache.get<Awaited<ReturnType<typeof this.fetchMenuItems>>>(cacheKey);
 
       if (cached) {
         return { items: cached, pagination: { page: 1, limit: cached.length, total: cached.length, totalPages: 1 } };
       }
 
-      const items = await this.fetchMenuItems(restaurantId);
+      const items = await this.fetchMenuItems(restaurantId, undefined, branchId);
       await cache.set(cacheKey, items, cache.ttl.medium);
 
       return { items, pagination: { page: 1, limit: items.length, total: items.length, totalPages: 1 } };
@@ -158,7 +173,7 @@ export const menuService = {
         ],
         include: {
           category: {
-            select: { id: true, name: true },
+            select: { id: true, name: true, translations: true },
           },
           modifierGroups: {
             orderBy: { sortOrder: 'asc' },
@@ -191,11 +206,12 @@ export const menuService = {
     };
   },
 
-  async fetchMenuItems(restaurantId: string, categoryId?: string) {
+  async fetchMenuItems(restaurantId: string, categoryId?: string, branchId?: string | null) {
     return prisma.menuItem.findMany({
       where: {
         restaurantId,
         isActive: true,
+        ...(branchId ? { branchId } : {}),
         ...(categoryId ? { categoryId } : {}),
       },
       orderBy: [
@@ -204,7 +220,7 @@ export const menuService = {
       ],
       include: {
         category: {
-          select: { id: true, name: true },
+          select: { id: true, name: true, translations: true },
         },
         modifierGroups: {
           orderBy: { sortOrder: 'asc' },
@@ -258,6 +274,7 @@ export const menuService = {
   async _syncCustomizationGroups(
     restaurantId: string,
     customizationGroups: NonNullable<CreateMenuItemInput['customizationGroups']>,
+    branchId?: string | null,
   ): Promise<string[]> {
     return prisma.$transaction(async (tx) => {
       const groupIds: string[] = [];
@@ -279,10 +296,10 @@ export const menuService = {
             },
           });
         } else {
-          // New group – upsert by (restaurantId, name)
+          // New group – upsert by (restaurantId, branchId, name)
           modifierGroup = await tx.modifierGroup.upsert({
             where: {
-              restaurantId_name: { restaurantId, name: group.name },
+              restaurantId_branchId_name: { restaurantId, branchId: branchId ?? '', name: group.name },
             },
             update: {
               isRequired: group.required,
@@ -295,6 +312,7 @@ export const menuService = {
               minSelect: group.minSelections,
               maxSelect: group.maxSelections,
               restaurantId,
+              ...(branchId ? { branchId } : {}),
             },
           });
         }
@@ -324,7 +342,7 @@ export const menuService = {
     });
   },
 
-  async createMenuItem(restaurantId: string, input: CreateMenuItemInput) {
+  async createMenuItem(restaurantId: string, input: CreateMenuItemInput, branchId?: string | null) {
     const { modifierGroupIds, customizationGroups, ...itemData } = input;
 
     // Verify category exists
@@ -339,13 +357,14 @@ export const menuService = {
     // Resolve modifier group IDs – inline groups take precedence
     let resolvedGroupIds: string[] = modifierGroupIds || [];
     if (customizationGroups && customizationGroups.length > 0) {
-      resolvedGroupIds = await this._syncCustomizationGroups(restaurantId, customizationGroups);
+      resolvedGroupIds = await this._syncCustomizationGroups(restaurantId, customizationGroups, branchId);
     }
 
     const item = await prisma.menuItem.create({
       data: {
         ...itemData,
         restaurantId,
+        ...(branchId ? { branchId } : {}),
         modifierGroups: resolvedGroupIds.length > 0 ? {
           create: resolvedGroupIds.map((groupId, index) => ({
             modifierGroupId: groupId,
@@ -368,8 +387,7 @@ export const menuService = {
     });
 
     // Invalidate cache
-    await cache.del(cache.keys.menu(restaurantId));
-    await cache.del(cache.keys.categories(restaurantId));
+    await this.invalidateMenuCache(restaurantId);
 
     return item;
   },
@@ -391,7 +409,7 @@ export const menuService = {
     if (customizationGroups !== undefined) {
       // Inline groups take precedence
       if (customizationGroups.length > 0) {
-        resolvedGroupIds = await this._syncCustomizationGroups(restaurantId, customizationGroups);
+        resolvedGroupIds = await this._syncCustomizationGroups(restaurantId, customizationGroups, existingItem.branchId);
       } else {
         resolvedGroupIds = [];
       }
@@ -433,12 +451,12 @@ export const menuService = {
     });
 
     // Invalidate cache
-    await cache.del(cache.keys.menu(restaurantId));
+    await this.invalidateMenuCache(restaurantId);
 
     return item;
   },
 
-  async deleteMenuItem(itemId: string, restaurantId: string) {
+  async deleteMenuItem(itemId: string, restaurantId: string, branchId?: string | null) {
     // Verify ownership
     const existing = await prisma.menuItem.findFirst({ where: { id: itemId, restaurantId } });
     if (!existing) throw AppError.notFound('Menu item');
@@ -449,30 +467,30 @@ export const menuService = {
     });
 
     // Invalidate cache
-    await cache.del(cache.keys.menu(restaurantId));
-    await cache.del(cache.keys.categories(restaurantId));
+    await this.invalidateMenuCache(restaurantId);
   },
 
-  async updateAvailability(restaurantId: string, itemIds: string[], isAvailable: boolean) {
+  async updateAvailability(restaurantId: string, itemIds: string[], isAvailable: boolean, branchId?: string | null) {
     await prisma.menuItem.updateMany({
       where: {
         id: { in: itemIds },
         restaurantId,
+        ...(branchId ? { branchId } : {}),
       },
       data: { isAvailable },
     });
 
     // Invalidate cache
-    await cache.del(cache.keys.menu(restaurantId));
+    await this.invalidateMenuCache(restaurantId);
 
     return { updated: itemIds.length };
   },
 
   // ==================== MODIFIER GROUPS ====================
 
-  async getModifierGroups(restaurantId: string) {
+  async getModifierGroups(restaurantId: string, branchId?: string | null) {
     return prisma.modifierGroup.findMany({
-      where: { restaurantId },
+      where: { restaurantId, ...(branchId ? { branchId } : {}) },
       orderBy: { name: 'asc' },
       include: {
         modifiers: {
@@ -486,13 +504,14 @@ export const menuService = {
     });
   },
 
-  async createModifierGroup(restaurantId: string, input: CreateModifierGroupInput) {
+  async createModifierGroup(restaurantId: string, input: CreateModifierGroupInput, branchId?: string | null) {
     const { modifiers, ...groupData } = input;
 
     const group = await prisma.modifierGroup.create({
       data: {
         ...groupData,
         restaurantId,
+        ...(branchId ? { branchId } : {}),
         modifiers: {
           create: modifiers,
         },
@@ -524,12 +543,12 @@ export const menuService = {
     });
 
     // Invalidate cache
-    await cache.del(cache.keys.menu(restaurantId));
+    await this.invalidateMenuCache(restaurantId);
   },
 
   // ==================== PUBLIC MENU (for customer app) ====================
 
-  async getPublicMenu(restaurantSlug: string) {
+  async getPublicMenu(restaurantSlug: string, branchId?: string | null) {
     const restaurant = await prisma.restaurant.findUnique({
       where: { slug: restaurantSlug },
       select: { id: true, isActive: true },
@@ -540,7 +559,7 @@ export const menuService = {
     }
 
     // Try cache first
-    const cacheKey = cache.keys.menu(restaurant.id);
+    const cacheKey = cache.keys.menu(restaurant.id, branchId);
     const cached = await cache.get(cacheKey);
     
     if (cached) return cached;
@@ -549,6 +568,7 @@ export const menuService = {
       where: { 
         restaurantId: restaurant.id, 
         isActive: true,
+        ...(branchId ? { branchId } : {}),
       },
       orderBy: { sortOrder: 'asc' },
       select: {
@@ -556,10 +576,12 @@ export const menuService = {
         name: true,
         description: true,
         image: true,
+        translations: true,
         menuItems: {
           where: { 
             isActive: true, 
             isAvailable: true,
+            ...(branchId ? { branchId } : {}),
           },
           orderBy: { sortOrder: 'asc' },
           select: {
@@ -573,6 +595,7 @@ export const menuService = {
             tags: true,
             ingredients: true,
             dietType: true,
+            translations: true,
             modifierGroups: {
               orderBy: { sortOrder: 'asc' },
               select: {
@@ -584,6 +607,7 @@ export const menuService = {
                     minSelect: true,
                     maxSelect: true,
                     isRequired: true,
+                    translations: true,
                     modifiers: {
                       where: { isActive: true },
                       orderBy: { sortOrder: 'asc' },
@@ -592,6 +616,7 @@ export const menuService = {
                         name: true,
                         price: true,
                         isDefault: true,
+                        translations: true,
                       },
                     },
                   },

@@ -1,5 +1,5 @@
 import { apiClient } from './apiClient';
-import type { AnalyticsSummary } from '../types';
+import type { AnalyticsSummary, AdvancedAnalytics } from '../types';
 
 interface AnalyticsQuery {
   startDate?: string;
@@ -15,6 +15,13 @@ export const analyticsService = {
     if (query.period) params.set('period', query.period);
 
     return apiClient.get<AnalyticsSummary>(`/orders/analytics?${params}`);
+  },
+
+  async getAdvanced(query: { startDate?: string; endDate?: string } = {}): Promise<AdvancedAnalytics> {
+    const params = new URLSearchParams();
+    if (query.startDate) params.set('startDate', query.startDate);
+    if (query.endDate) params.set('endDate', query.endDate);
+    return apiClient.get<AdvancedAnalytics>(`/orders/analytics/advanced?${params}`);
   },
 
   async getDailyRevenue(days: number = 30): Promise<AnalyticsSummary['dailyRevenue']> {

@@ -16,6 +16,12 @@ const OrdersPage = lazy(() => import('./pages/OrdersPage'));
 const PayBillPage = lazy(() => import('./pages/PayBillPage'));
 const OrderStatusPage = lazy(() => import('./pages/OrderStatusPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
+const QueueDisplayPage = lazy(() => import('./pages/QueueDisplayPage'));
+
+// Group order pages
+const JoinGroupPage = lazy(() => import('./pages/JoinGroupPage'));
+const CreateGroupPage = lazy(() => import('./pages/CreateGroupPage'));
+const GroupDashboardPage = lazy(() => import('./pages/GroupDashboardPage'));
 
 function App() {
   return (
@@ -32,7 +38,26 @@ function App() {
               <Route path="cart" element={<CartPage />} />
               <Route path="orders" element={<OrdersPage />} />
               <Route path="pay" element={<PayBillPage />} />
+              <Route path="group/create" element={<CreateGroupPage />} />
             </Route>
+
+            {/* Group order routes (standalone — outside restaurant layout) */}
+            <Route
+              path="/join"
+              element={
+                <SocketProvider>
+                  <AnimatedPage><JoinGroupPage /></AnimatedPage>
+                </SocketProvider>
+              }
+            />
+            <Route
+              path="/group/:code"
+              element={
+                <SocketProvider>
+                  <AnimatedPage><GroupDashboardPage /></AnimatedPage>
+                </SocketProvider>
+              }
+            />
 
             {/*
              * OrderStatusPage lives outside RestaurantProvider because it is
@@ -48,6 +73,12 @@ function App() {
                   <AnimatedPage><OrderStatusPage /></AnimatedPage>
                 </SocketProvider>
               }
+            />
+
+            {/* Public queue display for TV/kiosk screens */}
+            <Route
+              path="/queue/:restaurantId"
+              element={<AnimatedPage><QueueDisplayPage /></AnimatedPage>}
             />
 
           {/* Root redirect */}

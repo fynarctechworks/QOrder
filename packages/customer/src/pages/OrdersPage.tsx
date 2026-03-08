@@ -1,10 +1,13 @@
 import { useNavigate, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { useRestaurant } from '../context/RestaurantContext';
+import { useSocket } from '../context/SocketContext';
 import { useCartStore, selectTotalItems } from '../state/cartStore';
 import { orderService } from '../services/orderService';
 import { formatPrice } from '../utils/formatPrice';
 import type { OrderStatus } from '../types';
+import { useTranslation } from 'react-i18next';
 
 const getStatusConfig = (status: OrderStatus) => {
   switch (status) {
@@ -17,7 +20,7 @@ const getStatusConfig = (status: OrderStatus) => {
             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
           </svg>
         ),
-        label: 'Order Placed',
+        labelKey: 'orders.statusLabel.pending',
       };
     case 'preparing':
       return {
@@ -30,7 +33,7 @@ const getStatusConfig = (status: OrderStatus) => {
             <path d="M17 5c0 1.657-3.134 3-7 3S3 6.657 3 5s3.134-3 7-3 7 1.343 7 3z" />
           </svg>
         ),
-        label: 'Preparing',
+        labelKey: 'orders.statusLabel.preparing',
       };
     case 'payment_pending':
       return {
@@ -41,7 +44,7 @@ const getStatusConfig = (status: OrderStatus) => {
             <path fillRule="evenodd" d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 1a1 1 0 100 2 1 1 0 000-2z" clipRule="evenodd" />
           </svg>
         ),
-        label: 'Payment Pending',
+        labelKey: 'orders.statusLabel.payment_pending',
       };
     case 'completed':
       return {
@@ -52,7 +55,7 @@ const getStatusConfig = (status: OrderStatus) => {
             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
           </svg>
         ),
-        label: 'Completed',
+        labelKey: 'orders.statusLabel.completed',
       };
     case 'cancelled':
       return {
@@ -63,14 +66,14 @@ const getStatusConfig = (status: OrderStatus) => {
             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
           </svg>
         ),
-        label: 'Cancelled',
+        labelKey: 'orders.statusLabel.cancelled',
       };
     default:
       return {
         bg: 'bg-gray-50',
         text: 'text-gray-600',
         icon: null,
-        label: status,
+        labelKey: status,
       };
   }
 };
@@ -96,28 +99,70 @@ const formatDateTime = (dateString: string) => {
 };
 
 export default function OrdersPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { restaurantSlug, tableId } = useParams<{ restaurantSlug: string; tableId: string }>();
   const { restaurant, table, isLoading: isContextLoading } = useRestaurant();
   const totalCartItems = useCartStore(selectTotalItems);
+  const { onOrderStatusUpdate, onTableUpdated, joinTableRoom, leaveTableRoom } = useSocket();
+  const queryClient = useQueryClient();
+
+  // Join the table socket room so we receive order:statusUpdate & table:updated events
+  useEffect(() => {
+    if (!table?.id) return;
+    joinTableRoom(table.id);
+    return () => leaveTableRoom(table.id);
+  }, [table?.id, joinTableRoom, leaveTableRoom]);
 
   const { data: orders = [], isLoading: isOrdersLoading } = useQuery({
     queryKey: ['orders', restaurant?.id, table?.id],
     queryFn: () => orderService.getByTable(restaurant!.id, table!.id),
     enabled: !!restaurant?.id && !!table?.id,
-    refetchInterval: 10000, // Refresh every 10 seconds
+    staleTime: 0,
+    refetchInterval: 15000,
   });
+
+  // Optimistically patch order status in cache from socket events —
+  // this avoids a full server round-trip and makes the UI update instantly.
+  useEffect(() => {
+    const unsub1 = onOrderStatusUpdate((update) => {
+      const qk = ['orders', restaurant?.id, table?.id];
+
+      queryClient.setQueryData<typeof orders>(qk, (prev) => {
+        if (!prev) return prev;
+
+        // If order completed/cancelled, remove it immediately
+        if (['completed', 'cancelled'].includes(update.status)) {
+          const filtered = prev.filter((o) => o.id !== update.orderId);
+          // If we removed something, return the new list
+          if (filtered.length !== prev.length) return filtered;
+        }
+
+        // Otherwise update the status in-place
+        return prev.map((o) =>
+          o.id === update.orderId ? { ...o, status: update.status } : o
+        );
+      });
+
+      // Also do a background refetch for consistency
+      queryClient.invalidateQueries({ queryKey: qk });
+    });
+
+    const unsub2 = onTableUpdated(() => {
+      queryClient.invalidateQueries({ queryKey: ['orders', restaurant?.id, table?.id] });
+    });
+
+    return () => { unsub1(); unsub2(); };
+  }, [onOrderStatusUpdate, onTableUpdated, queryClient, restaurant?.id, table?.id]);
 
   const isLoading = isContextLoading || isOrdersLoading;
 
-  // Separate active and past orders
+  // Only show active (non-completed/cancelled) orders to the customer.
+  // Completed orders belong to a closed session and should not be visible
+  // to the next person who scans the QR code.
   const activeOrders = orders.filter((order) => 
     !['cancelled', 'completed'].includes(order.status)
   );
-  
-  const pastOrders = orders.filter((order) => 
-    ['cancelled', 'completed'].includes(order.status)
-  ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const handleOrderClick = (orderId: string) => {
     localStorage.setItem('orderStatusReferrer', 'orders');
@@ -168,13 +213,13 @@ export default function OrdersPage() {
         <div className="bg-primary">
           <div className="px-5 pt-4 pb-4 flex items-center justify-between">
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-white/70 font-medium tracking-wide uppercase">Your Orders</p>
+              <p className="text-xs text-white/70 font-medium tracking-wide uppercase">{t('orders.title')}</p>
               <h1 className="text-lg font-extrabold text-white tracking-tight truncate" style={{ fontFamily: "'Modern Negra', serif" }}>
                 {restaurant?.name || 'Restaurant'}
               </h1>
               {table && (
                 <p className="text-sm text-white/70 font-medium">
-                  Table {table.number}
+                  {t('menu.table', { number: table.number })}
                 </p>
               )}
             </div>
@@ -199,132 +244,76 @@ export default function OrdersPage() {
 
       {/* Content */}
       <div className="px-5 pt-6 pb-24">
-        {activeOrders.length === 0 && pastOrders.length === 0 ? (
+        {activeOrders.length === 0 ? (
           /* Empty State */
           <div className="bg-white rounded-2xl p-5 shadow-sm">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Your Orders</h2>
+            <h2 className="text-lg font-bold text-gray-900 mb-4">{t('orders.title')}</h2>
             <div className="py-8 text-center">
               <svg className="w-16 h-16 mx-auto text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
               </svg>
-              <p className="text-gray-500">No orders yet</p>
-              <p className="text-sm text-gray-400 mt-1">Your order history will appear here once you place your first order</p>
+              <p className="text-gray-500">{t('orders.noOrders')}</p>
+              <p className="text-sm text-gray-400 mt-1">{t('orders.noOrdersSubtext')}</p>
             </div>
           </div>
         ) : (
-          <div className="space-y-4">
-            {/* Active Orders Section */}
-            {activeOrders.length > 0 && (
-              <div className="bg-white rounded-2xl p-5 shadow-sm">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-bold text-gray-900">Active Orders</h2>
-                  <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-1 rounded-full">
-                    {activeOrders.length}
-                  </span>
-                </div>
-                <div className="space-y-3">
-                  {activeOrders.map((order) => {
-                    const statusConfig = getStatusConfig(order.status);
-                    return (
-                      <button
-                        key={order.id}
-                        onClick={() => handleOrderClick(order.id)}
-                        className="w-full p-4 border border-gray-100 rounded-xl hover:bg-gray-50 transition-all duration-200 active:scale-[0.98] text-left"
-                      >
-                        {/* Status Row */}
-                        <div className="flex items-center justify-between mb-3">
-                          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${statusConfig.bg}`}>
-                            <span className={statusConfig.text}>
-                              {statusConfig.icon}
-                            </span>
-                            <span className={`text-xs font-bold ${statusConfig.text}`}>
-                              {statusConfig.label}
-                            </span>
-                          </div>
-                          <span className="text-xs text-gray-500 font-medium">
-                            {formatDateTime(order.createdAt)}
-                          </span>
-                        </div>
+          <div className="bg-white rounded-2xl p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-gray-900">{t('orders.activeOrders')}</h2>
+              <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-1 rounded-full">
+                {activeOrders.length}
+              </span>
+            </div>
+            <div className="space-y-3">
+              {activeOrders.map((order) => {
+                const statusConfig = getStatusConfig(order.status);
+                return (
+                  <button
+                    key={order.id}
+                    onClick={() => handleOrderClick(order.id)}
+                    className="w-full p-4 border border-gray-100 rounded-xl hover:bg-gray-50 transition-all duration-200 active:scale-[0.98] text-left"
+                  >
+                    {/* Status Row */}
+                    <div className="flex items-center justify-between mb-3">
+                      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${statusConfig.bg}`}>
+                        <span className={statusConfig.text}>
+                          {statusConfig.icon}
+                        </span>
+                        <span className={`text-xs font-bold ${statusConfig.text}`}>
+                          {t(statusConfig.labelKey)}
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500 font-medium">
+                        {formatDateTime(order.createdAt)}
+                      </span>
+                    </div>
 
-                        {/* Items */}
-                        <div className="mb-3">
-                          <p className="text-sm font-semibold text-gray-900 mb-0.5">
-                            {order.items.length} {order.items.length === 1 ? 'item' : 'items'}
-                          </p>
-                          <p className="text-xs text-gray-500 line-clamp-1">
-                            {order.items.map((item) => `${item.quantity}x ${item.menuItemName}`).join(', ')}
-                          </p>
-                        </div>
+                    {/* Items */}
+                    <div className="mb-3">
+                      <p className="text-sm font-semibold text-gray-900 mb-0.5">
+                        {t('orders.item', { count: order.items.length })}
+                      </p>
+                      <p className="text-xs text-gray-500 line-clamp-1">
+                        {order.items.map((item) => `${item.quantity}x ${item.menuItemName}`).join(', ')}
+                      </p>
+                    </div>
 
-                        {/* Footer */}
-                        <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-                          <span className="text-base font-bold text-gray-900">
-                            {formatPrice(order.total, restaurant?.currency || 'USD')}
-                          </span>
-                          <div className="flex items-center gap-1 text-primary">
-                            <span className="text-xs font-semibold">View Details</span>
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-                            </svg>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Past Orders Section */}
-            {pastOrders.length > 0 && (
-              <div className="bg-white rounded-2xl p-5 shadow-sm">
-                <h2 className="text-lg font-bold text-gray-900 mb-4">Past Orders</h2>
-                <div className="space-y-3">
-                  {pastOrders.map((order) => {
-                    const statusConfig = getStatusConfig(order.status);
-                    return (
-                      <button
-                        key={order.id}
-                        onClick={() => handleOrderClick(order.id)}
-                        className="w-full p-4 border border-gray-100 rounded-xl hover:bg-gray-50 transition-all duration-200 active:scale-[0.98] text-left"
-                      >
-                        {/* Compact Design for Past Orders */}
-                        <div className="flex items-center justify-between mb-2.5">
-                          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full ${statusConfig.bg}`}>
-                            <span className={`text-xs font-bold ${statusConfig.text}`}>
-                              {statusConfig.label}
-                            </span>
-                          </div>
-                          <span className="text-xs text-gray-500">
-                            {formatDateTime(order.createdAt)}
-                          </span>
-                        </div>
-
-                        <div className="mb-2">
-                          <p className="text-sm text-gray-600 mb-1">
-                            {order.items.length} {order.items.length === 1 ? 'item' : 'items'}
-                          </p>
-                          <p className="text-xs text-gray-500 line-clamp-1">
-                            {order.items.map((item) => item.menuItemName).join(', ')}
-                          </p>
-                        </div>
-                        
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold text-gray-900">
-                              {formatPrice(order.total, restaurant?.currency || 'USD')}
-                            </span>
-                            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+                    {/* Footer */}
+                    <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                      <span className="text-base font-bold text-gray-900">
+                        {formatPrice(order.total, restaurant?.currency || 'USD')}
+                      </span>
+                      <div className="flex items-center gap-1 text-primary">
+                        <span className="text-xs font-semibold">{t('orders.viewDetails')}</span>
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>

@@ -50,11 +50,48 @@ export const authLimiter = rateLimit({
 // Order submission rate limiter
 export const orderLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 5,
+  max: 20,
   standardHeaders: true,
   legacyHeaders: false,
   store: createRedisStore('order'),
   handler: (_req, _res, next) => {
     next(AppError.tooManyRequests('Too many orders submitted, please wait'));
+  },
+});
+
+// PIN verification rate limiter (strict — 5 attempts per 5 min)
+export const pinLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  store: createRedisStore('pin'),
+  handler: (_req, _res, next) => {
+    next(AppError.tooManyRequests('Too many PIN attempts. Please wait 5 minutes or use your password.'));
+  },
+});
+
+// OTP rate limiter (strict — 5 sends per 10 min per IP)
+export const otpLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: createRedisStore('otp'),
+  handler: (_req, _res, next) => {
+    next(AppError.tooManyRequests('Too many OTP requests. Please wait before trying again.'));
+  },
+});
+
+// Coupon validation rate limiter
+export const couponLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: createRedisStore('coupon'),
+  handler: (_req, _res, next) => {
+    next(AppError.tooManyRequests('Too many coupon validation attempts. Please wait.'));
   },
 });

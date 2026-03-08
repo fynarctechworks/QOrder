@@ -1,16 +1,19 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { orderService } from '../services';
+import { settingsService } from '../services/settingsService';
 import { useSocket } from '../context/SocketContext';
 import { usePaymentRequests } from '../context/PaymentRequestContext';
 import { sanitize } from '../utils/sanitize';
 import { useCurrency } from '../hooks/useCurrency';
 import { timeAgo } from '../utils/timeAgo';
 import type { Order, OrderItem, OrderStatus } from '../types';
-import CashierOrderModal from '../components/CashierOrderModal';
 import RunningTablesSection from '../components/RunningTablesSection';
+import SettlementModal from '../components/SettlementModal';
+import TakeawaySettlementModal from '../components/TakeawaySettlementModal';
+import PrintInvoice from '../components/PrintInvoice';
 
 /* ═══════════════════════════ Constants ════════════════════════ */
 
@@ -23,8 +26,8 @@ const SM: Record<OrderStatus, {
   btnStyle: string; btnIcon: string;
 }> = {
   pending:         { label: 'Pending',         btnLabel: 'Pending',         dot: 'bg-amber-500',   bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-l-amber-400',   btnStyle: 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-200/50',   btnIcon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
-  preparing:       { label: 'Preparing',       btnLabel: 'Confirm',         dot: 'bg-violet-500',  bg: 'bg-violet-50',  text: 'text-violet-700',  border: 'border-l-violet-400',  btnStyle: 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-200/50', btnIcon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
-  payment_pending: { label: 'Payment Pending', btnLabel: 'Served',          dot: 'bg-emerald-500', bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-l-emerald-400', btnStyle: 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-200/50', btnIcon: 'M5 13l4 4L19 7' },
+  preparing:       { label: 'Preparing',       btnLabel: 'Confirm',         dot: 'bg-violet-500',  bg: 'bg-violet-50',  text: 'text-violet-700',  border: 'border-l-violet-400',  btnStyle: 'bg-primary hover:bg-primary-hover text-white shadow-orange-200/50', btnIcon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
+  payment_pending: { label: 'Payment Pending', btnLabel: 'Served',          dot: 'bg-primary', bg: 'bg-orange-50', text: 'text-primary', border: 'border-l-orange-400', btnStyle: 'bg-primary hover:bg-primary-hover text-white shadow-orange-200/50', btnIcon: 'M5 13l4 4L19 7' },
   completed:       { label: 'Completed',       btnLabel: 'Complete',        dot: 'bg-gray-400',    bg: 'bg-gray-100',   text: 'text-gray-600',    border: 'border-l-gray-300',    btnStyle: 'bg-gray-500 hover:bg-gray-600 text-white shadow-gray-200/50',     btnIcon: 'M5 13l4 4L19 7' },
   cancelled:       { label: 'Cancelled',       btnLabel: 'Cancel',          dot: 'bg-red-500',     bg: 'bg-red-50',     text: 'text-red-700',     border: 'border-l-red-400',     btnStyle: 'bg-red-500 hover:bg-red-600 text-white shadow-red-200/50',       btnIcon: 'M6 18L18 6M6 6l12 12' },
 };
@@ -69,6 +72,10 @@ function makeBill(orders: Order[], status: OrderStatus): TableBill {
 }
 
 function groupOrdersByTable(orders: Order[], status: OrderStatus): TableBill[] {
+  // Only merge orders by table for payment_pending; keep separate for pending/preparing
+  if (status !== 'payment_pending') {
+    return orders.map(o => makeBill([o], status));
+  }
   const byTable = new Map<string, Order[]>();
   const takeaways: TableBill[] = [];
   for (const o of orders) {
@@ -86,7 +93,7 @@ function groupOrdersByTable(orders: Order[], status: OrderStatus): TableBill[] {
 const BOARD_COL_META: { key: OrderStatus; label: string; dot: string; headerBg: string; headerText: string; emptyMsg: string }[] = [
   { key: 'pending',         label: 'Pending',         dot: 'bg-amber-500',   headerBg: 'bg-amber-50',   headerText: 'text-amber-700',   emptyMsg: 'No pending orders' },
   { key: 'preparing',       label: 'Preparing',       dot: 'bg-violet-500',  headerBg: 'bg-violet-50',  headerText: 'text-violet-700',  emptyMsg: 'No orders preparing' },
-  { key: 'payment_pending', label: 'Payment Pending', dot: 'bg-emerald-500', headerBg: 'bg-emerald-50', headerText: 'text-emerald-700', emptyMsg: 'No bills awaiting payment' },
+  { key: 'payment_pending', label: 'Payment Pending', dot: 'bg-primary', headerBg: 'bg-orange-50', headerText: 'text-primary', emptyMsg: 'No bills awaiting payment' },
 ];
 
 /* ═══════════════════════════ Page ════════════════════════════ */
@@ -94,20 +101,36 @@ const BOARD_COL_META: { key: OrderStatus; label: string; dot: string; headerBg: 
 export default function OrdersPage() {
   const qc = useQueryClient();
   const formatCurrency = useCurrency();
-  const { onNewOrder, onOrderStatusUpdate } = useSocket();
+  const { onNewOrder, onNewOrderFull, onOrderStatusUpdate, onKitchenReady, onItemKitchenReady, kdsCount } = useSocket();
   const { clearPaymentRequest, addPaymentRequest } = usePaymentRequests();
 
   // 'board' shows the 3-column Kanban; 'completed'/'cancelled' show card grids
   const [view, setView] = useState<'board' | 'completed' | 'cancelled'>('board');
+  const [settlementTableId, setSettlementTableId] = useState<string | null>(null);
+  const [takeawaySettlementOrders, setTakeawaySettlementOrders] = useState<Order[] | null>(null);
+  const [printSessionId, setPrintSessionId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [detail, setDetail] = useState<Order | null>(null);
-  const [showCashierOrder, setShowCashierOrder] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  /* ── Drag-and-drop state ── */
+  const dragBillRef = useRef<TableBill | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null);
 
   /* ── Query (fetch all, filter locally for accurate counts) ── */
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['orders'],
     queryFn: () => orderService.getAll({ limit: 500 }),
     refetchInterval: 30_000,
+    staleTime: 5_000, // Keep data fresh for 5s to avoid overwriting optimistic inserts
+  });
+
+  /* ── Restaurant settings (for auto-print config) ── */
+  const { data: restaurant } = useQuery({
+    queryKey: ['settings'],
+    queryFn: settingsService.get,
+    staleTime: 30_000,
   });
 
   /* ── Mutations ── */
@@ -132,8 +155,84 @@ export default function OrdersPage() {
       if (ctx?.prev) qc.setQueryData(['orders'], ctx.prev);
       toast.error('Failed to update status');
     },
-    onSuccess: () => {
+    onSuccess: (updatedOrder, vars) => {
       toast.success('Status updated');
+      // Auto-print receipt via browser when order completes (browser printer type only)
+      if (vars.status === 'completed') {
+        const settings = (restaurant?.settings ?? {}) as Record<string, unknown>;
+        const printerEnabled = (settings.printerEnabled as boolean) ?? false;
+        const autoPrintOnComplete = (settings.autoPrintOnComplete as boolean) ?? true;
+        const printerConnectionType = (settings.printerConnectionType as string) ?? 'network';
+
+        if (printerEnabled && autoPrintOnComplete && printerConnectionType === 'browser') {
+          const o = updatedOrder;
+          const restaurantName = restaurant?.name || 'Restaurant';
+          const pls = settings; // print layout settings
+          const logoUrl = (pls.printShowLogo && pls.printLogoUrl) ? ((pls.printLogoUrl as string).startsWith('/uploads') ? `${(window.location.origin)}${pls.printLogoUrl}` : pls.printLogoUrl as string) : '';
+          const headerText = (pls.printShowAddress && pls.printHeaderText) ? pls.printHeaderText as string : '';
+          const footerText = (pls.printFooterText as string) || '';
+          const showCustomerInfo = (pls.printShowCustomerInfo as boolean) ?? true;
+          const showModifiers = (pls.printShowItemModifiers as boolean) ?? true;
+          const showInstructions = (pls.printShowSpecialInstructions as boolean) ?? true;
+          const showSubtotal = (pls.printShowSubtotal as boolean) ?? true;
+          const showTax = (pls.printShowTax as boolean) ?? true;
+          const w = window.open('', '_blank', 'width=400,height=600');
+          if (w) {
+            w.document.write(`<!DOCTYPE html><html><head><title>Receipt</title><style>
+              body{font-family:monospace;max-width:350px;margin:0 auto;padding:20px;color:#111;font-size:13px}
+              h2{text-align:center;margin:0 0 4px}
+              .sub{text-align:center;color:#666;font-size:12px;margin-bottom:12px}
+              .info{font-size:12px;color:#444;margin-bottom:4px}
+              .item{display:flex;gap:8px;padding:6px 0;border-bottom:1px solid #eee}
+              .qty{font-weight:700;min-width:28px;height:28px;background:#f3f4f6;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px}
+              .item-detail{flex:1}
+              .item-name{font-weight:700;font-size:14px}
+              .mod{color:#888;font-size:11px;margin-top:2px}
+              .note{color:#d97706;font-size:11px;margin-top:2px;font-weight:600}
+              .order-note{background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:6px 10px;margin:6px 0;font-size:11px;font-weight:600;color:#92400e}
+              .price{font-weight:700;white-space:nowrap}
+              .row{display:flex;justify-content:space-between;padding:2px 0}
+              .row.bold{font-weight:700;font-size:14px}
+              hr{border:none;border-top:1px dashed #999;margin:8px 0}
+              .center{text-align:center}
+              .logo{text-align:center;margin-bottom:8px}
+              .logo img{max-width:120px;max-height:60px}
+              .header-text{text-align:center;color:#666;font-size:11px;white-space:pre-line;margin-bottom:8px}
+              @media print{body{padding:0;margin:0}}
+            </style></head><body>`);
+            if (logoUrl) w.document.write(`<div class="logo"><img src="${logoUrl}" alt="logo"></div>`);
+            w.document.write(`<h2>${restaurantName}</h2>`);
+            if (headerText) w.document.write(`<div class="header-text">${headerText}</div>`);
+            w.document.write(`<p class="sub">${o.tableName || 'Takeaway'}</p>`);
+            w.document.write(`<p class="sub">Order: #${o.orderNumber}</p>`);
+            w.document.write(`<p class="sub">${new Date(o.createdAt).toLocaleString()}</p>`);
+            w.document.write(`<hr>`);
+            if (showCustomerInfo) {
+              if (o.customerName) w.document.write(`<p class="info">\u{1F464} ${o.customerName}${o.customerPhone ? ` \u00B7 ${o.customerPhone}` : ''}</p>`);
+              else if (o.customerPhone) w.document.write(`<p class="info">\u{1F4F1} ${o.customerPhone}</p>`);
+            }
+            if (showInstructions && o.specialInstructions) w.document.write(`<div class="order-note">\u{1F4DD} ${o.specialInstructions}</div>`);
+            o.items.forEach(item => {
+              w.document.write(`<div class="item"><span class="qty">${item.quantity}</span><div class="item-detail"><div class="item-name">${item.menuItemName}</div>`);
+              if (showModifiers && item.customizations && item.customizations.length > 0) {
+                item.customizations.forEach(c => {
+                  w.document.write(`<div class="mod">${c.groupName}: ${c.options.map(opt => opt.name).join(', ')}</div>`);
+                });
+              }
+              if (showInstructions && item.specialInstructions) w.document.write(`<div class="note">\u26A0 ${item.specialInstructions}</div>`);
+              w.document.write(`</div><span class="price">${formatCurrency(item.totalPrice)}</span></div>`);
+            });
+            w.document.write(`<hr>`);
+            if (showSubtotal) w.document.write(`<div class="row"><span>Subtotal</span><span>${formatCurrency(o.subtotal)}</span></div>`);
+            if (showTax && o.tax > 0) w.document.write(`<div class="row"><span>Tax</span><span>${formatCurrency(o.tax)}</span></div>`);
+            w.document.write(`<div class="row bold"><span>TOTAL</span><span>${formatCurrency(o.total)}</span></div>`);
+            if (footerText) w.document.write(`<hr><p class="center">${footerText}</p>`);
+            w.document.write(`</body></html>`);
+            w.document.close();
+            setTimeout(() => { w.print(); }, 300);
+          }
+        }
+      }
     },
     onSettled: (_data, _err, vars) => {
       // Always refetch to sync with server
@@ -161,37 +260,85 @@ export default function OrdersPage() {
     onError: () => toast.error('Failed to cancel order'),
   });
 
-  const cashierOrderMut = useMutation({
-    mutationFn: (data: Parameters<typeof orderService.createOrder>[0]) =>
-      orderService.createOrder(data),
-    onSuccess: (_data, vars) => {
-      toast.success('Order created');
-      setShowCashierOrder(false);
-      qc.invalidateQueries({ queryKey: ['orders'] });
-      // Only invalidate running tables/tables for dine-in orders
-      if (vars.tableId) {
-        qc.invalidateQueries({ queryKey: ['runningTables'] });
-        qc.invalidateQueries({ queryKey: ['tables'] });
-      }
-    },
-    onError: () => toast.error('Failed to create order'),
-  });
+
 
   /* ── Real-time ── */
+  const recentFullOrderIds = useRef<Set<string>>(new Set());
+
   useEffect(() => {
-    const u1 = onNewOrder((order) => {
+    // Optimistically insert the full order into cache for instant display
+    const u1 = onNewOrderFull((fullOrder: Order) => {
+      // Track this order so onNewOrder doesn't trigger a redundant refetch
+      recentFullOrderIds.current.add(fullOrder.id);
+      setTimeout(() => recentFullOrderIds.current.delete(fullOrder.id), 5000);
+
+      qc.setQueryData<{ data: Order[] }>(['orders'], (prev) => {
+        if (!prev) return prev;
+        // Avoid duplicates (in case refetch already picked it up)
+        if (prev.data.some(o => o.id === fullOrder.id)) return prev;
+        return { ...prev, data: [fullOrder, ...prev.data] };
+      });
+      // Delayed background refetch to sync (gives DB time to commit)
+      setTimeout(() => {
+        qc.invalidateQueries({ queryKey: ['orders'] });
+      }, 3000);
+      if (fullOrder?.tableId) {
+        qc.invalidateQueries({ queryKey: ['runningTables'] });
+      }
+    });
+    // Fallback: if onNewOrderFull doesn't fire, onNewOrder still refetches
+    const u2 = onNewOrder((order) => {
+      // Skip if already handled by onNewOrderFull
+      if (order?.id && recentFullOrderIds.current.has(order.id)) return;
       qc.invalidateQueries({ queryKey: ['orders'] });
-      // Only invalidate running tables for dine-in orders
       if (order?.tableId) {
         qc.invalidateQueries({ queryKey: ['runningTables'] });
       }
     });
-    const u2 = onOrderStatusUpdate(() => {
+    const u3 = onOrderStatusUpdate(() => {
       qc.invalidateQueries({ queryKey: ['orders'] });
       qc.invalidateQueries({ queryKey: ['runningTables'] });
     });
-    return () => { u1(); u2(); };
-  }, [onNewOrder, onOrderStatusUpdate, qc]);
+    // Kitchen-ready: update preparedAt in cache + show toast
+    const u4 = onKitchenReady((data) => {
+      qc.setQueryData<{ data: Order[] }>(['orders'], (prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          data: prev.data.map((o) =>
+            o.id === data.orderId ? { ...o, preparedAt: data.preparedAt } : o
+          ),
+        };
+      });
+      toast.success(
+        data.tableName && data.tableName !== 'Takeaway'
+          ? `Order #${data.orderNumber} for ${data.tableName} is ready to serve!`
+          : `Order #${data.orderNumber} is ready to serve!`,
+        { duration: 3000, icon: '🍽️' }
+      );
+    });
+    // Per-item kitchen-ready: update individual item's preparedAt in cache
+    const u5 = onItemKitchenReady((data) => {
+      qc.setQueryData<{ data: Order[] }>(['orders'], (prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          data: prev.data.map((o) => {
+            if (o.id !== data.orderId) return o;
+            return {
+              ...o,
+              preparedAt: data.allItemsReady ? data.preparedAt : o.preparedAt,
+              items: o.items.map((item) =>
+                item.id === data.itemId ? { ...item, preparedAt: data.preparedAt } : item
+              ),
+            };
+          }),
+        };
+      });
+      toast.success(`${data.itemName} is ready!`, { duration: 2000, icon: '✅' });
+    });
+    return () => { u1(); u2(); u3(); u4(); u5(); };
+  }, [onNewOrder, onNewOrderFull, onOrderStatusUpdate, onKitchenReady, onItemKitchenReady, qc]);
 
   const all = data?.data ?? [];
 
@@ -199,7 +346,7 @@ export default function OrdersPage() {
   useEffect(() => {
     if (detail) {
       const fresh = all.find(o => o.id === detail.id);
-      if (fresh && fresh.updatedAt !== detail.updatedAt) setDetail(fresh);
+      if (fresh && (fresh.updatedAt !== detail.updatedAt || fresh.preparedAt !== detail.preparedAt || JSON.stringify(fresh.items.map(i => i.preparedAt)) !== JSON.stringify(detail.items.map(i => i.preparedAt)))) setDetail(fresh);
     }
   }, [all, detail]);
 
@@ -331,6 +478,40 @@ export default function OrdersPage() {
 
   const pending = counts['pending'] || 0;
 
+  /* ── Download CSV ── */
+  const handleDownloadCsv = useCallback(async (preset: string) => {
+    setShowExportMenu(false);
+    setExporting(true);
+    try {
+      const now = new Date();
+      let dateFrom: string | undefined;
+      let dateTo: string | undefined;
+
+      if (preset === 'today') {
+        dateFrom = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+        dateTo = now.toISOString();
+      } else if (preset === 'week') {
+        const weekAgo = new Date(now);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        dateFrom = weekAgo.toISOString();
+        dateTo = now.toISOString();
+      } else if (preset === 'month') {
+        const monthAgo = new Date(now);
+        monthAgo.setMonth(monthAgo.getMonth() - 1);
+        dateFrom = monthAgo.toISOString();
+        dateTo = now.toISOString();
+      }
+      // 'all' → no date filters
+
+      await orderService.downloadCsv(dateFrom, dateTo);
+      toast.success('Report downloaded');
+    } catch {
+      toast.error('Failed to download report');
+    } finally {
+      setExporting(false);
+    }
+  }, []);
+
   return (
     <div className="space-y-5">
       {/* ═══ Header ═══ */}
@@ -350,15 +531,47 @@ export default function OrdersPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowCashierOrder(true)}
-            className="btn-primary rounded-xl text-sm px-4 py-2.5 shadow-sm active:scale-[0.97] flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
-            Create Order
-          </button>
+          {/* Download CSV dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              disabled={exporting}
+              className="rounded-xl text-sm px-4 py-2.5 shadow-sm border border-gray-200 bg-white hover:bg-gray-50 text-text-secondary active:scale-[0.97] flex items-center gap-2 transition-colors"
+            >
+              {exporting ? (
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+              )}
+              {exporting ? 'Exporting…' : 'Export'}
+            </button>
+            {showExportMenu && (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setShowExportMenu(false)} />
+                <div className="absolute right-0 top-full mt-1 z-40 bg-white rounded-xl shadow-lg border border-gray-200 py-1 min-w-[160px]">
+                  {[
+                    { key: 'today', label: 'Today' },
+                    { key: 'week', label: 'This Week' },
+                    { key: 'month', label: 'This Month' },
+                    { key: 'all', label: 'All Time' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.key}
+                      onClick={() => handleDownloadCsv(opt.key)}
+                      className="w-full text-left px-4 py-2 text-sm text-text-secondary hover:bg-gray-50 hover:text-text-primary transition-colors"
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           <div className="relative w-full sm:w-72">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -380,7 +593,7 @@ export default function OrdersPage() {
           { label: 'Total Orders', value: String(all.length), color: 'text-text-primary', iconBg: 'bg-sky-500', icon: 'M16 4H18a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2M8 2h8v4H8V2M9 12h6M9 16h4', ring: '' },
           { label: 'Active', value: String(activeCount), color: 'text-violet-600', iconBg: 'bg-violet-500', icon: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z', ring: '' },
           { label: 'Running Tables', value: String(runningTablesCount), color: 'text-amber-600', iconBg: 'bg-amber-500', icon: 'M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z', ring: runningTablesCount > 0 ? 'ring-1 ring-amber-200' : '' },
-          { label: 'Pending Payments', value: formatCurrency(pendingPayments), color: 'text-emerald-600', iconBg: 'bg-emerald-500', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6', ring: pendingPayments > 0 ? 'ring-1 ring-emerald-200' : '' },
+          { label: 'Pending Payments', value: formatCurrency(pendingPayments), color: 'text-primary', iconBg: 'bg-primary', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6', ring: pendingPayments > 0 ? 'ring-1 ring-orange-200' : '' },
         ].map(stat => (
           <div key={stat.label} className={`card p-4 transition-shadow ${stat.ring}`}>
             <div className="flex items-center gap-3">
@@ -459,8 +672,52 @@ export default function OrdersPage() {
                     {bills.length}
                   </span>
                 </div>
-                {/* Column Body */}
-                <div className="flex-1 bg-surface/50 rounded-b-xl border border-t-0 border-border/50 p-2.5 space-y-2.5 overflow-y-auto max-h-[calc(100vh-380px)]">
+                {/* Column Body — Drop zone */}
+                <div
+                  className={`flex-1 rounded-b-xl border border-t-0 p-2.5 space-y-2.5 overflow-y-auto max-h-[calc(100vh-380px)] transition-all duration-150 ${
+                    dragOverCol === col.key && dragBillRef.current && dragBillRef.current.status !== col.key
+                    && (['pending', 'preparing', 'payment_pending'].indexOf(col.key) > ['pending', 'preparing', 'payment_pending'].indexOf(dragBillRef.current.status))
+                      ? 'bg-primary/5 border-primary/30 ring-2 ring-primary/30'
+                      : 'bg-surface/50 border-border/50'
+                  }`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    const bill = dragBillRef.current;
+                    const ORDER: OrderStatus[] = ['pending', 'preparing', 'payment_pending'];
+                    const isForward = bill && ORDER.indexOf(col.key) > ORDER.indexOf(bill.status);
+                    e.dataTransfer.dropEffect = isForward ? 'move' : 'none';
+                    if (dragOverCol !== col.key) setDragOverCol(col.key);
+                  }}
+                  onDragLeave={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                      setDragOverCol(null);
+                    }
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragOverCol(null);
+                    const bill = dragBillRef.current;
+                    if (bill && bill.status !== col.key) {
+                      // Only allow forward movement: pending → preparing → payment_pending
+                      const ORDER: OrderStatus[] = ['pending', 'preparing', 'payment_pending'];
+                      const fromIdx = ORDER.indexOf(bill.status);
+                      const toIdx = ORDER.indexOf(col.key);
+                      if (fromIdx === -1 || toIdx === -1 || toIdx <= fromIdx) {
+                        dragBillRef.current = null;
+                        return;
+                      }
+                      // Block drag from preparing → payment_pending unless ALL items are kitchen-ready
+                      if (bill.status === 'preparing' && col.key === 'payment_pending' && !bill.orders.every(o => o.items.every(i => i.preparedAt))) {
+                        dragBillRef.current = null;
+                        return;
+                      }
+                      for (const o of bill.orders) {
+                        advanceMut.mutate({ id: o.id, status: col.key as OrderStatus });
+                      }
+                    }
+                    dragBillRef.current = null;
+                  }}
+                >
                   {bills.length === 0 ? (
                     <p className="text-center text-xs text-text-muted py-8">{col.emptyMsg}</p>
                   ) : (
@@ -469,8 +726,11 @@ export default function OrdersPage() {
                         <TableBillCard
                           key={`bill-${bill.tableId || bill.orders[0]?.id}-${bill.status}`}
                           bill={bill}
+                          kdsCount={kdsCount}
                           onAdvanceAll={() => {
                             const ns = nextStatus(bill.status);
+                            // Block advancing from preparing unless ALL items are kitchen-ready
+                            if (bill.status === 'preparing' && !bill.orders.every(o => o.items.every(i => i.preparedAt))) return;
                             if (ns) {
                               for (const o of bill.orders) {
                                 advanceMut.mutate({ id: o.id, status: ns });
@@ -480,11 +740,35 @@ export default function OrdersPage() {
                               clearPaymentRequest(bill.tableId);
                             }
                           }}
+                          onServeNoKds={bill.status === 'preparing' && kdsCount === 0
+                            ? async () => {
+                              // Mark all items as kitchen-ready then advance
+                              const itemPromises = bill.orders.flatMap(o =>
+                                o.items.filter(i => !i.preparedAt).map(i =>
+                                  orderService.markItemKitchenReady(o.id, i.id)
+                                )
+                              );
+                              await Promise.all(itemPromises);
+                              const ns = nextStatus(bill.status);
+                              if (ns) {
+                                for (const o of bill.orders) {
+                                  advanceMut.mutate({ id: o.id, status: ns });
+                                }
+                              }
+                            }
+                            : undefined}
                           onSendWaiter={bill.status === 'payment_pending'
                             ? () => addPaymentRequest(bill.tableId, bill.tableName, bill.total, bill.orderCount)
                             : undefined}
+                          onSettleBill={bill.status === 'payment_pending'
+                            ? bill.tableId
+                              ? () => setSettlementTableId(bill.tableId)
+                              : () => setTakeawaySettlementOrders(bill.orders)
+                            : undefined}
                           onSelectOrder={o => setDetail(o)}
                           isAdvancing={advanceMut.isPending}
+                          onDragStart={() => { dragBillRef.current = bill; }}
+                          onDragEnd={() => { dragBillRef.current = null; setDragOverCol(null); }}
                         />
                       ))}
                     </AnimatePresence>
@@ -516,6 +800,8 @@ export default function OrdersPage() {
                   onSelect={() => setDetail(item.order)}
                   onAdvance={() => {
                     const ns = nextStatus(item.order.status);
+                    // Block advancing from preparing unless ALL items are kitchen-ready
+                    if (item.order.status === 'preparing' && !item.order.items.every(i => i.preparedAt)) return;
                     if (ns) advanceMut.mutate({ id: item.order.id, status: ns });
                   }}
                   isAdvancing={advanceMut.isPending}
@@ -526,13 +812,56 @@ export default function OrdersPage() {
         </div>
       )}
 
+      {/* ═══ Settlement Modal ═══ */}
+      {settlementTableId && (
+        <SettlementModal
+          tableId={settlementTableId}
+          formatCurrency={formatCurrency}
+          onClose={() => {
+            clearPaymentRequest(settlementTableId);
+            setSettlementTableId(null);
+            qc.invalidateQueries({ queryKey: ['orders'] });
+            qc.invalidateQueries({ queryKey: ['runningTables'] });
+          }}
+          onPrint={(sessionId) => {
+            setPrintSessionId(sessionId);
+            setSettlementTableId(null);
+          }}
+        />
+      )}
+
+      {/* ═══ Takeaway Settlement Modal ═══ */}
+      {takeawaySettlementOrders && (
+        <TakeawaySettlementModal
+          orders={takeawaySettlementOrders}
+          formatCurrency={formatCurrency}
+          onClose={() => {
+            setTakeawaySettlementOrders(null);
+            qc.invalidateQueries({ queryKey: ['orders'] });
+          }}
+        />
+      )}
+
+      {/* ═══ Print Invoice ═══ */}
+      {printSessionId && (
+        <PrintInvoice
+          sessionId={printSessionId}
+          formatCurrency={formatCurrency}
+          onClose={() => setPrintSessionId(null)}
+        />
+      )}
+
       {/* ═══ Detail Slide-over ═══ */}
       <AnimatePresence>
         {detail && (
           <OrderDetail
             order={detail}
             onClose={() => setDetail(null)}
-            onAdvance={s => advanceMut.mutate({ id: detail.id, status: s })}
+            onAdvance={s => {
+              // Block advancing from preparing unless ALL items are kitchen-ready
+              if (detail.status === 'preparing' && s === 'payment_pending' && !detail.items.every(i => i.preparedAt)) return;
+              advanceMut.mutate({ id: detail.id, status: s });
+            }}
             onCancel={() => cancelMut.mutate(detail.id)}
             isAdvancing={advanceMut.isPending}
             isCancelling={cancelMut.isPending}
@@ -540,13 +869,6 @@ export default function OrdersPage() {
         )}
       </AnimatePresence>
 
-      {/* ═══ Cashier Order Modal ═══ */}
-      <CashierOrderModal
-        open={showCashierOrder}
-        onClose={() => setShowCashierOrder(false)}
-        onSubmit={(data) => cashierOrderMut.mutate(data)}
-        isSubmitting={cashierOrderMut.isPending}
-      />
     </div>
   );
 }
@@ -559,21 +881,37 @@ export default function OrdersPage() {
 
 function TableBillCard({
   bill,
+  kdsCount = 0,
   onAdvanceAll,
+  onServeNoKds,
   onSendWaiter,
+  onSettleBill,
   onSelectOrder,
   isAdvancing,
+  onDragStart: handleDragStart,
+  onDragEnd: handleDragEnd,
 }: {
   bill: TableBill;
+  kdsCount?: number;
   onAdvanceAll: () => void;
+  onServeNoKds?: () => Promise<void>;
   onSendWaiter?: () => void;
+  onSettleBill?: () => void;
   onSelectOrder: (order: Order) => void;
   isAdvancing: boolean;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
 }) {
   const formatCurrency = useCurrency();
   const { paymentRequests } = usePaymentRequests();
+  const { data: restaurantSettings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: settingsService.get,
+    staleTime: 30_000,
+  });
   const isCompleted = bill.status === 'completed';
   const isPP = bill.status === 'payment_pending';
+  const isTakeaway = !bill.tableId;
   const ns = nextStatus(bill.status);
   const meta = SM[bill.status];
 
@@ -589,13 +927,27 @@ function TableBillCard({
     setTimeout(() => setWaiterState('ready'), 1500);
   }, [onSendWaiter]);
 
+  /* Native HTML5 drag-and-drop props */
+  const dragProps: Record<string, unknown> = handleDragStart
+    ? {
+        draggable: true,
+        onDragStart: (e: React.DragEvent) => {
+          e.dataTransfer.setData('text/plain', '');
+          e.dataTransfer.effectAllowed = 'move';
+          handleDragStart();
+        },
+        onDragEnd: () => handleDragEnd?.(),
+      }
+    : {};
+
   return (
     <motion.div
       layout
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.15 } }}
-      className={`card border-l-[3px] ${meta.border} hover:shadow-elevated transition-all duration-200`}
+      {...(dragProps as any)}
+      className={`card border-l-[3px] ${meta.border} hover:shadow-elevated transition-all duration-200${handleDragStart ? ' cursor-grab active:cursor-grabbing' : ''}`}
     >
       <div className="p-4 flex flex-col gap-3">
         {/* Header: Table Name + Status */}
@@ -606,6 +958,14 @@ function TableBillCard({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
               </svg>
               <p className="text-sm font-bold text-text-primary">{bill.tableName}</p>
+              {bill.orders[0]?.sectionName && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-text-muted bg-gray-100 px-1.5 py-0.5 rounded ml-1">
+                  <svg className="w-2.5 h-2.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                  {bill.orders[0].sectionName}
+                </span>
+              )}
             </div>
             <p className="text-[11px] text-text-muted mt-1">
               {bill.orderCount} order{bill.orderCount > 1 ? 's' : ''} · {timeAgo(bill.latestCreatedAt)}
@@ -648,7 +1008,12 @@ function TableBillCard({
               <div className="space-y-0.5">
                 {order.items.map(item => (
                   <div key={item.id} className="flex items-baseline justify-between gap-2 text-[13px]">
-                    <span className="truncate text-text-secondary">
+                    <span className="truncate text-text-secondary flex items-center gap-1">
+                      {item.preparedAt && (
+                        <svg className="w-3.5 h-3.5 text-emerald-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
                       <span className="text-text-primary font-medium tabular-nums">{item.quantity}×</span>
                       <span className="ml-1">{item.menuItemName}</span>
                     </span>
@@ -677,7 +1042,7 @@ function TableBillCard({
           </div>
           <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
             {isCompleted ? (
-              <span className="text-[13px] font-semibold px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 leading-none bg-emerald-50 text-emerald-600">
+              <span className="text-[13px] font-semibold px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 leading-none bg-orange-50 text-primary">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
@@ -685,14 +1050,26 @@ function TableBillCard({
               </span>
             ) : isPP ? (
               <>
+                {isTakeaway && onSettleBill ? (
+                  <button
+                    onClick={onSettleBill}
+                    className="text-[13px] font-semibold px-4 py-2 rounded-lg shadow-sm transition-all duration-200 active:scale-95 inline-flex items-center gap-1.5 leading-none bg-primary hover:bg-primary-hover text-white shadow-orange-200/50"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    Settle Payment
+                  </button>
+                ) : (
+                <>
                 {waiterState === 'idle' && (
                   <button
                     onClick={handleSendWaiter}
                     className="text-[13px] font-semibold px-4 py-2 rounded-lg shadow-sm transition-all duration-200 active:scale-95 inline-flex items-center gap-1.5 leading-none bg-blue-500 hover:bg-blue-600 text-white shadow-blue-200/50"
                   >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
                     Send Waiter
                   </button>
                 )}
@@ -704,19 +1081,125 @@ function TableBillCard({
                     Waiter Sent
                   </span>
                 )}
-                {waiterState === 'ready' && (
-                  <button
-                    onClick={onAdvanceAll}
-                    disabled={isAdvancing}
-                    className="text-[13px] font-semibold px-4 py-2 rounded-lg shadow-sm transition-all duration-200 disabled:opacity-50 active:scale-95 inline-flex items-center gap-1.5 leading-none bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-200/50"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Payment Completed
-                  </button>
+                {waiterState === 'ready' && onSettleBill && (
+                      <button
+                        onClick={onSettleBill}
+                        className="text-[13px] font-semibold px-4 py-2 rounded-lg shadow-sm transition-all duration-200 active:scale-95 inline-flex items-center gap-1.5 leading-none bg-primary hover:bg-primary-hover text-white shadow-orange-200/50"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                        Settle Payment
+                      </button>
+                )}
+                </>
                 )}
               </>
+            ) : bill.status === 'preparing' && !bill.orders.every(o => o.items.every(i => i.preparedAt)) && kdsCount === 0 && onServeNoKds ? (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    const pls = (restaurantSettings?.settings ?? {}) as Record<string, unknown>;
+                    const logoUrl = (pls.printShowLogo !== false && pls.printLogoUrl) ? ((pls.printLogoUrl as string).startsWith('/uploads') ? `${window.location.origin}${pls.printLogoUrl}` : pls.printLogoUrl as string) : '';
+                    const headerText = (pls.printShowAddress !== false && pls.printHeaderText) ? pls.printHeaderText as string : '';
+                    const footerText = (pls.printFooterText as string) || '';
+                    const showCustomerInfo = (pls.printShowCustomerInfo as boolean) ?? true;
+                    const showModifiers = (pls.printShowItemModifiers as boolean) ?? true;
+                    const showInstructions = (pls.printShowSpecialInstructions as boolean) ?? true;
+                    const showSubtotal = (pls.printShowSubtotal as boolean) ?? true;
+                    const showTax = (pls.printShowTax as boolean) ?? true;
+                    const w = window.open('', '_blank', 'width=400,height=600');
+                    if (!w) return;
+                    w.document.write(`<!DOCTYPE html><html><head><title>Kitchen Order</title><style>
+                      body{font-family:monospace;max-width:350px;margin:0 auto;padding:20px;color:#111;font-size:13px}
+                      h2{text-align:center;margin:0 0 4px}
+                      .sub{text-align:center;color:#666;font-size:12px;margin-bottom:12px}
+                      .info{font-size:12px;color:#444;margin-bottom:4px}
+                      .item{display:flex;gap:8px;padding:6px 0;border-bottom:1px solid #eee}
+                      .qty{font-weight:700;min-width:28px;height:28px;background:#f3f4f6;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px}
+                      .item-detail{flex:1}
+                      .item-name{font-weight:700;font-size:14px}
+                      .mod{color:#888;font-size:11px;margin-top:2px}
+                      .note{color:#d97706;font-size:11px;margin-top:2px;font-weight:600}
+                      .order-note{background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:6px 10px;margin:6px 0;font-size:11px;font-weight:600;color:#92400e}
+                      .customer{color:#888;font-size:11px;padding:4px 0;border-top:1px solid #eee;margin-top:4px}
+                      .price{font-weight:700;white-space:nowrap}
+                      hr{border:none;border-top:1px dashed #999;margin:8px 0}
+                      .row{display:flex;justify-content:space-between;padding:2px 0}
+                      .row.bold{font-weight:700;font-size:14px}
+                      .center{text-align:center}
+                      .logo{text-align:center;margin-bottom:8px}
+                      .logo img{max-width:120px;max-height:60px}
+                      .header-text{text-align:center;color:#666;font-size:11px;white-space:pre-line;margin-bottom:8px}
+                      @media print{body{padding:0;margin:0}}
+                    </style></head><body>`);
+                    if (logoUrl) w.document.write(`<div class="logo"><img src="${logoUrl}" alt="logo"></div>`);
+                    w.document.write(`<h2>${bill.tableName || 'Takeaway'}</h2>`);
+                    if (headerText) w.document.write(`<div class="header-text">${headerText}</div>`);
+                    w.document.write(`<p class="sub">${bill.orders.map(o => `#${o.orderNumber || o.id.slice(-6).toUpperCase()}`).join(', ')}</p>`);
+                    w.document.write(`<p class="sub">${new Date().toLocaleString()}</p>`);
+                    bill.orders.forEach(order => {
+                      if (showCustomerInfo) {
+                        if (order.customerName) w.document.write(`<p class="info">👤 ${order.customerName}${order.customerPhone ? ` · ${order.customerPhone}` : ''}</p>`);
+                        else if (order.customerPhone) w.document.write(`<p class="info">📱 ${order.customerPhone}</p>`);
+                      }
+                      if (showInstructions && order.specialInstructions) w.document.write(`<div class="order-note">📝 ${order.specialInstructions}</div>`);
+                      order.items.forEach(item => {
+                        w.document.write(`<div class="item"><span class="qty">${item.quantity}</span><div class="item-detail"><div class="item-name">${item.menuItemName}</div>`);
+                        if (showModifiers && item.customizations && item.customizations.length > 0) {
+                          item.customizations.forEach(c => {
+                            w.document.write(`<div class="mod">${c.groupName}: ${c.options.map(o => o.name).join(', ')}</div>`);
+                          });
+                        }
+                        if (showInstructions && item.specialInstructions) w.document.write(`<div class="note">⚠ ${item.specialInstructions}</div>`);
+                        w.document.write(`</div><span class="price">${formatCurrency(item.totalPrice)}</span></div>`);
+                      });
+                    });
+                    w.document.write(`<hr>`);
+                    if (showSubtotal) w.document.write(`<div class="row"><span>Subtotal</span><span>${formatCurrency(bill.subtotal)}</span></div>`);
+                    if (showTax && bill.tax > 0) w.document.write(`<div class="row"><span>Tax</span><span>${formatCurrency(bill.tax)}</span></div>`);
+                    w.document.write(`<div class="row bold"><span>Total</span><span>${formatCurrency(bill.total)}</span></div>`);
+                    if (footerText) w.document.write(`<hr><p class="center">${footerText}</p>`);
+                    w.document.write(`</body></html>`);
+                    w.document.close();
+                    setTimeout(() => { w.print(); }, 300);
+                  }}
+                  className="text-[13px] font-semibold px-3 py-2 rounded-lg shadow-sm transition-all duration-200 active:scale-95 inline-flex items-center gap-1.5 leading-none bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                  </svg>
+                  Print
+                </button>
+                <button
+                  onClick={onServeNoKds}
+                  disabled={isAdvancing}
+                  className="text-[13px] font-semibold px-4 py-2 rounded-lg shadow-sm transition-all duration-200 disabled:opacity-50 active:scale-95 inline-flex items-center gap-1.5 leading-none bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200/50"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Served
+                </button>
+              </div>
+            ) : bill.status === 'preparing' && !bill.orders.every(o => o.items.every(i => i.preparedAt)) ? (
+              <span className="text-[13px] font-semibold px-4 py-2 rounded-lg inline-flex items-center gap-1.5 leading-none bg-violet-50 text-violet-500 border border-violet-200">
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Waiting for Kitchen
+              </span>
+            ) : bill.status === 'preparing' && bill.orders.every(o => o.items.every(i => i.preparedAt)) ? (
+              <button
+                onClick={onAdvanceAll}
+                disabled={isAdvancing}
+                className="text-[13px] font-semibold px-4 py-2 rounded-lg shadow-sm transition-all duration-200 disabled:opacity-50 active:scale-95 inline-flex items-center gap-1.5 leading-none bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200/50"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Served
+              </button>
             ) : ns ? (
               <button
                 onClick={onAdvanceAll}
@@ -778,13 +1261,25 @@ function OrderCard({
                 </svg>
                 {order.tableName}
               </span>
+              {order.sectionName && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-text-muted bg-gray-100 px-2 py-0.5 rounded">
+                  <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                  {order.sectionName}
+                </span>
+              )}
               <span className="text-[11px] text-text-muted leading-none">{timeAgo(order.createdAt)}</span>
             </div>
             {order.customerName && (
               <div className="flex items-center gap-1.5 mt-1">
-                <svg className="w-3 h-3 text-text-muted shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
+                {order.customerName.startsWith('Group Order') ? (
+                  <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded">GROUP</span>
+                ) : (
+                  <svg className="w-3 h-3 text-text-muted shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                )}
                 <span className="text-[11px] font-medium text-text-secondary leading-none">{order.customerName}</span>
                 {order.customerPhone && (
                   <>
@@ -806,7 +1301,12 @@ function OrderCard({
           {order.items.slice(0, 3).map(item => (
             <div key={item.id} className="text-sm leading-5">
               <div className="flex items-baseline justify-between gap-3">
-                <span className="truncate text-text-secondary">
+                <span className="truncate text-text-secondary flex items-center gap-1">
+                  {item.preparedAt && (
+                    <svg className="w-3.5 h-3.5 text-emerald-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
                   <span className="inline-block w-6 text-right text-text-primary font-medium tabular-nums">{item.quantity}×</span>
                   <span className="ml-1">{item.menuItemName}</span>
                 </span>
@@ -846,7 +1346,25 @@ function OrderCard({
             {formatCurrency(order.total)}
           </span>
           <div onClick={e => e.stopPropagation()}>
-            {ns ? (
+            {order.status === 'preparing' && !order.items.every(i => i.preparedAt) ? (
+              <span className="text-[13px] font-semibold px-4 py-2 rounded-lg inline-flex items-center gap-1.5 leading-none bg-violet-50 text-violet-500 border border-violet-200">
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Waiting for Kitchen
+              </span>
+            ) : order.status === 'preparing' && order.items.every(i => i.preparedAt) ? (
+              <button
+                onClick={onAdvance}
+                disabled={isAdvancing}
+                className="text-[13px] font-semibold px-4 py-2 rounded-lg shadow-sm transition-all duration-200 disabled:opacity-50 active:scale-95 inline-flex items-center gap-1.5 leading-none bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200/50"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Served
+              </button>
+            ) : ns ? (
               <button
                 onClick={onAdvance}
                 disabled={isAdvancing}
@@ -925,6 +1443,12 @@ function OrderDetail({
               </div>
               <div className="flex items-center gap-1.5 text-sm text-text-secondary mt-1.5">
                 <span>{order.tableName}</span>
+                {order.sectionName && (
+                  <>
+                    <span className="text-text-muted">·</span>
+                    <span className="text-text-muted">{order.sectionName}</span>
+                  </>
+                )}
                 <span className="text-text-muted">·</span>
                 <span>{timeAgo(order.createdAt)}</span>
                 <span className="text-text-muted">·</span>
@@ -999,10 +1523,18 @@ function OrderDetail({
                     <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-primary/10 text-primary text-xs font-bold shrink-0 mt-px">
                       {item.quantity}×
                     </span>
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 flex items-center gap-2">
                       <p className="font-medium text-text-primary text-sm leading-5 truncate">
                         {item.menuItemName}
                       </p>
+                      {item.preparedAt && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-semibold shrink-0">
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                          </svg>
+                          Ready
+                        </span>
+                      )}
                     </div>
                     <span className="text-sm font-semibold text-text-primary tabular-nums shrink-0 leading-5">
                       {formatCurrency(item.totalPrice)}
@@ -1151,7 +1683,25 @@ function OrderDetail({
               </svg>
               {isCancelling ? 'Cancelling…' : 'Cancel Order'}
             </button>
-            {ns && (
+            {order.status === 'preparing' && !order.items.every(i => i.preparedAt) ? (
+              <span className="flex-1 py-3 rounded-xl text-[15px] font-semibold inline-flex items-center justify-center gap-2 bg-violet-50 text-violet-500 border border-violet-200">
+                <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Waiting for Kitchen
+              </span>
+            ) : order.status === 'preparing' && order.items.every(i => i.preparedAt) ? (
+              <button
+                onClick={() => onAdvance(ns!)}
+                disabled={isAdvancing}
+                className="flex-1 py-3 rounded-xl text-[15px] font-semibold inline-flex items-center justify-center gap-2 shadow-sm transition-all duration-200 active:scale-[0.98] disabled:opacity-50 bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200/50"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                {isAdvancing ? 'Updating…' : 'Mark Served'}
+              </button>
+            ) : ns ? (
               <button
                 onClick={() => onAdvance(ns)}
                 disabled={isAdvancing}
@@ -1162,7 +1712,7 @@ function OrderDetail({
                 </svg>
                 {isAdvancing ? 'Updating…' : `Mark ${SM[ns].btnLabel}`}
               </button>
-            )}
+            ) : null}
           </div>
         )}
       </motion.aside>

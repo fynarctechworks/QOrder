@@ -1,34 +1,38 @@
 import { useState, useEffect } from 'react';
-import type { Table } from '../types';
+import type { Table, Section } from '../types';
 
 export interface TableFormData {
   number: string;
   name: string;
   capacity: number;
+  sectionId: string | null;
 }
 
 interface TableFormProps {
   initial?: Table | null;
+  sections?: Section[];
   isLoading: boolean;
   onSubmit: (data: TableFormData) => void;
   onCancel: () => void;
 }
 
-export default function TableForm({ initial, isLoading, onSubmit, onCancel }: TableFormProps) {
+export default function TableForm({ initial, sections = [], isLoading, onSubmit, onCancel }: TableFormProps) {
   const [number, setNumber] = useState(initial?.number ?? '');
   const [name, setName] = useState(initial?.name ?? '');
   const [capacity, setCapacity] = useState(initial?.capacity ?? 4);
+  const [sectionId, setSectionId] = useState<string | null>(initial?.sectionId ?? null);
 
   useEffect(() => {
     setNumber(initial?.number ?? '');
     setName(initial?.name ?? '');
     setCapacity(initial?.capacity ?? 4);
+    setSectionId(initial?.sectionId ?? null);
   }, [initial]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!number.trim() || !name.trim()) return;
-    onSubmit({ number: number.trim(), name: name.trim(), capacity });
+    onSubmit({ number: number.trim(), name: name.trim(), capacity, sectionId });
   };
 
   return (
@@ -77,6 +81,25 @@ export default function TableForm({ initial, isLoading, onSubmit, onCancel }: Ta
           className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
         />
       </div>
+
+      {/* Section */}
+      {sections.length > 0 && (
+        <div>
+          <label className="block text-sm font-medium text-text-primary mb-1.5">
+            Section
+          </label>
+          <select
+            value={sectionId ?? ''}
+            onChange={(e) => setSectionId(e.target.value || null)}
+            className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+          >
+            <option value="">No Section</option>
+            {sections.map((s) => (
+              <option key={s.id} value={s.id}>{s.name}{s.floor != null ? ` (Floor ${s.floor})` : ''}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex items-center justify-end gap-3 pt-2">

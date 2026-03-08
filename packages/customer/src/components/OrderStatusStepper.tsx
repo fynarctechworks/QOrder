@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import { motion } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import type { OrderStatus } from '../types';
 
 interface OrderStatusStepperProps {
@@ -12,11 +13,6 @@ interface Step {
   description: string;
 }
 
-const steps: Step[] = [
-  { key: 'preparing', label: 'Preparing', description: 'Your food is being prepared' },
-  { key: 'payment_pending', label: 'Payment Pending', description: 'Awaiting payment' },
-];
-
 const statusOrder: OrderStatus[] = [
   'pending',
   'preparing',
@@ -25,7 +21,13 @@ const statusOrder: OrderStatus[] = [
 ];
 
 function OrderStatusStepperComponent({ currentStatus }: OrderStatusStepperProps) {
+  const { t } = useTranslation();
   const currentIndex = statusOrder.indexOf(currentStatus);
+
+  const steps: Step[] = [
+    { key: 'preparing', label: t('orderStatus.preparing'), description: t('orderStatus.preparingDesc') },
+    { key: 'payment_pending', label: t('orderStatus.paymentPending'), description: t('orderStatus.awaitingPayment') },
+  ];
 
   const getStepState = (stepKey: OrderStatus): 'completed' | 'current' | 'upcoming' => {
     const stepIndex = statusOrder.indexOf(stepKey);
@@ -42,8 +44,8 @@ function OrderStatusStepperComponent({ currentStatus }: OrderStatusStepperProps)
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
           </svg>
         </div>
-        <h3 className="text-base font-bold text-primary">Order Cancelled</h3>
-        <p className="mt-1 text-sm text-gray-400">This order has been cancelled.</p>
+        <h3 className="text-base font-bold text-primary">{t('orderStatus.orderCancelled')}</h3>
+        <p className="mt-1 text-sm text-gray-400">{t('orderStatus.orderCancelledDesc')}</p>
       </div>
     );
   }
@@ -51,7 +53,7 @@ function OrderStatusStepperComponent({ currentStatus }: OrderStatusStepperProps)
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
       <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-5">
-        Order Progress
+        {t('orderStatus.orderProgress')}
       </h3>
 
       <div className="relative">
@@ -122,7 +124,7 @@ function OrderStatusStepperComponent({ currentStatus }: OrderStatusStepperProps)
                   <p className={`text-xs mt-0.5 ${
                     state === 'upcoming' ? 'text-gray-300' : 'text-gray-400'
                   }`}>
-                    {state === 'current' ? 'In progress...' : step.description}
+                    {state === 'current' ? t('orderStatus.currentStep') : step.description}
                   </p>
                 </div>
               </div>

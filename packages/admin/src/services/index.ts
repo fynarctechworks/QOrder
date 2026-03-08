@@ -6,6 +6,11 @@ export { tableService } from './tableService';
 export { analyticsService } from './analyticsService';
 export { settingsService } from './settingsService';
 export { sessionService } from './sessionService';
+export { sectionService } from './sectionService';
+export { crmService } from './crmService';
+export { reportService } from './reportService';
+export { staffManagementService } from './staffManagementService';
+export { creditService } from './creditService';
 export type {
   TableSession,
   Payment,

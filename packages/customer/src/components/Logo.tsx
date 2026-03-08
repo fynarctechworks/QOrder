@@ -8,12 +8,10 @@ interface LogoProps {
 function LogoComponent({ size = 64, className = '' }: LogoProps) {
   return (
     <img
-      src="/4.png"
-      alt="Q Order Logo"
-      width={size}
-      height={size}
-      className={`rounded-2xl ${className}`}
-      style={{ objectFit: 'contain' }}
+      src="/Q Order Logo Landscape.svg"
+      alt="Logo"
+      style={{ height: size, maxWidth: '60vw', width: 'auto', objectFit: 'contain' }}
+      className={className}
     />
   );
 }

@@ -2,9 +2,11 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { tableService, settingsService } from '../services';
+import { tableService, settingsService, sectionService } from '../services';
 import { useSocket } from '../context/SocketContext';
+import { usePaymentRequests } from '../context/PaymentRequestContext';
 import { useCurrency } from '../hooks/useCurrency';
+import { useBranchStore } from '../state/branchStore';
 import Modal from '../components/Modal';
 import QRCodeModal from '../components/QRCodeModal';
 import TableForm, { type TableFormData } from '../components/TableForm';
@@ -28,12 +30,12 @@ const SM: Record<TableStatus, {
 }> = {
   available: {
     label: 'Available',
-    dot: 'bg-emerald-500',
-    bg: 'bg-emerald-50',
-    text: 'text-emerald-700',
-    ring: 'ring-emerald-200',
+    dot: 'bg-green-500',
+    bg: 'bg-green-50',
+    text: 'text-green-700',
+    ring: 'ring-green-200',
     icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
-    accent: 'bg-emerald-500',
+    accent: 'bg-green-500',
   },
   occupied: {
     label: 'Occupied',
@@ -180,8 +182,10 @@ function EmptyState({ filtered, onClear }: { filtered: boolean; onClear: () => v
 export default function TablesPage() {
   const queryClient = useQueryClient();
   const formatCurrency = useCurrency();
-  const { onTableUpdated, onSessionUpdated } = useSocket();
+  const { onTableUpdated, onSessionUpdated, onOrderStatusUpdate } = useSocket();
+  const activeBranchId = useBranchStore((s) => s.activeBranchId);
   const [filter, setFilter] = useState<FilterKey>(FILTER_ALL);
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
 
   // ── Modal state ──
   const [tableModalOpen, setTableModalOpen] = useState(false);
@@ -198,7 +202,11 @@ export default function TablesPage() {
   const openViewOrder = useCallback((tableId: string) => setViewOrderTableId(tableId), []);
   const closeViewOrder = useCallback(() => setViewOrderTableId(null), []);
   const openSettlement = useCallback((tableId: string) => setSettlementTableId(tableId), []);
-  const closeSettlement = useCallback(() => setSettlementTableId(null), []);
+  const { clearPaymentRequest } = usePaymentRequests();
+  const closeSettlement = useCallback(() => {
+    if (settlementTableId) clearPaymentRequest(settlementTableId);
+    setSettlementTableId(null);
+  }, [settlementTableId, clearPaymentRequest]);
   const openPrint = useCallback((sessionId: string) => setPrintSessionId(sessionId), []);
   const closePrint = useCallback(() => setPrintSessionId(null), []);
 
@@ -206,6 +214,7 @@ export default function TablesPage() {
   const { data: tables = [], isLoading, isError } = useQuery({
     queryKey: ['tables'],
     queryFn: tableService.getAll,
+    staleTime: 0, // Always refetch on invalidation — socket-driven updates
   });
 
   // Fetch restaurant info for slug (used in QR URL)
@@ -214,16 +223,39 @@ export default function TablesPage() {
     queryFn: settingsService.get,
   });
 
+  // Fetch all sections from settings (so every section appears in dropdown)
+  const { data: allSections = [] } = useQuery({
+    queryKey: ['sections'],
+    queryFn: sectionService.getAll,
+  });
+
   // Fetch running tables with live billing
   const { data: runningTables = [] } = useQuery({
     queryKey: ['runningTables'],
     queryFn: tableService.getRunningTables,
+    staleTime: 0,
     refetchInterval: false, // Socket-driven updates only
   });
 
-  // Subscribe to socket updates
+  // Subscribe to socket updates — apply instant local cache update then background refetch
   useEffect(() => {
-    const unsubscribe = onTableUpdated(() => {
+    const unsubscribe = onTableUpdated((data) => {
+      // Instant optimistic update: patch the table in the local cache immediately
+      if (data.tableId && (data.status || data.sessionToken !== undefined)) {
+        queryClient.setQueryData<Table[]>(['tables'], (old) => {
+          if (!old) return old;
+          return old.map((t) =>
+            t.id === data.tableId
+              ? {
+                  ...t,
+                  ...(data.status ? { status: data.status as Table['status'] } : {}),
+                  ...(data.sessionToken !== undefined ? { sessionToken: data.sessionToken } : {}),
+                }
+              : t
+          );
+        });
+      }
+      // Background refetch for full consistency
       queryClient.invalidateQueries({ queryKey: ['runningTables'] });
       queryClient.invalidateQueries({ queryKey: ['tables'] });
     });
@@ -233,9 +265,19 @@ export default function TablesPage() {
   useEffect(() => {
     const unsubscribe = onSessionUpdated(() => {
       queryClient.invalidateQueries({ queryKey: ['runningTables'] });
+      queryClient.invalidateQueries({ queryKey: ['tables'] });
     });
     return unsubscribe;
   }, [onSessionUpdated, queryClient]);
+
+  // Also refresh tables when any order status changes (active count might change)
+  useEffect(() => {
+    const unsubscribe = onOrderStatusUpdate(() => {
+      queryClient.invalidateQueries({ queryKey: ['tables'] });
+      queryClient.invalidateQueries({ queryKey: ['runningTables'] });
+    });
+    return unsubscribe;
+  }, [onOrderStatusUpdate, queryClient]);
 
   // ── Mutations ──
   const createTableMutation = useMutation({
@@ -296,20 +338,108 @@ export default function TablesPage() {
     onError: () => toast.error('Failed to delete table'),
   });
 
+  const regenerateSessionMutation = useMutation({
+    mutationFn: (id: string) => tableService.regenerateSessionToken(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tables'] });
+      toast.success('Session reset — old QR scans are now blocked');
+    },
+    onError: () => toast.error('Failed to reset session'),
+  });
+
   // ── Derived ──
+
+  // Use sections from settings API (show all sections, not just ones with tables)
+  const sections = useMemo(() => {
+    return allSections
+      .filter((s: any) => s.isActive !== false)
+      .sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  }, [allSections]);
+
+  // Tables filtered by selected section
+  const sectionFiltered = useMemo(() => {
+    if (!selectedSectionId) return tables;
+    return tables.filter((t) => t.sectionId === selectedSectionId);
+  }, [tables, selectedSectionId]);
+
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: tables.length, available: 0, occupied: 0, reserved: 0, cleaning: 0 };
-    tables.forEach((t) => { c[t.status] = (c[t.status] || 0) + 1; });
+    const c: Record<string, number> = { all: sectionFiltered.length, available: 0, occupied: 0, reserved: 0, cleaning: 0 };
+    sectionFiltered.forEach((t) => { c[t.status] = (c[t.status] || 0) + 1; });
     return c;
-  }, [tables]);
+  }, [sectionFiltered]);
 
   const filtered = useMemo(() => {
-    if (filter === FILTER_ALL) return tables;
-    return tables.filter((t) => t.status === filter);
-  }, [tables, filter]);
+    if (filter === FILTER_ALL) return sectionFiltered;
+    return sectionFiltered.filter((t) => t.status === filter);
+  }, [sectionFiltered, filter]);
 
-  const totalCapacity = useMemo(() => tables.reduce((s, t) => s + t.capacity, 0), [tables]);
-  const activeOrders = useMemo(() => tables.reduce((s, t) => s + t.activeOrders, 0), [tables]);
+  // Group filtered tables by section for display
+  // When "All Branches" is selected, group by branch first, then by section within each branch
+  const groupedTables = useMemo(() => {
+    type SectionGroup = { sectionName: string | null; sectionId: string | null; tables: typeof filtered };
+    type BranchGroup = { branchId: string | null; branchName: string | null; sections: SectionGroup[] };
+
+    const isAllBranches = !activeBranchId;
+
+    // Step 1: Group tables by branch (only meaningful when All Branches)
+    const branchMap = new Map<string | null, typeof filtered>();
+    filtered.forEach((t) => {
+      const bKey = isAllBranches ? (t.branchId ?? null) : null;
+      if (!branchMap.has(bKey)) branchMap.set(bKey, []);
+      branchMap.get(bKey)!.push(t);
+    });
+
+    // Sort branches: named branches first alphabetically, then unassigned
+    const branchEntries = Array.from(branchMap.entries());
+    branchEntries.sort((a, b) => {
+      if (a[0] === null && b[0] !== null) return 1;
+      if (a[0] !== null && b[0] === null) return -1;
+      const aName = a[1][0]?.branch?.name ?? '';
+      const bName = b[1][0]?.branch?.name ?? '';
+      return aName.localeCompare(bName);
+    });
+
+    // Step 2: Within each branch group, sub-group by section
+    const result: BranchGroup[] = [];
+    branchEntries.forEach(([bKey, branchTables]) => {
+      const sectionMap = new Map<string | null, typeof filtered>();
+      branchTables.forEach((t) => {
+        const sKey = t.sectionId ?? null;
+        if (!sectionMap.has(sKey)) sectionMap.set(sKey, []);
+        sectionMap.get(sKey)!.push(t);
+      });
+
+      const sectionEntries = Array.from(sectionMap.entries());
+      sectionEntries.sort((a, b) => {
+        if (a[0] === null && b[0] !== null) return 1;
+        if (a[0] !== null && b[0] === null) return -1;
+        const aSec = a[1][0]?.section;
+        const bSec = b[1][0]?.section;
+        return (aSec?.sortOrder ?? 0) - (bSec?.sortOrder ?? 0);
+      });
+
+      const sections: SectionGroup[] = sectionEntries.map(([sKey, tbs]) => ({
+        sectionId: sKey,
+        sectionName: tbs[0]?.section?.name ?? null,
+        tables: tbs,
+      }));
+
+      result.push({
+        branchId: bKey,
+        branchName: branchTables[0]?.branch?.name ?? null,
+        sections,
+      });
+    });
+
+    return result;
+  }, [filtered, activeBranchId]);
+
+  const hasSections = groupedTables.some((g) => g.sections.some((s) => s.sectionName !== null));
+  const isAllBranches = !activeBranchId;
+  const hasMultipleBranches = groupedTables.length > 1 || (groupedTables.length === 1 && groupedTables[0]?.branchId !== null);
+
+  const totalCapacity = useMemo(() => sectionFiltered.reduce((s, t) => s + t.capacity, 0), [sectionFiltered]);
+  const activeOrders = useMemo(() => sectionFiltered.reduce((s, t) => s + t.activeOrders, 0), [sectionFiltered]);
 
   // Create a map of tableId -> running bill amount for quick lookup
   const runningBillMap = useMemo(() => {
@@ -333,12 +463,35 @@ export default function TablesPage() {
             Monitor and manage your floor layout
           </p>
         </div>
-        <button onClick={openNewTable} className="btn-primary rounded-xl text-sm px-5 py-2.5 shadow-sm active:scale-[0.97]">
-          <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Add Table
-        </button>
+        <div className="flex items-center gap-3">
+          {/* Section filter dropdown */}
+          {sections.length > 0 && (
+            <div className="relative">
+              <select
+                value={selectedSectionId ?? ''}
+                onChange={(e) => {
+                  setSelectedSectionId(e.target.value || null);
+                  setFilter(FILTER_ALL); // reset status filter when section changes
+                }}
+                className="appearance-none bg-white border border-gray-200 rounded-xl text-sm font-medium text-text-primary pl-3.5 pr-9 py-2.5 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer hover:border-gray-300"
+              >
+                <option value="">All Sections</option>
+                {sections.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+              <svg className="w-4 h-4 text-text-muted absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          )}
+          <button onClick={openNewTable} className="btn-primary rounded-xl text-sm px-5 py-2.5 shadow-sm active:scale-[0.97]">
+            <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Table
+          </button>
+        </div>
       </div>
 
       {/* ── Stat Cards ──────────────────────────────────────── */}
@@ -351,8 +504,8 @@ export default function TablesPage() {
         <StatsSkeleton />
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard icon="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" label="Total Tables" value={tables.length} accent="bg-violet-500" delay={0} />
-          <StatCard icon="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" label="Available" value={counts.available ?? 0} accent="bg-emerald-500" delay={0.05} />
+          <StatCard icon="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" label="Total Tables" value={sectionFiltered.length} accent="bg-violet-500" delay={0} />
+          <StatCard icon="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" label="Available" value={counts.available ?? 0} accent="bg-green-500" delay={0.05} />
           <StatCard icon="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" label="Total Capacity" value={totalCapacity} accent="bg-sky-500" delay={0.10} />
           <StatCard icon="M13 2L3 14h9l-1 8 10-12h-9l1-8z" label="Active Orders" value={activeOrders} accent="bg-amber-500" delay={0.15} />
         </div>
@@ -393,6 +546,69 @@ export default function TablesPage() {
         <GridSkeleton />
       ) : filtered.length === 0 ? (
         <EmptyState filtered={filter !== FILTER_ALL} onClear={() => setFilter(FILTER_ALL)} />
+      ) : (hasSections || (isAllBranches && hasMultipleBranches)) ? (
+        <div className="space-y-8">
+          {groupedTables.map((branchGroup) => (
+            <div key={branchGroup.branchId ?? 'no-branch'}>
+              {/* Branch header — only shown when "All Branches" is selected */}
+              {isAllBranches && hasMultipleBranches && (
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4 text-primary/70" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
+                    <h2 className="text-base font-bold text-text-primary">
+                      {branchGroup.branchName ?? 'Unassigned Branch'}
+                    </h2>
+                  </div>
+                  <div className="flex-1 h-px bg-primary/15" />
+                  <span className="text-xs font-medium text-primary/60 bg-primary/5 px-2.5 py-1 rounded-full">
+                    {branchGroup.sections.reduce((sum, s) => sum + s.tables.length, 0)} tables
+                  </span>
+                </div>
+              )}
+
+              {/* Section groups within this branch */}
+              <div className={`space-y-6 ${isAllBranches && hasMultipleBranches ? 'pl-0' : ''}`}>
+                {branchGroup.sections.map((sectionGroup) => (
+                  <div key={sectionGroup.sectionId ?? 'unassigned'}>
+                    {hasSections && (
+                      <div className="flex items-center gap-2 mb-4">
+                        <h3 className="text-sm font-semibold text-text-primary uppercase tracking-wide">
+                          {sectionGroup.sectionName ?? 'Unassigned'}
+                        </h3>
+                        <span className="text-xs text-text-muted">({sectionGroup.tables.length})</span>
+                        <div className="flex-1 h-px bg-gray-200" />
+                      </div>
+                    )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+                      <AnimatePresence mode="popLayout">
+                        {sectionGroup.tables.map((table, idx) => (
+                          <TableCard
+                            key={table.id}
+                            table={table}
+                            index={idx}
+                            currentBillAmount={runningBillMap.get(table.id)}
+                            formatCurrency={formatCurrency}
+                            onStatusChange={(status) => updateStatusMutation.mutate({ id: table.id, status })}
+                            onGenerateQR={() => openQR(table)}
+                            onViewOrder={() => openViewOrder(table.id)}
+                            onEdit={() => openEditTable(table)}
+                            onDelete={() => {
+                              setDeleteTarget({ id: table.id, name: table.name });
+                            }}
+                            onRegenerateSession={() => regenerateSessionMutation.mutate(table.id)}
+                            isUpdating={updateStatusMutation.isPending}
+                          />
+                        ))}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
           <AnimatePresence mode="popLayout">
@@ -410,6 +626,7 @@ export default function TablesPage() {
                 onDelete={() => {
                   setDeleteTarget({ id: table.id, name: table.name });
                 }}
+                onRegenerateSession={() => regenerateSessionMutation.mutate(table.id)}
                 isUpdating={updateStatusMutation.isPending}
               />
             ))}
@@ -419,7 +636,7 @@ export default function TablesPage() {
 
       {/* ── Table Modal ─────────────────────────────────────── */}
       <Modal open={tableModalOpen} title={editingTable ? 'Edit Table' : 'New Table'} onClose={closeTableModal}>
-        <TableForm initial={editingTable} isLoading={isTableMutating} onSubmit={handleTableSubmit} onCancel={closeTableModal} />
+        <TableForm initial={editingTable} sections={sections} isLoading={isTableMutating} onSubmit={handleTableSubmit} onCancel={closeTableModal} />
       </Modal>
 
       {/* ── View Order Modal ────────────────────────────────── */}
@@ -508,6 +725,7 @@ interface TableCardProps {
   onViewOrder: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onRegenerateSession: () => void;
   isUpdating: boolean;
 }
 
@@ -521,6 +739,7 @@ function TableCard({
   onViewOrder,
   onEdit,
   onDelete,
+  onRegenerateSession,
   isUpdating,
 }: TableCardProps) {
   const s = SM[table.status] || SM[table.status.toLowerCase() as TableStatus] || SM.available;
@@ -557,6 +776,14 @@ function TableCard({
             </svg>
             {table.capacity} seats
           </span>
+          {table.section && (
+            <span className="inline-flex items-center gap-1">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5" />
+              </svg>
+              {table.section.name}
+            </span>
+          )}
           {table.activeOrders > 0 && (
             <span className="inline-flex items-center gap-1 text-amber-600 font-medium">
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -570,9 +797,9 @@ function TableCard({
         {/* Current Bill Amount - Show only for occupied tables with active orders */}
         {table.status === 'occupied' && table.activeOrders > 0 && (
           <>
-            <div className="mb-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
-              <div className="text-[10px] text-emerald-700 font-medium mb-0.5 uppercase tracking-wide">Current Bill</div>
-              <div className="text-lg font-bold text-emerald-700">
+            <div className="mb-3 p-3 bg-orange-50 border border-orange-200 rounded-xl">
+              <div className="text-[10px] text-primary font-medium mb-0.5 uppercase tracking-wide">Current Bill</div>
+              <div className="text-lg font-bold text-primary">
                 {currentBillAmount !== undefined && currentBillAmount > 0 
                   ? formatCurrency(currentBillAmount) 
                   : formatCurrency(0)}
@@ -672,6 +899,15 @@ function TableCard({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
                     Download QR
+                  </button>
+                  <button
+                    onClick={() => { onRegenerateSession(); setMenuOpen(false); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:bg-gray-50 hover:text-text-primary transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Reset Session
                   </button>
                   <div className="border-t border-gray-100 my-1" />
                   <button

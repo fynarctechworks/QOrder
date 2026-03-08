@@ -60,8 +60,11 @@ export const useCartStore = create<CartState>()(
 
     setRestaurantContext: (restaurantId, tableId) => {
       set((state) => {
-        // Clear cart if switching restaurants
-        if (state.restaurantId && state.restaurantId !== restaurantId) {
+        // Clear cart if switching restaurants or tables
+        if (
+          (state.restaurantId && state.restaurantId !== restaurantId) ||
+          (state.tableId && state.tableId !== tableId)
+        ) {
           state.items = [];
         }
         state.restaurantId = restaurantId;

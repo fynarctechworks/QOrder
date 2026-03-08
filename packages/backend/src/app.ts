@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import cookieParser from 'cookie-parser';
+import crypto from 'crypto';
 import path from 'path';
 import { config } from './config/index.js';
 import routes from './routes/index.js';
@@ -41,26 +42,45 @@ export function createApp(): Application {
     origin: config.cors.origin,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Idempotency-Key', 'X-Branch-Id'],
   }));
 
   // Compression
   app.use(compression());
 
   // Body parsing
+  // Capture raw body for webhook signature verification
+  app.use('/api/payment/webhook', express.raw({ type: 'application/json' }), (req, _res, next) => {
+    (req as any).rawBody = req.body.toString();
+    try {
+      req.body = JSON.parse(req.body.toString());
+    } catch {
+      req.body = {};
+    }
+    next();
+  });
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
   // Cookie parsing
   app.use(cookieParser());
 
+  // Attach a unique request ID for log correlation
+  app.use((req, _res, next) => {
+    req.headers['x-request-id'] = req.headers['x-request-id'] || crypto.randomUUID();
+    next();
+  });
+
   // Trust proxy — must be set BEFORE rate limiter so client IPs are resolved
   // correctly behind a reverse proxy (e.g. nginx, AWS ALB).
   // Value of 1 means trust exactly one hop (the first proxy).
   app.set('trust proxy', 1);
 
-  // Rate limiting (global)
-  app.use('/api', apiLimiter);
+  // Rate limiting (global) — exempt webhook endpoint (Razorpay retries aggressively)
+  app.use('/api', (req, res, next) => {
+    if (req.path === '/payment/webhook') return next();
+    return apiLimiter(req, res, next);
+  });
 
   // Serve static uploads
   app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

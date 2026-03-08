@@ -1,5 +1,7 @@
 import { Prisma } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 import { prisma, cache, AppError } from '../lib/index.js';
+import { clearGeoCache } from '../middlewares/geoValidation.js';
 import type { UpdateRestaurantInput } from '../validators/index.js';
 
 /** Generate URL-friendly slug from restaurant name */
@@ -26,7 +28,6 @@ export const restaurantService = {
         name: true,
         slug: true,
         description: true,
-        logo: true,
         coverImage: true,
         address: true,
         phone: true,
@@ -36,6 +37,9 @@ export const restaurantService = {
         taxRate: true,
         isActive: true,
         settings: true,
+        latitude: true,
+        longitude: true,
+        geoFenceRadius: true,
       },
     });
 
@@ -47,9 +51,15 @@ export const restaurantService = {
       throw AppError.forbidden('Restaurant is not active');
     }
 
-    await cache.set(cacheKey, restaurant, cache.ttl.long);
+    const { latitude, longitude, geoFenceRadius, ...publicData } = restaurant;
+    const result = {
+      ...publicData,
+      geoFenceEnabled: latitude != null && longitude != null && (geoFenceRadius ?? 0) > 0,
+    };
 
-    return restaurant;
+    await cache.set(cacheKey, result, cache.ttl.long);
+
+    return result;
   },
 
   async getById(id: string) {
@@ -60,7 +70,6 @@ export const restaurantService = {
         name: true,
         slug: true,
         description: true,
-        logo: true,
         coverImage: true,
         address: true,
         phone: true,
@@ -70,6 +79,9 @@ export const restaurantService = {
         taxRate: true,
         isActive: true,
         settings: true,
+        latitude: true,
+        longitude: true,
+        geoFenceRadius: true,
         createdAt: true,
         _count: {
           select: {
@@ -128,6 +140,11 @@ export const restaurantService = {
     // Invalidate new slug cache
     await cache.del(cache.keys.restaurant(restaurant.slug));
 
+    // Clear geo-fence cache if geo fields changed
+    if (input.latitude !== undefined || input.longitude !== undefined || input.geoFenceRadius !== undefined) {
+      clearGeoCache(id);
+    }
+
     return restaurant;
   },
 
@@ -139,6 +156,16 @@ export const restaurantService = {
 
     if (!existing) {
       throw AppError.notFound('Restaurant');
+    }
+
+    // Hash lockPin with bcrypt before saving (if provided as a raw 6-digit PIN)
+    if (typeof settings.lockPin === 'string' && /^\d{6}$/.test(settings.lockPin)) {
+      settings.lockPin = await bcrypt.hash(settings.lockPin, 10);
+    }
+
+    // If razorpayKeySecret is the masked value from GET, don't overwrite the real secret
+    if (typeof settings.razorpayKeySecret === 'string' && settings.razorpayKeySecret.startsWith('••••')) {
+      delete settings.razorpayKeySecret;
     }
 
     const mergedSettings = {
@@ -157,9 +184,50 @@ export const restaurantService = {
     return restaurant;
   },
 
-  async getDashboardStats(restaurantId: string) {
+  async verifyPin(restaurantId: string, pin: string): Promise<boolean> {
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: { settings: true },
+    });
+
+    if (!restaurant) {
+      throw AppError.notFound('Restaurant');
+    }
+
+    const settings = (restaurant.settings as Record<string, unknown>) || {};
+    const storedPin = settings.lockPin as string | undefined;
+
+    if (!storedPin) {
+      throw AppError.badRequest('No lock PIN is configured');
+    }
+
+    // Detect whether the stored value is a bcrypt hash ($2a$, $2b$, $2y$)
+    const isBcryptHash = /^\$2[aby]\$/.test(storedPin);
+
+    if (isBcryptHash) {
+      return bcrypt.compare(pin, storedPin);
+    }
+
+    // Legacy plaintext PIN — compare directly, then migrate to bcrypt
+    if (pin === storedPin) {
+      const hashed = await bcrypt.hash(pin, 10);
+      await prisma.restaurant.update({
+        where: { id: restaurantId },
+        data: {
+          settings: { ...settings, lockPin: hashed },
+        },
+      });
+      return true;
+    }
+
+    return false;
+  },
+
+  async getDashboardStats(restaurantId: string, branchId?: string | null) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+
+    const branchFilter = branchId ? { branchId } : {};
 
     const [
       todayOrders,
@@ -170,12 +238,14 @@ export const restaurantService = {
       prisma.order.count({
         where: {
           restaurantId,
+          ...branchFilter,
           createdAt: { gte: today },
         },
       }),
       prisma.order.aggregate({
         where: {
           restaurantId,
+          ...branchFilter,
           createdAt: { gte: today },
           status: { in: ['COMPLETED'] },
         },
@@ -184,6 +254,7 @@ export const restaurantService = {
       prisma.order.count({
         where: {
           restaurantId,
+          ...branchFilter,
           status: { in: ['PENDING', 'PREPARING'] },
         },
       }),
@@ -191,6 +262,7 @@ export const restaurantService = {
         by: ['status'],
         where: {
           restaurantId,
+          ...branchFilter,
         },
         _count: true,
       }),

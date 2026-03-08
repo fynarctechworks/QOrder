@@ -28,12 +28,12 @@ const SM: Record<OrderStatus, {
 }> = {
   pending:         { label: 'Pending',         dot: 'bg-amber-500',   bg: 'bg-amber-50',   text: 'text-amber-700' },
   preparing:       { label: 'Preparing',       dot: 'bg-violet-500',  bg: 'bg-violet-50',  text: 'text-violet-700' },
-  payment_pending: { label: 'Payment Pending', dot: 'bg-emerald-500', bg: 'bg-emerald-50', text: 'text-emerald-700' },
+  payment_pending: { label: 'Payment Pending', dot: 'bg-primary',     bg: 'bg-primary/10', text: 'text-primary' },
   completed:       { label: 'Completed',       dot: 'bg-gray-400',    bg: 'bg-gray-100',   text: 'text-gray-600' },
   cancelled:       { label: 'Cancelled',       dot: 'bg-red-500',     bg: 'bg-red-50',     text: 'text-red-700' },
 };
 
-const DONUT_COLORS = ['#1F3D36', '#2A5248', '#A7D7A2', '#6B7280', '#D1D5DB'];
+const DONUT_COLORS = ['#FF660E', '#E55A0B', '#FF8040', '#6B7280', '#D1D5DB'];
 
 const CHART_GRADIENT_ID = 'dashRevenueGradient';
 
@@ -91,14 +91,13 @@ export default function DashboardPage() {
       if (order?.tableId) {
         qc.invalidateQueries({ queryKey: ['runningTables'] });
       }
-      toast('New order received!', { icon: '🔔', duration: 5000 });
-      const audio = new Audio('/notification.mp3');
-      audio.play().catch(() => {});
+      toast('New order received!', { icon: '🔔', duration: 3000 });
     });
     const u2 = onOrderStatusUpdate(() => {
       qc.invalidateQueries({ queryKey: ['orders'] });
       qc.invalidateQueries({ queryKey: ['analytics'] });
       qc.invalidateQueries({ queryKey: ['runningTables'] });
+      qc.invalidateQueries({ queryKey: ['tables'] });
     });
     return () => { u1(); u2(); };
   }, [onNewOrder, onOrderStatusUpdate, qc]);
@@ -186,10 +185,10 @@ export default function DashboardPage() {
               {pendingOrders.length} pending
             </span>
           )}
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-semibold">
             <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary/60 opacity-75" />
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary" />
             </span>
             Live
           </span>
@@ -216,7 +215,7 @@ export default function DashboardPage() {
             value={formatCurrency(analytics?.totalRevenue ?? 0)}
             trend={revenueTrend ? { pct: revenueTrend.pct, up: revenueTrend.up } : undefined}
             sub={revenueTrend ? `${revenueTrend.up ? '+' : '-'}${formatCurrency(revenueTrend.diff)} than yesterday` : `${analytics?.totalOrders ?? 0} orders`}
-            iconBg="bg-emerald-500"
+            iconBg="bg-primary"
             iconColor="text-white"
             delay={0}
           />
@@ -327,8 +326,8 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-[15px] font-semibold text-text-primary">Order Status</h3>
                 <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary/60 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
                 </span>
               </div>
               <div className="space-y-3">
@@ -519,7 +518,7 @@ function StatCard({
         </div>
         {trend && (
           <span className={`inline-flex items-center gap-0.5 px-2 py-1 rounded-lg text-[11px] font-bold ${
-            trend.up ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'
+            trend.up ? 'bg-primary/10 text-primary' : 'bg-red-50 text-red-500'
           }`}>
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
@@ -559,8 +558,8 @@ function RevenueAreaChart({
         <AreaChart data={data}>
           <defs>
             <linearGradient id={CHART_GRADIENT_ID} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#1F3D36" stopOpacity={0.2} />
-              <stop offset="100%" stopColor="#1F3D36" stopOpacity={0.02} />
+              <stop offset="0%" stopColor="#FF660E" stopOpacity={0.2} />
+              <stop offset="100%" stopColor="#FF660E" stopOpacity={0.02} />
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
@@ -571,9 +570,9 @@ function RevenueAreaChart({
           <ReTooltip contentStyle={TOOLTIP_STYLE}
             formatter={(value: number) => [formatCurrency(value), 'Revenue']}
             labelFormatter={(label) => new Date(label).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })} />
-          <Area type="monotone" dataKey="revenue" stroke="#1F3D36" strokeWidth={2.5}
+          <Area type="monotone" dataKey="revenue" stroke="#FF660E" strokeWidth={2.5}
             fill={`url(#${CHART_GRADIENT_ID})`} dot={false}
-            activeDot={{ r: 5, fill: '#1F3D36', stroke: '#fff', strokeWidth: 2 }} />
+            activeDot={{ r: 5, fill: '#FF660E', stroke: '#fff', strokeWidth: 2 }} />
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -727,8 +726,8 @@ function ActivityFeed({ orders }: { orders: Order[] }) {
     pending:         { icon: 'M12 8v4l3 3', action: 'New order received', color: 'text-amber-600', bg: 'bg-amber-50' },
     confirmed:       { icon: 'M9 12l2 2 4-4', action: 'Order confirmed', color: 'text-sky-600', bg: 'bg-sky-50' },
     preparing:       { icon: 'M17.657 18.657A8 8 0 016.343 7.343', action: 'Being prepared', color: 'text-violet-600', bg: 'bg-violet-50' },
-    served:          { icon: 'M5 13l4 4L19 7', action: 'Served to table', color: 'text-teal-600', bg: 'bg-teal-50' },
-    payment_pending: { icon: 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z', action: 'Payment pending', color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    served:          { icon: 'M5 13l4 4L19 7', action: 'Served to table', color: 'text-primary', bg: 'bg-orange-50' },
+    payment_pending: { icon: 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z', action: 'Payment pending', color: 'text-primary', bg: 'bg-primary/10' },
     completed:       { icon: 'M5 13l4 4L19 7', action: 'Completed', color: 'text-gray-500', bg: 'bg-gray-50' },
     cancelled:       { icon: 'M6 18L18 6M6 6l12 12', action: 'Cancelled', color: 'text-red-600', bg: 'bg-red-50' },
   };

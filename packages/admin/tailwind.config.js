@@ -7,17 +7,17 @@ export default {
   theme: {
     extend: {
       colors: {
-        background: '#F6F8F5',
+        background: '#FFFFFF',
         surface: '#FFFFFF',
-        'surface-elevated': '#F0F4EE',
-        sidebar: '#E8F1EC',
+        'surface-elevated': '#FFF5EE',
+        sidebar: '#FFFFFF',
         primary: {
-          DEFAULT: '#1F3D36',
-          hover: '#17322C',
-          light: '#2A5248',
+          DEFAULT: '#FF660E',
+          hover: '#E55A0B',
+          light: '#FF8040',
           foreground: '#FFFFFF'
         },
-        accent: '#A7D7A2',
+        accent: '#FFB088',
         success: {
           DEFAULT: '#22C55E',
           light: '#4ADE80'

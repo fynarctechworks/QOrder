@@ -15,8 +15,11 @@ import { getCategoryIcon, getCategoryImage } from '../utils/categoryData';
 import { formatPrice } from '../utils/formatPrice';
 import type { MenuItem, SelectedCustomization } from '../types';
 import { resolveImg } from '../utils/resolveImg';
+import LanguageSwitcher from '../components/LanguageSwitcher';
+import { useTranslation } from 'react-i18next';
 
 export default function MenuPage() {
+  const { t, i18n } = useTranslation();
   const { restaurant, table, isLoading: isContextLoading, error } = useRestaurant();
   const { restaurantSlug, tableId } = useParams<{ restaurantSlug: string; tableId: string }>();
   const navigate = useNavigate();
@@ -32,15 +35,16 @@ export default function MenuPage() {
   const updateItemQuantity = useCartStore((s) => s.updateItemQuantity);
 
   // Fetch data
+  const branchId = table?.branchId;
   const { data: categories = [], isLoading: isCategoriesLoading } = useQuery({
-    queryKey: ['categories', restaurant?.id],
-    queryFn: () => restaurantService.getCategories(restaurant!.id),
+    queryKey: ['categories', restaurant?.id, branchId, i18n.language],
+    queryFn: () => restaurantService.getCategories(restaurant!.id, branchId),
     enabled: !!restaurant?.id,
   });
 
   const { data: menuItems = [], isLoading: isMenuLoading } = useQuery({
-    queryKey: ['menu', restaurant?.id],
-    queryFn: () => restaurantService.getMenuItems(restaurant!.id),
+    queryKey: ['menu', restaurant?.id, branchId, i18n.language],
+    queryFn: () => restaurantService.getMenuItems(restaurant!.id, branchId),
     enabled: !!restaurant?.id,
   });
 
@@ -127,7 +131,7 @@ export default function MenuPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
           </div>
-          <h2 className="text-lg font-semibold text-text-primary mb-2">Something went wrong</h2>
+          <h2 className="text-lg font-semibold text-text-primary mb-2">{t('menu.somethingWrong')}</h2>
           <p className="text-text-secondary">{error.message || 'Unable to load menu. Please try again.'}</p>
         </div>
       </div>
@@ -138,8 +142,8 @@ export default function MenuPage() {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="card p-6 text-center max-w-sm">
-          <h2 className="text-lg font-semibold text-text-primary mb-2">Restaurant Not Found</h2>
-          <p className="text-text-secondary">The restaurant you're looking for doesn't exist.</p>
+          <h2 className="text-lg font-semibold text-text-primary mb-2">{t('menu.restaurantNotFound')}</h2>
+          <p className="text-text-secondary">{t('menu.restaurantNotFoundDesc')}</p>
         </div>
       </div>
     );
@@ -153,22 +157,35 @@ export default function MenuPage() {
         <div className="bg-primary">
           <div className="px-5 pt-4 pb-4 flex items-center justify-between">
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-white/70 font-medium tracking-wide uppercase">Now Serving</p>
+              <p className="text-xs text-white/70 font-medium tracking-wide uppercase">{t('menu.nowServing')}</p>
               <h1 className="text-lg font-extrabold text-white tracking-tight truncate" style={{ fontFamily: "'Modern Negra', serif" }}>
                 {restaurant.name}
               </h1>
               {table && (
                 <p className="text-sm text-white/70 font-medium">
-                  Table {table.number}
+                  {t('menu.table', { number: table.number })}
                 </p>
               )}
             </div>
+
+            {/* Language / Group Order / Cart icons */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+            <LanguageSwitcher />
+            <button
+              onClick={() => navigate(`/r/${restaurantSlug}/t/${tableId}/group/create`)}
+              aria-label="Group Order"
+              className="relative w-10 h-10 flex items-center justify-center rounded-full bg-white/15 transition-colors"
+            >
+              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </button>
 
             {/* Cart icon */}
             <button
               onClick={() => navigate(`/r/${restaurantSlug}/t/${tableId}/cart`)}
               aria-label="View cart"
-              className="relative w-10 h-10 flex items-center justify-center rounded-full bg-white/15 transition-colors flex-shrink-0"
+              className="relative w-10 h-10 flex items-center justify-center rounded-full bg-white/15 transition-colors"
             >
               <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -179,6 +196,7 @@ export default function MenuPage() {
                 </span>
               )}
             </button>
+            </div>
           </div>
         </div>
 
@@ -191,7 +209,7 @@ export default function MenuPage() {
             <input
               ref={searchInputRef}
               type="text"
-              placeholder={`Search for dishes...`}
+              placeholder={t('menu.searchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onFocus={() => setIsSearchFocused(true)}
@@ -212,7 +230,7 @@ export default function MenuPage() {
           <div className="flex items-center gap-2 mt-3">
             {(['all', 'veg', 'non-veg'] as const).map((filter) => {
               const isActive = dietFilter === filter;
-              const label = filter === 'all' ? 'All' : filter === 'veg' ? 'Veg' : 'Non-Veg';
+              const label = filter === 'all' ? t('menu.all') : filter === 'veg' ? t('menu.veg') : t('menu.nonVeg');
               const dotColor = filter === 'veg' ? 'bg-emerald-600' : filter === 'non-veg' ? 'bg-red-600' : '';
               return (
                 <button
@@ -284,7 +302,7 @@ export default function MenuPage() {
             {/* Popular Items */}
             {popularItems.length > 0 && (
               <section className="px-5 pb-4">
-                <h2 className="text-lg font-extrabold text-text-primary mb-3">Popular Dishes</h2>
+                <h2 className="text-lg font-extrabold text-text-primary mb-3">{t('menu.popularDishes')}</h2>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                   {popularItems.map((item) => {
                     const cartItem = cartItems.find((ci) => ci.menuItem.id === item.id);
@@ -359,7 +377,7 @@ export default function MenuPage() {
                           )}
                           {!item.isAvailable && (
                             <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                              <span className="text-white text-xs font-bold bg-black/50 px-2 py-0.5 rounded-full">Sold Out</span>
+                              <span className="text-white text-xs font-bold bg-black/50 px-2 py-0.5 rounded-full">{t('menu.soldOut')}</span>
                             </div>
                           )}
                         </div>
@@ -387,18 +405,18 @@ export default function MenuPage() {
         {searchQuery.trim() && (
           <div className="px-5 pt-4 pb-4">
             <p className="text-sm text-text-secondary mb-2">
-              {searchResults.length} result{searchResults.length !== 1 ? 's' : ''} for "<span className="font-semibold text-text-primary">{searchQuery}</span>"
+              {t('menu.searchResultCount', { count: searchResults.length })} "<span className="font-semibold text-text-primary">{searchQuery}</span>"
             </p>
             {searchResults.length === 0 ? (
               <div className="text-center py-16">
                 <div className="text-5xl mb-4">🔍</div>
-                <h3 className="text-lg font-semibold text-text-primary mb-2">No items found</h3>
-                <p className="text-text-secondary text-sm">Try a different search term</p>
+                <h3 className="text-lg font-semibold text-text-primary mb-2">{t('menu.noItemsFound')}</h3>
+                <p className="text-text-secondary text-sm">{t('menu.tryDifferentSearch')}</p>
                 <button
                   onClick={() => setSearchQuery('')}
                   className="mt-4 px-5 py-2.5 bg-primary text-white text-sm font-semibold rounded-xl hover:bg-primary-hover transition-colors"
                 >
-                  Clear search
+                  {t('menu.clearSearch')}
                 </button>
               </div>
             ) : (
@@ -421,7 +439,7 @@ export default function MenuPage() {
                       )}
                       {!item.isAvailable && (
                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                          <span className="text-white text-xs font-bold bg-black/50 px-2 py-0.5 rounded-full">Sold Out</span>
+                          <span className="text-white text-xs font-bold bg-black/50 px-2 py-0.5 rounded-full">{t('menu.soldOut')}</span>
                         </div>
                       )}
                     </button>
@@ -436,7 +454,7 @@ export default function MenuPage() {
                           onClick={() => handleQuickAdd(item)}
                           className="w-full py-1.5 bg-white border-2 border-primary rounded-xl text-primary text-xs font-bold shadow-sm hover:bg-primary hover:text-white active:scale-95 transition-all"
                         >
-                          ADD
+                          {t('menu.add')}
                         </button>
                       )}
                     </div>

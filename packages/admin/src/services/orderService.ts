@@ -28,6 +28,7 @@ function mapApiOrder(raw: Record<string, unknown>): Order {
     restaurantId: r.restaurantId as string,
     tableId: (r.tableId as string) || '',
     tableName: (r.tableName as string) || 'Unknown',
+    sectionName: (r.sectionName as string) || null,
     status: (r.status as string).toLowerCase() as OrderStatus,
     items: items.map((item: Record<string, unknown>) => ({
       id: item.id as string,
@@ -39,6 +40,7 @@ function mapApiOrder(raw: Record<string, unknown>): Order {
       totalPrice: Number(item.totalPrice),
       customizations: (item.customizations as Order['items'][0]['customizations']) || [],
       specialInstructions: (item.specialInstructions as string) || undefined,
+      preparedAt: (item.preparedAt as string) || undefined,
     })),
     subtotal: Number(r.subtotal),
     tax: Number(r.tax),
@@ -92,6 +94,16 @@ export const orderService = {
     return mapApiOrder(raw);
   },
 
+  /** Kitchen Display marks food as ready (sets preparedAt, no status change) */
+  async markKitchenReady(orderId: string): Promise<{ orderId: string }> {
+    return apiClient.patch<{ orderId: string }>(`/orders/${orderId}/kitchen-ready`, {});
+  },
+
+  /** Kitchen Display marks a single item as ready */
+  async markItemKitchenReady(orderId: string, itemId: string): Promise<{ orderId: string; itemId: string; allItemsReady: boolean }> {
+    return apiClient.patch<{ orderId: string; itemId: string; allItemsReady: boolean }>(`/orders/${orderId}/items/${itemId}/kitchen-ready`, {});
+  },
+
   async cancel(orderId: string, reason?: string): Promise<Order> {
     const raw = await apiClient.patch<Record<string, unknown>>(`/orders/${orderId}/cancel`, { reason });
     return mapApiOrder(raw);
@@ -106,5 +118,46 @@ export const orderService = {
   }): Promise<Order> {
     const raw = await apiClient.post<Record<string, unknown>>('/orders/cashier', data);
     return mapApiOrder(raw);
+  },
+
+  /**
+   * Download orders as CSV file.
+   * Uses raw fetch so we can handle the blob/file download.
+   */
+  async downloadCsv(dateFrom?: string, dateTo?: string): Promise<void> {
+    const params = new URLSearchParams();
+    if (dateFrom) params.set('dateFrom', dateFrom);
+    if (dateTo) params.set('dateTo', dateTo);
+
+    const token = (await import('../state/authStore')).useAuthStore.getState().accessToken;
+    const baseUrl = apiClient.baseUrl;
+
+    const res = await fetch(`${baseUrl}/orders/export/csv?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'include',
+    });
+
+    if (!res.ok) {
+      throw new Error('Failed to download report');
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `orders_${dateFrom || 'all'}_to_${dateTo || 'now'}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+
+  /**
+   * Send bill via WhatsApp for takeaway orders
+   */
+  async sendWhatsAppBill(orderIds: string[]): Promise<{ sent: boolean; phone?: string }> {
+    return apiClient.post<{ sent: boolean; phone?: string }>(
+      `/orders/${orderIds.join(',')}/whatsapp-bill`, {},
+    );
   },
 };

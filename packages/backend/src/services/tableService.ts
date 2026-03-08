@@ -1,10 +1,16 @@
 import { v4 as uuidv4 } from 'uuid';
 import { prisma, cache, AppError } from '../lib/index.js';
+import { logger } from '../lib/logger.js';
 import type { CreateTableInput, UpdateTableInput } from '../validators/index.js';
 import { TableStatus, OrderStatus } from '@prisma/client';
 
 export const tableService = {
-  async getTables(restaurantId: string) {
+  async getTables(restaurantId: string, branchId?: string | null) {
+    // When branch-filtered, skip cache (branch combos make cache keys complex)
+    if (branchId) {
+      return this.fetchTables(restaurantId, branchId);
+    }
+
     // Try cache first
     const cacheKey = cache.keys.tables(restaurantId);
     const cached = await cache.get<Awaited<ReturnType<typeof this.fetchTables>>>(cacheKey);
@@ -17,18 +23,25 @@ export const tableService = {
     return tables;
   },
 
-  async fetchTables(restaurantId: string) {
+  async fetchTables(restaurantId: string, branchId?: string | null) {
     return prisma.table.findMany({
       where: { 
         restaurantId,
+        ...(branchId ? { branchId } : {}),
       },
       orderBy: [{ number: 'asc' }],
       include: {
+        section: {
+          select: { id: true, name: true, floor: true, sortOrder: true },
+        },
+        branch: {
+          select: { id: true, name: true },
+        },
         _count: {
           select: {
             orders: {
               where: {
-                status: { in: ['PENDING', 'PREPARING', 'PAYMENT_PENDING'] },
+                status: { in: ['PENDING', 'PREPARING', 'READY', 'PAYMENT_PENDING'] },
               },
             },
           },
@@ -49,7 +62,7 @@ export const tableService = {
       include: {
         orders: {
           where: {
-            status: { in: ['PENDING', 'PREPARING', 'PAYMENT_PENDING'] },
+            status: { in: ['PENDING', 'PREPARING', 'READY', 'PAYMENT_PENDING'] },
           },
           orderBy: { createdAt: 'desc' },
           take: 10,
@@ -80,7 +93,6 @@ export const tableService = {
             id: true,
             name: true,
             slug: true,
-            logo: true,
             isActive: true,
           },
         },
@@ -94,10 +106,10 @@ export const tableService = {
     return table;
   },
 
-  async createTable(restaurantId: string, input: CreateTableInput) {
-    // Check if a table with the same number already exists
-    const existing = await prisma.table.findUnique({
-      where: { restaurantId_number: { restaurantId, number: input.number } },
+  async createTable(restaurantId: string, input: CreateTableInput & { branchId?: string | null }) {
+    // Check if a table with the same number already exists in this branch+section
+    const existing = await prisma.table.findFirst({
+      where: { restaurantId, branchId: input.branchId ?? null, sectionId: input.sectionId ?? null, number: input.number },
     });
 
     if (existing) {
@@ -109,8 +121,13 @@ export const tableService = {
 
     const table = await prisma.table.create({
       data: {
-        ...input,
+        number: input.number,
+        name: input.name,
+        capacity: input.capacity,
+        sectionId: input.sectionId ?? null,
+        branchId: input.branchId ?? null,
         qrCode,
+        sessionToken: uuidv4(),
         restaurantId,
       },
     });
@@ -125,7 +142,9 @@ export const tableService = {
     restaurantId: string, 
     count: number, 
     startNumber: number, 
-    capacity: number
+    capacity: number,
+    sectionId?: string | null,
+    branchId?: string | null
   ) {
     const tables = [];
 
@@ -137,7 +156,10 @@ export const tableService = {
         number,
         capacity,
         qrCode,
+        sessionToken: uuidv4(),
         restaurantId,
+        sectionId: sectionId ?? null,
+        branchId: branchId ?? null,
       });
     }
 
@@ -157,10 +179,10 @@ export const tableService = {
     const existing = await prisma.table.findFirst({ where: { id: tableId, restaurantId } });
     if (!existing) throw AppError.notFound('Table');
 
-    // If the number is changing, check for conflicts
+    // If the number is changing, check for conflicts within the same branch+section
     if (input.number && input.number !== existing.number) {
       const conflict = await prisma.table.findFirst({
-        where: { restaurantId, number: input.number, id: { not: tableId } },
+        where: { restaurantId, branchId: existing.branchId ?? null, sectionId: existing.sectionId ?? null, number: input.number, id: { not: tableId } },
       });
       if (conflict) {
         throw AppError.conflict('A table with this number already exists');
@@ -245,10 +267,11 @@ export const tableService = {
   },
 
   // Get table stats for dashboard
-  async getTableStats(restaurantId: string) {
+  async getTableStats(restaurantId: string, branchId?: string | null) {
     const tables = await prisma.table.findMany({
       where: { 
         restaurantId,
+        ...(branchId ? { branchId } : {}),
       },
       select: { status: true },
     });
@@ -274,7 +297,7 @@ export const tableService = {
         name: true,
         orders: {
           where: {
-            status: { in: ['PENDING', 'PREPARING', 'PAYMENT_PENDING'] },
+            status: { in: ['PENDING', 'PREPARING', 'READY', 'PAYMENT_PENDING'] },
           },
           orderBy: { createdAt: 'asc' },
           select: {
@@ -331,7 +354,7 @@ export const tableService = {
 
       for (const item of order.items) {
         allItems.push({
-          name: item.menuItem.name,
+          name: item.menuItem?.name ?? 'Deleted Item',
           quantity: item.quantity,
           unitPrice: Number(item.unitPrice),
           totalPrice: Number(item.totalPrice),
@@ -357,13 +380,14 @@ export const tableService = {
   },
 
   // Get running tables with live billing
-  async getRunningTables(restaurantId: string) {
+  async getRunningTables(restaurantId: string, branchId?: string | null) {
     // Get all tables with active orders in a single optimized query
-    const activeOrderStatuses: OrderStatus[] = ['PENDING', 'PREPARING', 'PAYMENT_PENDING'];
+    const activeOrderStatuses: OrderStatus[] = ['PENDING', 'PREPARING', 'READY', 'PAYMENT_PENDING'];
 
     const tablesWithOrders = await prisma.table.findMany({
       where: {
         restaurantId,
+        ...(branchId ? { branchId } : {}),
         orders: {
           some: {
             status: { in: activeOrderStatuses },
@@ -374,6 +398,9 @@ export const tableService = {
         id: true,
         number: true,
         name: true,
+        section: {
+          select: { id: true, name: true, floor: true },
+        },
         orders: {
           where: {
             status: { in: activeOrderStatuses },
@@ -414,6 +441,8 @@ export const tableService = {
           tableId: table.id,
           tableNumber: table.number,
           tableName: table.name,
+          sectionId: table.section?.id ?? null,
+          sectionName: table.section?.name ?? null,
           invoiceId: null, // TODO: Link to invoice when implemented
           totalAmount,
           orderCount: table.orders.length,
@@ -425,5 +454,61 @@ export const tableService = {
       .filter(Boolean); // Remove null entries
 
     return runningTables;
+  },
+
+  /**
+   * Rotate the session token for a table (called when table is cleared/settled).
+   * This invalidates all existing customer sessions, preventing remote QR abuse.
+   */
+  async rotateSessionToken(tableId: string, restaurantId?: string) {
+    // Expire any active group orders for this table before rotating
+    try {
+      const { groupOrderService } = await import('./groupOrderService.js');
+      await groupOrderService.expireByTable(tableId);
+    } catch (err) {
+      // Non-critical — log and continue
+      logger.warn({ err, tableId }, 'Failed to expire group orders on session reset');
+    }
+
+    const newToken = uuidv4();
+    await prisma.table.update({
+      where: { id: tableId },
+      data: { sessionToken: newToken },
+    });
+    // Eagerly bust Redis cache so any concurrent refetch gets fresh data
+    if (restaurantId) {
+      await cache.del(cache.keys.tables(restaurantId)).catch(() => {});
+    }
+    return newToken;
+  },
+
+  /**
+   * Manually regenerate session token (admin action for suspicious activity).
+   */
+  async regenerateSessionToken(tableId: string, restaurantId: string) {
+    const existing = await prisma.table.findFirst({ where: { id: tableId, restaurantId } });
+    if (!existing) throw AppError.notFound('Table');
+
+    const newToken = uuidv4();
+    const table = await prisma.table.update({
+      where: { id: tableId },
+      data: { sessionToken: newToken },
+    });
+
+    await cache.del(cache.keys.tables(restaurantId));
+    return table;
+  },
+
+  /**
+   * Validate that a session token matches the table's current token.
+   * Returns true if valid, false if expired/mismatched.
+   */
+  async validateSessionToken(tableId: string, sessionToken: string): Promise<boolean> {
+    const table = await prisma.table.findUnique({
+      where: { id: tableId },
+      select: { sessionToken: true },
+    });
+    if (!table || !table.sessionToken) return false;
+    return table.sessionToken === sessionToken;
   },
 };

@@ -1,16 +1,21 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
+
 import {
   AreaChart,
   Area,
   BarChart,
   Bar,
+  PieChart,
+  Pie,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip as ReTooltip,
   ResponsiveContainer,
+  Legend,
 } from 'recharts';
 import { analyticsService } from '../services';
 import { useSocket } from '../context/SocketContext';
@@ -28,8 +33,8 @@ const PERIOD_OPTIONS: { value: Period; label: string }[] = [
 ];
 
 const CHART_COLORS = {
-  primary: '#1F3D36',
-  emerald: '#10B981',
+  primary: '#FF660E',
+  orange: '#FF660E',
   sky: '#0EA5E9',
   violet: '#8B5CF6',
   amber: '#F59E0B',
@@ -38,6 +43,12 @@ const CHART_COLORS = {
 
 const GRADIENT_ID = 'revenueGradient';
 const ORDERS_GRADIENT_ID = 'ordersGradient';
+
+const PIE_COLORS = ['#FF660E', '#0EA5E9', '#8B5CF6', '#F59E0B', '#10B981', '#F43F5E', '#6366F1', '#EC4899'];
+
+const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+type AnalyticsTab = 'overview' | 'advanced';
 
 const TOOLTIP_STYLE = {
   backgroundColor: '#ffffff',
@@ -206,7 +217,7 @@ function TopItemsList({ items }: { items: AnalyticsSummary['topItems'] }) {
                 className="h-full rounded-full"
                 style={{
                   background: idx === 0
-                    ? 'linear-gradient(90deg, #1F3D36, #2A5248)'
+                    ? 'linear-gradient(90deg, #FF660E, #E55A0B)'
                     : idx === 1
                     ? 'linear-gradient(90deg, #6B7280, #4B5563)'
                     : idx === 2
@@ -258,8 +269,8 @@ function PeakHoursChart({ data }: { data: AnalyticsSummary['hourlyData'] }) {
                 }`}
                 style={{
                   background: isPeak
-                    ? 'linear-gradient(180deg, #1F3D36, #2A5248)'
-                    : `linear-gradient(180deg, rgba(31,61,54,${0.25 + intensity * 0.6}), rgba(31,61,54,${0.15 + intensity * 0.5}))`,
+                    ? 'linear-gradient(180deg, #FF660E, #E55A0B)'
+                    : `linear-gradient(180deg, rgba(255,102,14,${0.25 + intensity * 0.6}), rgba(255,102,14,${0.15 + intensity * 0.5}))`,
                 }}
               />
             </motion.div>
@@ -291,7 +302,7 @@ function PeakHoursChart({ data }: { data: AnalyticsSummary['hourlyData'] }) {
           Medium
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded" style={{ background: 'linear-gradient(180deg, #1F3D36, #2A5248)' }} />
+          <span className="w-2.5 h-2.5 rounded" style={{ background: 'linear-gradient(180deg, #FF660E, #E55A0B)' }} />
           Peak
         </span>
       </div>
@@ -305,6 +316,8 @@ export default function AnalyticsPage() {
   const qc = useQueryClient();
   const formatCurrency = useCurrency();
   const [period, setPeriod] = useState<Period>('week');
+  const [tab, setTab] = useState<AnalyticsTab>('overview');
+  const [dateRange, setDateRange] = useState({ startDate: '', endDate: '' });
   const { onNewOrder, onOrderStatusUpdate } = useSocket();
 
   const { data: analytics, isLoading, isError } = useQuery({
@@ -312,6 +325,17 @@ export default function AnalyticsPage() {
     queryFn: () => analyticsService.getSummary({ period }),
     refetchInterval: 15_000,
     staleTime: 0,
+  });
+
+  const { data: advanced, isLoading: advLoading } = useQuery({
+    queryKey: ['analytics', 'advanced', dateRange.startDate, dateRange.endDate],
+    queryFn: () => analyticsService.getAdvanced(
+      dateRange.startDate || dateRange.endDate
+        ? { startDate: dateRange.startDate || undefined, endDate: dateRange.endDate || undefined }
+        : {}
+    ),
+    enabled: tab === 'advanced',
+    staleTime: 30_000,
   });
 
   /* ── Real-time: invalidate analytics on any order change ── */
@@ -326,7 +350,9 @@ export default function AnalyticsPage() {
   }, [onNewOrder, onOrderStatusUpdate, qc]);
 
   // ── Derived ──
-  const revenueTrend = useMemo(() => {
+
+
+const revenueTrend = useMemo(() => {
     if (!analytics?.dailyRevenue || analytics.dailyRevenue.length < 2) return null;
     const rev = analytics.dailyRevenue;
     const prev = rev[rev.length - 2]?.revenue;
@@ -359,26 +385,50 @@ export default function AnalyticsPage() {
           </p>
         </div>
 
-        {/* Period selector */}
-        <div className="inline-flex items-center bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
-          {PERIOD_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => setPeriod(opt.value)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                period === opt.value
-                  ? 'bg-primary text-white shadow-sm'
-                  : 'text-text-secondary hover:text-text-primary hover:bg-gray-50'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-3">
+          {/* Tab selector */}
+          <div className="inline-flex items-center bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
+            {([
+              { value: 'overview' as AnalyticsTab, label: 'Overview' },
+              { value: 'advanced' as AnalyticsTab, label: 'Advanced' },
+            ]).map((t) => (
+              <button
+                key={t.value}
+                onClick={() => setTab(t.value)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  tab === t.value
+                    ? 'bg-gray-900 text-white shadow-sm'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-gray-50'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Period selector (overview only) */}
+          {tab === 'overview' && (
+            <div className="inline-flex items-center bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
+              {PERIOD_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setPeriod(opt.value)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    period === opt.value
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'text-text-secondary hover:text-text-primary hover:bg-gray-50'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
       {/* ── Stat Cards ──────────────────────────────────────── */}
-      {isError ? (
+      {tab === 'overview' && (isError ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
           <p className="text-red-700 font-semibold">Failed to load analytics</p>
           <p className="text-red-500 text-sm mt-1">Please check your connection and try refreshing.</p>
@@ -392,7 +442,7 @@ export default function AnalyticsPage() {
             label="Total Revenue"
             value={formatCurrency(analytics?.totalRevenue ?? 0, { minimumFractionDigits: 0 })}
             sub={revenueTrend ? `${revenueTrend.up ? '↑' : '↓'} ${Math.abs(revenueTrend.pct).toFixed(1)}% vs yesterday` : undefined}
-            iconBg="bg-emerald-500"
+            iconBg="bg-primary"
             delay={0}
           />
           <MetricCard
@@ -419,10 +469,10 @@ export default function AnalyticsPage() {
             delay={0.15}
           />
         </div>
-      )}
+      ))}
 
       {/* ── Charts Grid ─────────────────────────────────────── */}
-      {isLoading ? (
+      {tab === 'overview' && (isLoading ? (
         <ChartsSkeleton />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -556,10 +606,10 @@ export default function AnalyticsPage() {
             <PeakHoursChart data={analytics?.hourlyData ?? []} />
           </ChartCard>
         </div>
-      )}
+      ))}
 
       {/* ── Summary Footer ─────────────────────────────────── */}
-      {!isLoading && analytics && (
+      {tab === 'overview' && !isLoading && analytics && (
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -610,6 +660,219 @@ export default function AnalyticsPage() {
             ))}
           </div>
         </motion.div>
+      )}
+
+      {/* ══════════════ Advanced Analytics Tab ══════════════ */}
+      {tab === 'advanced' && (
+        <>
+          {/* Date range picker */}
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="block text-xs font-medium text-text-muted mb-1">Start Date</label>
+              <input
+                type="date"
+                value={dateRange.startDate}
+                onChange={(e) => setDateRange((d) => ({ ...d, startDate: e.target.value }))}
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-text-muted mb-1">End Date</label>
+              <input
+                type="date"
+                value={dateRange.endDate}
+                onChange={(e) => setDateRange((d) => ({ ...d, endDate: e.target.value }))}
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+              />
+            </div>
+            {(dateRange.startDate || dateRange.endDate) && (
+              <button
+                onClick={() => setDateRange({ startDate: '', endDate: '' })}
+                className="px-3 py-2 text-sm text-text-muted hover:text-text-primary transition-colors"
+              >
+                Reset
+              </button>
+            )}
+            <p className="text-xs text-text-muted ml-auto">
+              {!dateRange.startDate && !dateRange.endDate ? 'Showing last 30 days' : 'Custom range'}
+            </p>
+          </div>
+
+          {advLoading ? (
+            <ChartsSkeleton />
+          ) : advanced ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+              {/* ── Category Revenue (horizontal bar) ── */}
+              <ChartCard title="Revenue by Category" subtitle="Category-wise revenue breakdown">
+                {advanced.categoryRevenue.length === 0 ? (
+                  <p className="text-sm text-text-muted text-center py-12">No data available</p>
+                ) : (
+                  <div className="h-72 -ml-2">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={advanced.categoryRevenue} layout="vertical" barSize={20}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
+                        <XAxis
+                          type="number"
+                          stroke="#94A3B8"
+                          fontSize={11}
+                          tickLine={false}
+                          axisLine={false}
+                          tickFormatter={(v: number) => {
+                            if (v >= 1000) return `${(v / 1000).toFixed(0)}k`;
+                            return String(v);
+                          }}
+                        />
+                        <YAxis
+                          type="category"
+                          dataKey="categoryName"
+                          stroke="#94A3B8"
+                          fontSize={11}
+                          tickLine={false}
+                          axisLine={false}
+                          width={100}
+                        />
+                        <ReTooltip
+                          contentStyle={TOOLTIP_STYLE}
+                          formatter={(value: number) => [formatCurrency(value), 'Revenue']}
+                        />
+                        <Bar dataKey="totalRevenue" fill={CHART_COLORS.primary} radius={[0, 6, 6, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </ChartCard>
+
+              {/* ── Payment Methods (pie chart) ── */}
+              <ChartCard title="Payment Methods" subtitle="Breakdown by payment type">
+                {advanced.paymentMethods.length === 0 ? (
+                  <p className="text-sm text-text-muted text-center py-12">No data available</p>
+                ) : (
+                  <div className="h-72 flex items-center justify-center">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={advanced.paymentMethods}
+                          dataKey="totalAmount"
+                          nameKey="method"
+                          cx="50%"
+                          cy="50%"
+                          outerRadius={100}
+                          innerRadius={50}
+                          paddingAngle={3}
+                          label={({ method, percent }: { method: string; percent: number }) =>
+                            `${method} ${(percent * 100).toFixed(0)}%`
+                          }
+                          labelLine={false}
+                        >
+                          {advanced.paymentMethods.map((_, idx) => (
+                            <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <ReTooltip
+                          contentStyle={TOOLTIP_STYLE}
+                          formatter={(value: number, name: string) => [formatCurrency(value), name]}
+                        />
+                        <Legend
+                          verticalAlign="bottom"
+                          height={36}
+                          formatter={(value: string) => (
+                            <span className="text-xs text-text-secondary">{value}</span>
+                          )}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </ChartCard>
+
+              {/* ── Weekday Breakdown (bar chart) ── */}
+              <ChartCard title="Orders by Day of Week" subtitle="Weekday performance pattern">
+                {advanced.weekdayBreakdown.length === 0 ? (
+                  <p className="text-sm text-text-muted text-center py-12">No data available</p>
+                ) : (
+                  <div className="h-64 -ml-2">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={advanced.weekdayBreakdown.map((d) => ({
+                          ...d,
+                          day: WEEKDAY_NAMES[d.dayOfWeek] || d.dayName,
+                        }))}
+                        barSize={32}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                        <XAxis dataKey="day" stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
+                        <ReTooltip
+                          contentStyle={TOOLTIP_STYLE}
+                          formatter={(value: number, name: string) => [
+                            name === 'totalRevenue' ? formatCurrency(value) : value,
+                            name === 'totalRevenue' ? 'Revenue' : 'Orders',
+                          ]}
+                        />
+                        <Bar dataKey="totalOrders" fill={CHART_COLORS.sky} radius={[6, 6, 0, 0]} name="totalOrders" />
+                        <Bar dataKey="totalRevenue" fill={CHART_COLORS.primary} radius={[6, 6, 0, 0]} name="totalRevenue" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </ChartCard>
+
+              {/* ── Order Status Breakdown (donut) ── */}
+              <ChartCard title="Order Status" subtitle="Distribution of order statuses">
+                {advanced.orderStatusBreakdown.length === 0 ? (
+                  <p className="text-sm text-text-muted text-center py-12">No data available</p>
+                ) : (
+                  <div className="space-y-4">
+                    {(() => {
+                      const total = advanced.orderStatusBreakdown.reduce((s, o) => s + o.count, 0);
+                      const statusColors: Record<string, string> = {
+                        pending: '#F59E0B',
+                        confirmed: '#0EA5E9',
+                        preparing: '#8B5CF6',
+                        ready: '#10B981',
+                        delivered: '#22C55E',
+                        completed: '#059669',
+                        cancelled: '#EF4444',
+                      };
+                      return advanced.orderStatusBreakdown.map((item, idx) => {
+                        const pct = total > 0 ? (item.count / total) * 100 : 0;
+                        const color = statusColors[item.status] || PIE_COLORS[idx % PIE_COLORS.length];
+                        return (
+                          <motion.div
+                            key={item.status}
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: idx * 0.05 }}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="flex items-center gap-2">
+                                <span className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
+                                <span className="text-sm font-medium text-text-primary capitalize">{item.status}</span>
+                              </div>
+                              <span className="text-sm text-text-muted tabular-nums">
+                                {item.count} ({pct.toFixed(1)}%)
+                              </span>
+                            </div>
+                            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                              <motion.div
+                                initial={{ width: 0 }}
+                                animate={{ width: `${pct}%` }}
+                                transition={{ duration: 0.6, delay: 0.1 + idx * 0.05 }}
+                                className="h-full rounded-full"
+                                style={{ backgroundColor: color }}
+                              />
+                            </div>
+                          </motion.div>
+                        );
+                      });
+                    })()}
+                  </div>
+                )}
+              </ChartCard>
+            </div>
+          ) : null}
+        </>
       )}
     </div>
   );

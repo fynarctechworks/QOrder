@@ -1,10 +1,11 @@
 // User & Auth Types
 export interface User {
   id: string;
-  email: string;
+  email?: string | null;
   username: string;
   name: string;
   role: UserRole;
+  roleTitle?: string | null;
   restaurantId: string;
   createdAt: string;
 }
@@ -21,7 +22,6 @@ export interface Restaurant {
   slug: string;
   name: string;
   description: string;
-  logoUrl: string;
   coverImageUrl: string;
   currency: string;
   isOpen: boolean;
@@ -37,6 +37,9 @@ export interface RestaurantSettings {
 }
 
 // Menu Types
+/** Translations JSON shape: { "hi": { "name": "...", "description": "..." }, "ta": {...}, ... } */
+export type TranslationsMap = Record<string, Record<string, string>>;
+
 export interface Category {
   id: string;
   restaurantId: string;
@@ -45,6 +48,7 @@ export interface Category {
   sortOrder: number;
   image?: string;
   isActive: boolean;
+  translations?: TranslationsMap;
 }
 
 export type DietType = 'VEG' | 'NON_VEG' | 'EGG';
@@ -68,6 +72,7 @@ export interface MenuItem {
   badge?: string;
   dietType?: DietType | null;
   allowSpecialInstructions?: boolean;
+  translations?: TranslationsMap;
 }
 
 export interface CustomizationGroup {
@@ -77,6 +82,7 @@ export interface CustomizationGroup {
   minSelections: number;
   maxSelections: number;
   options: CustomizationOption[];
+  translations?: TranslationsMap;
 }
 
 export interface CustomizationOption {
@@ -85,6 +91,7 @@ export interface CustomizationOption {
   priceModifier: number;
   isDefault: boolean;
   isAvailable: boolean;
+  translations?: TranslationsMap;
 }
 
 // Order Types
@@ -94,6 +101,7 @@ export interface Order {
   restaurantId: string;
   tableId: string;
   tableName: string;
+  sectionName?: string | null;
   items: OrderItem[];
   status: OrderStatus;
   subtotal: number;
@@ -119,6 +127,7 @@ export interface OrderItem {
   totalPrice: number;
   customizations: OrderItemCustomization[];
   specialInstructions?: string;
+  preparedAt?: string;
 }
 
 export interface OrderItemCustomization {
@@ -143,10 +152,26 @@ export interface Table {
   capacity: number;
   status: TableStatus;
   qrCode: string;
+  sessionToken?: string | null;
   activeOrders: number;
+  sectionId?: string | null;
+  section?: { id: string; name: string; floor?: number | null; sortOrder: number } | null;
+  branchId?: string | null;
+  branch?: { id: string; name: string } | null;
 }
 
 export type TableStatus = 'available' | 'occupied' | 'reserved' | 'cleaning';
+
+// Section Types
+export interface Section {
+  id: string;
+  restaurantId: string;
+  name: string;
+  floor?: number | null;
+  sortOrder: number;
+  isActive: boolean;
+  _count?: { tables: number };
+}
 
 // Analytics Types
 export interface DailyRevenue {
@@ -176,6 +201,40 @@ export interface AnalyticsSummary {
   dailyRevenue: DailyRevenue[];
   topItems: TopItem[];
   hourlyData: HourlyData[];
+}
+
+// Advanced Analytics Types
+export interface CategoryRevenue {
+  categoryId: string;
+  categoryName: string;
+  totalRevenue: number;
+  totalQuantity: number;
+}
+
+export interface PaymentMethodBreakdown {
+  method: string;
+  count: number;
+  totalAmount: number;
+}
+
+export interface WeekdayBreakdown {
+  dayOfWeek: number;
+  dayName: string;
+  totalOrders: number;
+  totalRevenue: number;
+}
+
+export interface OrderStatusBreakdown {
+  status: string;
+  count: number;
+  revenue: number;
+}
+
+export interface AdvancedAnalytics {
+  categoryRevenue: CategoryRevenue[];
+  paymentMethods: PaymentMethodBreakdown[];
+  weekdayBreakdown: WeekdayBreakdown[];
+  orderStatusBreakdown: OrderStatusBreakdown[];
 }
 
 // API Types

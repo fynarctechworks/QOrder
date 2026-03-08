@@ -2,6 +2,7 @@ import { Server as HTTPServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import jwt from 'jsonwebtoken';
+import { z } from 'zod';
 import { config } from '../config/index.js';
 import { pubClient, subClient, redis } from '../lib/redis.js';
 import { prisma } from '../lib/index.js';
@@ -13,6 +14,8 @@ import type {
   SocketData,
   AccessTokenPayload,
   PaymentRequestPayload,
+  GroupParticipantPayload,
+  GroupCartUpdatePayload,
 } from '../types/index.js';
 
 let io: Server<ClientToServerEvents, ServerToClientEvents, InterServerEvents, SocketData> | null = null;
@@ -35,6 +38,17 @@ async function isRateLimited(key: string): Promise<boolean> {
   }
 }
 
+// Socket event payload schemas
+const uuidSchema = z.string().uuid();
+const paymentRequestSchema = z.object({
+  tableId: z.string().uuid(),
+  restaurantId: z.string().uuid(),
+  tableName: z.string().max(100).optional(),
+  orderId: z.string().uuid().optional(),
+  amount: z.number().positive().optional(),
+  method: z.string().max(20).optional(),
+}).strict();
+
 export function initializeSocket(httpServer: HTTPServer) {
   io = new Server<ClientToServerEvents, ServerToClientEvents, InterServerEvents, SocketData>(
     httpServer,
@@ -46,6 +60,7 @@ export function initializeSocket(httpServer: HTTPServer) {
       transports: ['websocket', 'polling'],
       pingTimeout: 60000,
       pingInterval: 25000,
+      maxHttpBufferSize: 1e6, // 1 MB
     }
   );
 
@@ -78,6 +93,10 @@ export function initializeSocket(httpServer: HTTPServer) {
 
     // ── Join restaurant room (admin only — requires valid JWT) ──
     socket.on('join:restaurant', (restaurantId: string) => {
+      if (!uuidSchema.safeParse(restaurantId).success) {
+        socket.emit('error', 'Invalid restaurant ID');
+        return;
+      }
       if (!socket.data.userId) {
         socket.emit('error', 'Authentication required');
         return;
@@ -89,15 +108,43 @@ export function initializeSocket(httpServer: HTTPServer) {
       }
       socket.join(`restaurant:${restaurantId}`);
       logger.debug({ socketId: socket.id, restaurantId }, 'Joined restaurant room');
+      // Send current KDS status to the newly joined socket
+      (async () => {
+        const room = await io!.in(`kds:${restaurantId}`).fetchSockets();
+        const seen = new Set<string>();
+        const users: { id: string; name: string; role: string; roleTitle?: string }[] = [];
+        for (const s of room) {
+          const uid = s.data.userId;
+          if (uid && !seen.has(uid)) {
+            seen.add(uid);
+            users.push({ id: uid, name: s.data.userName || 'Unknown', role: s.data.userRole || 'STAFF', roleTitle: s.data.userRoleTitle || undefined });
+          }
+        }
+        socket.emit('kds:status', { count: room.length, users });
+      })();
     });
 
     // ── Join table room (customers — validate table exists and has active session) ──
     socket.on('join:table', async (tableId: string) => {
+      if (!uuidSchema.safeParse(tableId).success) {
+        socket.emit('error', 'Invalid table ID');
+        return;
+      }
       try {
-        // Validate table exists
+        // Validate table exists and has an active session
         const table = await prisma.table.findUnique({ where: { id: tableId } });
         if (!table) {
           socket.emit('error', 'Table not found');
+          return;
+        }
+
+        // Verify table has an active session before allowing join
+        const activeSession = await prisma.tableSession.findFirst({
+          where: { tableId, status: 'ACTIVE' },
+          select: { id: true },
+        });
+        if (!activeSession) {
+          socket.emit('error', 'No active session for this table');
           return;
         }
 
@@ -149,18 +196,43 @@ export function initializeSocket(httpServer: HTTPServer) {
       socket.leave(`table:${tableId}`);
     });
 
+    // ── Join / leave group order room (customers) ──
+    socket.on('join:group', (code: string) => {
+      socket.join(`group:${code}`);
+      logger.debug({ socketId: socket.id, groupCode: code }, 'Joined group room');
+    });
+
+    socket.on('leave:group', (code: string) => {
+      socket.leave(`group:${code}`);
+      logger.debug({ socketId: socket.id, groupCode: code }, 'Left group room');
+    });
+
     // ── Payment request (customer → admin) — validated & rate-limited ──
     socket.on('payment:request', async (data: PaymentRequestPayload) => {
+      // Validate payload shape
+      const parsed = paymentRequestSchema.safeParse(data);
+      if (!parsed.success) {
+        socket.emit('error', 'Invalid payment request data');
+        return;
+      }
+      const validData = parsed.data as PaymentRequestPayload;
+
       // Rate-limit by socket id
       if (await isRateLimited(`payment:${socket.id}`)) {
         socket.emit('error', 'Too many payment requests. Please wait.');
         return;
       }
 
+      // Verify the socket user is connected to this table
+      if (socket.data.tableId && socket.data.tableId !== validData.tableId) {
+        socket.emit('error', 'Unauthorized: not connected to this table');
+        return;
+      }
+
       try {
         // Validate the table belongs to the claimed restaurant and has an active session
         const table = await prisma.table.findFirst({
-          where: { id: data.tableId, restaurantId: data.restaurantId },
+          where: { id: validData.tableId, restaurantId: validData.restaurantId },
         });
 
         if (!table) {
@@ -169,7 +241,7 @@ export function initializeSocket(httpServer: HTTPServer) {
         }
 
         const activeSession = await prisma.tableSession.findFirst({
-          where: { tableId: data.tableId, status: 'ACTIVE' },
+          where: { tableId: validData.tableId, status: 'ACTIVE' },
         });
 
         if (!activeSession) {
@@ -177,13 +249,33 @@ export function initializeSocket(httpServer: HTTPServer) {
           return;
         }
 
-        logger.info({ socketId: socket.id, tableId: data.tableId, restaurantId: data.restaurantId }, 'Payment request received');
-        // Forward to the restaurant's admin room
-        io!.to(`restaurant:${data.restaurantId}`).emit('payment:request', data);
+        logger.info({ socketId: socket.id, tableId: validData.tableId, restaurantId: validData.restaurantId }, 'Payment request received');
+        // Forward validated data to the restaurant's admin room
+        io!.to(`restaurant:${validData.restaurantId}`).emit('payment:request', validData as PaymentRequestPayload);
       } catch (err) {
         logger.error({ err }, 'Failed to validate payment request');
         socket.emit('error', 'Payment request failed');
       }
+    });
+
+    // ── Sync trigger (admin → all customers in restaurant) ──
+    socket.on('sync:trigger', async () => {
+      if (!socket.data.userId || !socket.data.restaurantId) {
+        socket.emit('error', 'Authentication required');
+        return;
+      }
+      // Verify user has admin-level access
+      const user = await prisma.user.findUnique({
+        where: { id: socket.data.userId },
+        select: { role: true },
+      });
+      if (!user || !['OWNER', 'ADMIN', 'MANAGER'].includes(user.role)) {
+        socket.emit('error', 'Insufficient permissions');
+        return;
+      }
+      logger.info({ socketId: socket.id, restaurantId: socket.data.restaurantId }, 'Sync triggered by admin');
+      // Broadcast refresh to all clients in the restaurant room
+      io!.to(`restaurant:${socket.data.restaurantId}`).emit('sync:refresh');
     });
 
     // ── Payment acknowledge (admin → customer) ──
@@ -197,8 +289,66 @@ export function initializeSocket(httpServer: HTTPServer) {
       io!.to(`table:${tableId}`).emit('payment:acknowledged', { tableId });
     });
 
-    socket.on('disconnect', (reason) => {
+    // ── Helper to build KDS status payload ──
+    async function buildKdsStatus(restaurantId: string) {
+      const room = await io!.in(`kds:${restaurantId}`).fetchSockets();
+      // Deduplicate by userId (same user could have multiple KDS tabs)
+      const seen = new Set<string>();
+      const users: { id: string; name: string; role: string; roleTitle?: string }[] = [];
+      for (const s of room) {
+        const uid = s.data.userId;
+        if (uid && !seen.has(uid)) {
+          seen.add(uid);
+          users.push({ id: uid, name: s.data.userName || 'Unknown', role: s.data.userRole || 'STAFF', roleTitle: s.data.userRoleTitle || undefined });
+        }
+      }
+      return { count: room.length, users };
+    }
+
+    // ── KDS join/leave ──
+    socket.on('kds:join', async () => {
+      if (!socket.data.userId || !socket.data.restaurantId) {
+        socket.emit('error', 'Authentication required');
+        return;
+      }
+      socket.data.isKds = true;
+      // Look up user name if not already stored
+      if (!socket.data.userName) {
+        try {
+          const user = await prisma.user.findUnique({
+            where: { id: socket.data.userId },
+            select: { name: true, role: true, roleTitle: true },
+          });
+          if (user) {
+            socket.data.userName = user.name;
+            socket.data.userRole = user.role;
+            socket.data.userRoleTitle = user.roleTitle ?? undefined;
+          }
+        } catch { /* ignore lookup failure */ }
+      }
+      socket.join(`kds:${socket.data.restaurantId}`);
+      logger.info({ socketId: socket.id, restaurantId: socket.data.restaurantId }, 'KDS joined');
+      // Broadcast updated KDS status with user details
+      const status = await buildKdsStatus(socket.data.restaurantId);
+      io!.to(`restaurant:${socket.data.restaurantId}`).emit('kds:status', status);
+    });
+
+    socket.on('kds:leave', async () => {
+      if (!socket.data.restaurantId) return;
+      socket.data.isKds = false;
+      socket.leave(`kds:${socket.data.restaurantId}`);
+      logger.info({ socketId: socket.id, restaurantId: socket.data.restaurantId }, 'KDS left');
+      const status = await buildKdsStatus(socket.data.restaurantId);
+      io!.to(`restaurant:${socket.data.restaurantId}`).emit('kds:status', status);
+    });
+
+    socket.on('disconnect', async (reason) => {
       logger.debug({ socketId: socket.id, reason }, 'Socket disconnected');
+      // If this was a KDS socket, broadcast updated status
+      if (socket.data.isKds && socket.data.restaurantId) {
+        const status = await buildKdsStatus(socket.data.restaurantId);
+        io!.to(`restaurant:${socket.data.restaurantId}`).emit('kds:status', status);
+      }
     });
 
     socket.on('error', (error) => {
@@ -262,6 +412,44 @@ export const socketEmitters = {
   ) {
     if (io) {
       io.to(`restaurant:${restaurantId}`).emit('menu:update', payload);
+    }
+  },
+
+  // ── Group order emitters ──
+
+  emitGroupJoined(code: string, payload: GroupParticipantPayload) {
+    if (io) {
+      io.to(`group:${code}`).emit('group:joined', payload);
+    }
+  },
+
+  emitGroupCartUpdated(code: string, payload: GroupCartUpdatePayload) {
+    if (io) {
+      io.to(`group:${code}`).emit('group:cartUpdated', payload);
+    }
+  },
+
+  emitGroupReady(code: string, data: { participantId: string; name: string }) {
+    if (io) {
+      io.to(`group:${code}`).emit('group:ready', data);
+    }
+  },
+
+  emitGroupSubmitted(code: string, orderId: string) {
+    if (io) {
+      io.to(`group:${code}`).emit('group:submitted', { code, orderId });
+    }
+  },
+
+  emitGroupCancelled(code: string) {
+    if (io) {
+      io.to(`group:${code}`).emit('group:cancelled', { code });
+    }
+  },
+
+  emitGroupExpired(code: string) {
+    if (io) {
+      io.to(`group:${code}`).emit('group:expired', { code });
     }
   },
 };

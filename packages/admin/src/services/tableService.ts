@@ -85,6 +85,11 @@ export const tableService = {
   async getRunningTables(): Promise<RunningTable[]> {
     return apiClient.get<RunningTable[]>('/tables/running');
   },
+
+  async regenerateSessionToken(id: string): Promise<Table> {
+    const raw = await apiClient.post<Record<string, unknown>>(`/tables/${id}/regenerate-session`);
+    return normalizeTable(raw);
+  },
 };
 
 export interface TableOrderItem {
@@ -111,6 +116,8 @@ export interface RunningTable {
   tableId: string;
   tableNumber: string;
   tableName: string | null;
+  sectionId: string | null;
+  sectionName: string | null;
   invoiceId: string | null;
   totalAmount: number;
   orderCount: number;

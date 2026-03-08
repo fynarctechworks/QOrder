@@ -12,7 +12,7 @@ export const tableController = {
   ) {
     try {
       const restaurantId = req.restaurantId!;
-      const tables = await tableService.getTables(restaurantId);
+      const tables = await tableService.getTables(restaurantId, req.branchId);
 
       res.json({
         success: true,
@@ -65,7 +65,7 @@ export const tableController = {
   ) {
     try {
       const restaurantId = req.restaurantId!;
-      const table = await tableService.createTable(restaurantId, req.body);
+      const table = await tableService.createTable(restaurantId, { ...req.body, branchId: req.branchId });
 
       res.status(201).json({
         success: true,
@@ -77,19 +77,21 @@ export const tableController = {
   },
 
   async createBulkTables(
-    req: Request<unknown, unknown, { count: number; startNumber?: number; capacity?: number }>,
+    req: Request<unknown, unknown, { count: number; startNumber?: number; capacity?: number; sectionId?: string }>,
     res: Response<ApiResponse>,
     next: NextFunction
   ) {
     try {
       const restaurantId = req.restaurantId!;
-      const { count, startNumber = 1, capacity = 4 } = req.body;
+      const { count, startNumber = 1, capacity = 4, sectionId } = req.body;
       
       const result = await tableService.createBulkTables(
         restaurantId, 
         count, 
         startNumber, 
-        capacity
+        capacity,
+        sectionId,
+        req.branchId
       );
 
       res.status(201).json({
@@ -188,7 +190,7 @@ export const tableController = {
   ) {
     try {
       const restaurantId = req.restaurantId!;
-      const stats = await tableService.getTableStats(restaurantId);
+      const stats = await tableService.getTableStats(restaurantId, req.branchId);
 
       res.json({
         success: true,
@@ -206,7 +208,7 @@ export const tableController = {
   ) {
     try {
       const restaurantId = req.restaurantId!;
-      const runningTables = await tableService.getRunningTables(restaurantId);
+      const runningTables = await tableService.getRunningTables(restaurantId, req.branchId);
 
       res.json({
         success: true,
@@ -225,9 +227,18 @@ export const tableController = {
     try {
       const table = await tableService.getTableById(req.params.tableId, req.params.id);
 
+      // Strip sessionToken from public response when table is occupied.
+      // The token is only needed on the first visit (table AVAILABLE).
+      // After an order is placed, the rotated token is returned in the order response instead,
+      // preventing QR code photo abuse (someone fetching the new token from home).
+      const publicTable = { ...table } as Record<string, unknown>;
+      if (table.status === 'OCCUPIED') {
+        delete publicTable.sessionToken;
+      }
+
       res.json({
         success: true,
-        data: table,
+        data: publicTable,
       });
     } catch (error) {
       next(error);
@@ -246,6 +257,24 @@ export const tableController = {
       res.json({
         success: true,
         data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async regenerateSessionToken(
+    req: Request<{ id: string }>,
+    res: Response<ApiResponse>,
+    next: NextFunction
+  ) {
+    try {
+      const restaurantId = req.restaurantId!;
+      const table = await tableService.regenerateSessionToken(req.params.id, restaurantId);
+
+      res.json({
+        success: true,
+        data: table,
       });
     } catch (error) {
       next(error);

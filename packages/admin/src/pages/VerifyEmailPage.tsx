@@ -95,8 +95,8 @@ export default function VerifyEmailPage() {
     try {
       const result = await authService.verifyEmail(email, otpCode);
       setUser(result.user);
-      toast.success('Email verified! Welcome to Q Order!');
-      navigate('/dashboard', { replace: true });
+      toast.success('Email verified! Welcome!');
+      navigate('/', { replace: true });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Invalid code');
       // Clear OTP on error

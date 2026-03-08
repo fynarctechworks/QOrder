@@ -1,8 +1,9 @@
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 const navItems = [
   {
-    label: 'Home',
+    labelKey: 'nav.home',
     icon: (_active: boolean) => (
       <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
         <path d="M11.47 3.84a.75.75 0 011.06 0l8.69 8.69a.75.75 0 01-.53 1.28h-1.44v7.44a.75.75 0 01-.75.75h-4.5a.75.75 0 01-.75-.75v-4.5h-2.25v4.5a.75.75 0 01-.75.75h-4.5a.75.75 0 01-.75-.75v-7.44H3.31a.75.75 0 01-.53-1.28l8.69-8.69z" />
@@ -11,7 +12,7 @@ const navItems = [
     path: 'menu',
   },
   {
-    label: 'Orders',
+    labelKey: 'nav.orders',
     icon: (_active: boolean) => (
       <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
         <path fillRule="evenodd" d="M7.502 6h7.128A3.375 3.375 0 0118 9.375v9.375a3 3 0 003-3V6.108c0-1.505-1.125-2.811-2.664-2.94a48.972 48.972 0 00-.673-.05A3 3 0 0015 1.5h-1.5a3 3 0 00-2.663 1.618c-.225.015-.45.032-.673.05C8.662 3.295 7.554 4.542 7.502 6zM13.5 3A1.5 1.5 0 0012 4.5h4.5A1.5 1.5 0 0015 3h-1.5z" clipRule="evenodd" />
@@ -21,7 +22,7 @@ const navItems = [
     path: 'orders',
   },
   {
-    label: 'Pay Bill',
+    labelKey: 'nav.payBill',
     icon: (_active: boolean) => (
       <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
         <path d="M4.5 3.75a3 3 0 00-3 3v.75h21v-.75a3 3 0 00-3-3h-15z" />
@@ -33,6 +34,7 @@ const navItems = [
 ];
 
 export default function BottomNav() {
+  const { t } = useTranslation();
   const { restaurantSlug, tableId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -62,9 +64,9 @@ export default function BottomNav() {
           const active = isActive(item.path);
           return (
             <button
-              key={item.label}
+              key={item.labelKey}
               onClick={() => handleNav(item.path)}
-              aria-label={item.label}
+              aria-label={t(item.labelKey)}
               className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors duration-200 ${
                 active ? 'text-primary' : 'text-gray-400'
               }`}
@@ -73,7 +75,7 @@ export default function BottomNav() {
                 {item.icon(active)}
               </div>
               <span className={`text-[10px] font-medium ${active ? 'text-primary' : 'text-gray-400'}`}>
-                {item.label}
+                {t(item.labelKey)}
               </span>
             </button>
           );

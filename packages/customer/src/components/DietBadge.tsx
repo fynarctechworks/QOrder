@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { useTranslation } from 'react-i18next';
 
 type DietResult = 'veg' | 'non-veg' | 'egg' | null;
 
@@ -44,6 +45,7 @@ interface DietBadgeProps {
  * - Red bordered square with red dot = Non-Veg
  */
 function DietBadgeComponent({ tags, dietType, size = 'sm', className = '' }: DietBadgeProps) {
+  const { t } = useTranslation();
   const diet = getDietType(tags, dietType);
   if (!diet) return null;
 
@@ -51,7 +53,7 @@ function DietBadgeComponent({ tags, dietType, size = 'sm', className = '' }: Die
   const isEgg = diet === 'egg';
   const borderColor = isVeg ? 'border-emerald-600' : isEgg ? 'border-amber-600' : 'border-red-600';
   const bgColor = isVeg ? 'bg-emerald-600' : isEgg ? 'bg-amber-600' : 'bg-red-600';
-  const label = isVeg ? 'Vegetarian' : isEgg ? 'Egg' : 'Non-Vegetarian';
+  const label = isVeg ? t('menu.vegetarian') : isEgg ? t('menu.egg') : t('menu.nonVegetarian');
   const dim = size === 'md' ? 'w-[18px] h-[18px]' : 'w-[14px] h-[14px]';
   const dot = size === 'md' ? 'w-[8px] h-[8px]' : 'w-[6px] h-[6px]';
 

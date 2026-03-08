@@ -85,8 +85,8 @@ export const cache = {
 
   // Restaurant-scoped cache keys
   keys: {
-    menu: (restaurantId: string) => `menu:${restaurantId}`,
-    categories: (restaurantId: string) => `categories:${restaurantId}`,
+    menu: (restaurantId: string, branchId?: string | null) => branchId ? `menu:${restaurantId}:${branchId}` : `menu:${restaurantId}`,
+    categories: (restaurantId: string, branchId?: string | null) => branchId ? `categories:${restaurantId}:${branchId}` : `categories:${restaurantId}`,
     tables: (restaurantId: string) => `tables:${restaurantId}`,
     restaurant: (slug: string) => `restaurant:${slug}`,
     order: (orderId: string) => `order:${orderId}`,

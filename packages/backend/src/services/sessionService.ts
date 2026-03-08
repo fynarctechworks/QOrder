@@ -1,6 +1,13 @@
 import { Decimal } from '@prisma/client/runtime/library';
+import { v4 as uuidv4 } from 'uuid';
 import { prisma, AppError, cache } from '../lib/index.js';
+import { logger } from '../lib/logger.js';
 import type { PaymentMethod, SessionStatus } from '@prisma/client';
+
+/** Session auto-expires after 90 minutes of total time */
+const SESSION_MAX_DURATION_MS = 90 * 60 * 1000;
+/** Session auto-expires after 15 minutes of inactivity */
+const SESSION_INACTIVITY_MS = 15 * 60 * 1000;
 
 export const sessionService = {
   /**
@@ -10,6 +17,7 @@ export const sessionService = {
     // Check if table exists and belongs to restaurant
     const table = await prisma.table.findFirst({
       where: { id: tableId, restaurantId },
+      select: { id: true, branchId: true, status: true, sessionToken: true },
     });
 
     if (!table) {
@@ -23,6 +31,7 @@ export const sessionService = {
         status: 'ACTIVE',
       },
       include: {
+        table: true,
         orders: {
           include: {
             items: {
@@ -40,13 +49,18 @@ export const sessionService = {
     // Create new session if none exists
     if (!session) {
       try {
+        const now = new Date();
         session = await prisma.tableSession.create({
           data: {
             tableId,
             restaurantId,
+            branchId: table.branchId ?? undefined,
             status: 'ACTIVE',
+            expiresAt: new Date(now.getTime() + SESSION_MAX_DURATION_MS),
+            lastActivityAt: now,
           },
           include: {
+            table: true,
             orders: {
               include: {
                 items: {
@@ -76,6 +90,7 @@ export const sessionService = {
           session = await prisma.tableSession.findFirst({
             where: { tableId, status: 'ACTIVE' },
             include: {
+              table: true,
               orders: {
                 include: {
                   items: {
@@ -96,7 +111,166 @@ export const sessionService = {
       }
     }
 
+    // Adopt orphaned orders: active orders linked to this table but not in this session
+    // Use OR to also catch orders with sessionId = null (SQL NULL != value is UNKNOWN, not TRUE)
+    const orphanedOrders = await prisma.order.findMany({
+      where: {
+        tableId,
+        OR: [
+          { sessionId: null },
+          { NOT: { sessionId: session.id } },
+        ],
+        status: { in: ['PENDING', 'PREPARING', 'READY', 'PAYMENT_PENDING'] },
+      },
+      select: { id: true },
+    });
+
+    if (orphanedOrders.length > 0) {
+      await prisma.order.updateMany({
+        where: { id: { in: orphanedOrders.map((o) => o.id) } },
+        data: { sessionId: session.id },
+      });
+    }
+
+    // Recalculate session totals and re-fetch with correct data
+    await this.recalculateSessionTotals(session.id);
+
+    const updated = await prisma.tableSession.findUnique({
+      where: { id: session.id },
+      include: {
+        table: true,
+        orders: {
+          where: { status: { notIn: ['CANCELLED'] } },
+          include: {
+            items: {
+              include: {
+                menuItem: { select: { id: true, name: true, price: true, image: true } },
+                modifiers: true,
+              },
+            },
+          },
+        },
+        payments: true,
+      },
+    });
+    if (updated) session = updated;
+
     return session;
+  },
+
+  /**
+   * Touch a session to extend its activity timestamp and expiry.
+   * Called after successful order creation or significant user activity.
+   */
+  async touchSession(sessionId: string) {
+    const now = new Date();
+    try {
+      await prisma.tableSession.update({
+        where: { id: sessionId },
+        data: {
+          lastActivityAt: now,
+          expiresAt: new Date(now.getTime() + SESSION_MAX_DURATION_MS),
+        },
+      });
+    } catch (err) {
+      logger.error({ sessionId, error: err }, 'Failed to touch session');
+    }
+  },
+
+  /**
+   * Check whether a session is expired (hard expiry or inactivity).
+   * Returns true if session should be considered expired.
+   */
+  isSessionExpired(session: {
+    status: string;
+    expiresAt: Date | null;
+    lastActivityAt: Date | null;
+    createdAt: Date;
+  }): boolean {
+    if (session.status !== 'ACTIVE') return true;
+
+    const now = Date.now();
+
+    // Hard expiry check
+    if (session.expiresAt && new Date(session.expiresAt).getTime() <= now) {
+      return true;
+    }
+
+    // Inactivity check
+    const lastActivity = session.lastActivityAt
+      ? new Date(session.lastActivityAt).getTime()
+      : new Date(session.createdAt).getTime();
+    if (now - lastActivity >= SESSION_INACTIVITY_MS) {
+      return true;
+    }
+
+    return false;
+  },
+
+  /**
+   * Expire (close) a single session — sets status CLOSED and table AVAILABLE.
+   */
+  async expireSession(sessionId: string) {
+    try {
+      const session = await prisma.tableSession.update({
+        where: { id: sessionId },
+        data: { status: 'CLOSED' },
+        select: { tableId: true },
+      });
+      if (session.tableId) {
+        await prisma.table.update({
+          where: { id: session.tableId },
+          data: { status: 'AVAILABLE' },
+        });
+      }
+      logger.info({ sessionId }, 'Session expired');
+    } catch (err) {
+      logger.error({ sessionId, error: err }, 'Failed to expire session');
+    }
+  },
+
+  /**
+   * Bulk-expire all stale ACTIVE sessions (hard expiry or inactivity).
+   * Designed to be called periodically (e.g. every 5 minutes).
+   */
+  async expireStaleSessions() {
+    const now = new Date();
+    const inactivityCutoff = new Date(now.getTime() - SESSION_INACTIVITY_MS);
+
+    try {
+      const staleSessions = await prisma.tableSession.findMany({
+        where: {
+          status: 'ACTIVE',
+          OR: [
+            { expiresAt: { lte: now } },
+            { lastActivityAt: { lte: inactivityCutoff } },
+          ],
+        },
+        select: { id: true, tableId: true },
+      });
+
+      if (staleSessions.length === 0) return;
+
+      logger.info(`Expiring ${staleSessions.length} stale sessions`);
+
+      // Close sessions and free tables in a transaction
+      await prisma.$transaction([
+        prisma.tableSession.updateMany({
+          where: { id: { in: staleSessions.map((s) => s.id) } },
+          data: { status: 'CLOSED' },
+        }),
+        ...staleSessions
+          .filter((s) => s.tableId !== null)
+          .map((s) =>
+            prisma.table.update({
+              where: { id: s.tableId! },
+              data: { status: 'AVAILABLE' },
+            })
+          ),
+      ]);
+    } catch (err) {
+      logger.error({ error: err }, 'Failed to expire stale sessions');
+    }
   },
 
   /**
@@ -232,6 +406,7 @@ export const sessionService = {
         data: {
           sessionId,
           restaurantId,
+          branchId: session.branchId ?? undefined,
           amount: new Decimal(amount),
           method,
           status: 'COMPLETED',
@@ -244,6 +419,7 @@ export const sessionService = {
       const newTotalPaid = totalPaid.add(new Decimal(amount));
       const isFullyPaid = newTotalPaid.gte(new Decimal(session.totalAmount.toString()));
 
+      let newSessionToken: string | null = null;
       if (isFullyPaid) {
         // Close session
         await tx.tableSession.update({
@@ -254,16 +430,26 @@ export const sessionService = {
           },
         });
 
+        // Mark all active orders as COMPLETED
+        await tx.order.updateMany({
+          where: {
+            sessionId,
+            status: { in: ['PENDING', 'PREPARING', 'READY', 'PAYMENT_PENDING'] },
+          },
+          data: { status: 'COMPLETED' },
+        });
+
         // Update table status to AVAILABLE
         if (session.tableId) {
+          newSessionToken = uuidv4();
           await tx.table.update({
             where: { id: session.tableId },
-            data: { status: 'AVAILABLE' },
+            data: { status: 'AVAILABLE', sessionToken: newSessionToken },
           });
         }
       }
 
-      return { payment, isFullyPaid, remaining: remaining.sub(new Decimal(amount)) };
+      return { payment, isFullyPaid, remaining: remaining.sub(new Decimal(amount)), session: { tableId: session.tableId }, newSessionToken };
     });
   },
 
@@ -328,6 +514,7 @@ export const sessionService = {
         data: {
           tableId: targetTableId,
           restaurantId,
+          branchId: targetTable.branchId ?? undefined,
           status: 'ACTIVE',
           totalAmount: session.totalAmount,
           subtotal: session.subtotal,
@@ -348,10 +535,12 @@ export const sessionService = {
       });
 
       // Update table statuses
+      let newSessionToken: string | null = null;
       if (session.tableId) {
+        newSessionToken = uuidv4();
         await tx.table.update({
           where: { id: session.tableId },
-          data: { status: 'AVAILABLE' },
+          data: { status: 'AVAILABLE', sessionToken: newSessionToken },
         });
       }
 
@@ -360,7 +549,7 @@ export const sessionService = {
         data: { status: 'OCCUPIED' },
       });
 
-      return { oldSession: updatedSession, newSession, oldTableId: session.tableId };
+      return { oldSession: updatedSession, newSession, oldTableId: session.tableId, newSessionToken };
     });
   },
 
@@ -441,10 +630,12 @@ export const sessionService = {
       });
 
       // Update source table status
+      let newSessionToken: string | null = null;
       if (sourceSession.tableId) {
+        newSessionToken = uuidv4();
         await tx.table.update({
           where: { id: sourceSession.tableId },
-          data: { status: 'AVAILABLE' },
+          data: { status: 'AVAILABLE', sessionToken: newSessionToken },
         });
       }
 
@@ -452,6 +643,7 @@ export const sessionService = {
         mergedSession: updatedTargetSession,
         sourceTableId: sourceSession.tableId,
         targetTableId: targetSession.tableId,
+        newSessionToken,
       };
     });
   },
@@ -491,7 +683,7 @@ export const sessionService = {
       date: session.startedAt,
       items: session.orders.flatMap((order) =>
         order.items.map((item) => ({
-          name: item.menuItem.name,
+          name: item.menuItem?.name ?? 'Deleted Item',
           quantity: item.quantity,
           unitPrice: Number(item.unitPrice),
           totalPrice: Number(item.totalPrice),

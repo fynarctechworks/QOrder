@@ -8,7 +8,7 @@ import { UserRole } from '@prisma/client';
 
 interface CachedUser {
   id: string;
-  email: string;
+  email: string | null;
   role: UserRole;
   restaurantId: string;
   isActive: boolean;
@@ -57,6 +57,7 @@ export const authenticate = async (
     // Attach user to request
     req.user = {
       id: user.id,
+      name: user.name,
       email: user.email,
       role: user.role,
       restaurantId: user.restaurantId,
@@ -84,6 +85,7 @@ export const authorize = (...allowedRoles: UserRole[]) => {
     }
 
     if (!allowedRoles.includes(req.user.role)) {
+      console.log(`[AUTH DEBUG] DENIED ${req.method} ${req.originalUrl} | userRole="${req.user.role}" userId="${req.user.id}" | allowedRoles=${JSON.stringify(allowedRoles)}`);
       next(AppError.forbidden('Insufficient permissions'));
       return;
     }

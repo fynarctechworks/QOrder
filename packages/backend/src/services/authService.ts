@@ -48,7 +48,7 @@ export const authService = {
     const { email, username, password, name, restaurantName } = input;
 
     // Check if email already exists (but allow re-registration if not yet verified)
-    const existingEmail = await prisma.user.findUnique({
+    const existingEmail = await prisma.user.findFirst({
       where: { email },
     });
 
@@ -144,7 +144,7 @@ export const authService = {
 
   // Verify email with OTP
   async verifyEmail(email: string, code: string) {
-    const user = await prisma.user.findUnique({
+    const user = await prisma.user.findFirst({
       where: { email },
       include: {
         restaurant: {
@@ -187,6 +187,7 @@ export const authService = {
         username: true,
         name: true,
         role: true,
+        roleTitle: true,
         restaurantId: true,
       },
     });
@@ -203,7 +204,7 @@ export const authService = {
 
   // Resend OTP
   async resendVerificationCode(email: string) {
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findFirst({ where: { email } });
 
     if (!user) {
       throw AppError.notFound('User');
@@ -296,6 +297,7 @@ export const authService = {
         username: user.username,
         name: user.name,
         role: user.role,
+        roleTitle: user.roleTitle,
         restaurantId: user.restaurantId,
       },
       restaurant: user.restaurant,
@@ -349,6 +351,12 @@ export const authService = {
         restaurantId: storedToken.user.restaurantId,
       });
 
+      // Update last login time
+      await prisma.user.update({
+        where: { id: storedToken.user.id },
+        data: { lastLoginAt: new Date() },
+      });
+
       return { accessToken };
     } catch (error) {
       if (error instanceof AppError) throw error;
@@ -386,7 +394,7 @@ export const authService = {
   // Generate access and refresh tokens
   async generateTokens(user: {
     id: string;
-    email: string;
+    email: string | null;
     role: string;
     restaurantId: string;
   }) {

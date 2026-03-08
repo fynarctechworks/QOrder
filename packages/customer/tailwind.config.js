@@ -14,24 +14,24 @@ export default {
     },
     extend: {
       colors: {
-        // Premium muted-green fintech palette
-        background: '#F6F8F5',
-        'background-secondary': '#EFF3ED',
+        // Clean orange & white palette
+        background: '#FFFFFF',
+        'background-secondary': '#FFF5EE',
         surface: {
-          DEFAULT: '#F0F4EE',
+          DEFAULT: '#FFF8F3',
           elevated: '#FFFFFF',
-          highlight: '#F6F8F5',
+          highlight: '#FFF5EE',
           border: '#E5E7EB'
         },
         primary: {
-          DEFAULT: '#1F3D36',
-          hover: '#17322C',
-          light: '#2A5248',
-          muted: 'rgba(31, 61, 54, 0.1)',
+          DEFAULT: '#FF660E',
+          hover: '#E55A0B',
+          light: '#FF8040',
+          muted: 'rgba(255, 102, 14, 0.1)',
           foreground: '#FFFFFF'
         },
-        accent: '#A7D7A2',
-        sidebar: '#E8F1EC',
+        accent: '#FFB088',
+        sidebar: '#FFF8F3',
         border: '#E5E7EB',
         muted: '#6B7280',
         success: {
@@ -90,7 +90,7 @@ export default {
         'soft': '0 1px 3px rgba(0, 0, 0, 0.08)',
         'card': '0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 6px -2px rgba(0, 0, 0, 0.04)',
         'elevated': '0 12px 24px -4px rgba(0, 0, 0, 0.12), 0 6px 12px -4px rgba(0, 0, 0, 0.06)',
-        'glow': '0 0 20px rgba(31, 61, 54, 0.25)',
+        'glow': '0 0 20px rgba(255, 102, 14, 0.25)',
         'inner-soft': 'inset 0 1px 2px rgba(0, 0, 0, 0.05)'
       },
       animation: {

@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { tableService, type RunningTable } from '../services/tableService';
@@ -13,30 +13,6 @@ interface RunningTableCardProps {
 
 const RunningTableCard = memo(({ table }: RunningTableCardProps) => {
   const formatCurrency = useCurrency();
-  const [currentTime, setCurrentTime] = useState(Date.now());
-
-  // Each card manages its own 1-second timer so parent doesn't re-render all cards
-  useEffect(() => {
-    const interval = setInterval(() => setCurrentTime(Date.now()), 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Calculate duration from sessionStart
-  const durationSeconds = Math.floor(
-    (currentTime - new Date(table.sessionStart).getTime()) / 1000
-  );
-  
-  const hours = Math.floor(durationSeconds / 3600);
-  const minutes = Math.floor((durationSeconds % 3600) / 60);
-  const seconds = durationSeconds % 60;
-  const durationFormatted = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-
-  // Determine duration color based on time
-  const durationMinutes = Math.floor(durationSeconds / 60);
-  const durationColor = 
-    durationMinutes < 60 ? 'text-emerald-600 bg-emerald-50' : 
-    durationMinutes < 120 ? 'text-amber-600 bg-amber-50' : 
-    'text-red-600 bg-red-50';
 
   return (
     <motion.div
@@ -44,10 +20,10 @@ const RunningTableCard = memo(({ table }: RunningTableCardProps) => {
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95, y: -10 }}
       transition={{ duration: 0.2 }}
-      className="group relative bg-gradient-to-br from-white to-gray-50/50 rounded-xl border border-gray-200 shadow-sm hover:shadow-lg hover:border-emerald-300/50 transition-all duration-300 overflow-hidden"
+      className="group relative bg-gradient-to-br from-white to-gray-50/50 rounded-xl border border-gray-200 shadow-sm hover:shadow-lg hover:border-orange-300/50 transition-all duration-300 overflow-hidden"
     >
       {/* Accent Bar */}
-      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 to-teal-500" />
+      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary to-primary-light" />
       
       {/* Content */}
       <div className="p-5">
@@ -56,7 +32,7 @@ const RunningTableCard = memo(({ table }: RunningTableCardProps) => {
           <div className="flex-1">
             <div className="flex items-baseline gap-2">
               <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Table</span>
-              <span className="text-3xl font-black text-gray-900 group-hover:text-emerald-600 transition-colors">
+              <span className="text-3xl font-black text-gray-900 group-hover:text-primary transition-colors">
                 {table.tableNumber}
               </span>
             </div>
@@ -77,24 +53,15 @@ const RunningTableCard = memo(({ table }: RunningTableCardProps) => {
         </div>
 
         {/* Total Amount - Primary Focus */}
-        <div className="mb-4 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-lg p-3 border border-emerald-200/50">
-          <div className="text-xs font-semibold text-emerald-700 uppercase tracking-wider mb-1">Total Bill</div>
-          <div className="text-3xl font-black text-emerald-700 tracking-tight">
+        <div className="mb-4 bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-3 border border-orange-200/50">
+          <div className="text-xs font-semibold text-primary uppercase tracking-wider mb-1">Total Bill</div>
+          <div className="text-3xl font-black text-primary tracking-tight">
             {formatCurrency(table.totalAmount)}
           </div>
         </div>
 
-        {/* Duration & Orders - Secondary Info */}
-        <div className="grid grid-cols-2 gap-2 mb-3">
-          <div className={`rounded-lg px-3 py-2 ${durationColor} transition-colors`}>
-            <div className="flex items-center gap-1.5 mb-1">
-              <svg className="w-3.5 h-3.5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <div className="text-xs font-semibold uppercase tracking-wide opacity-80">Time</div>
-            </div>
-            <div className="text-lg font-bold leading-none">{durationFormatted}</div>
-          </div>
+        {/* Orders - Secondary Info */}
+        <div className="mb-3">
           <div className="rounded-lg px-3 py-2 bg-blue-50 text-blue-700">
             <div className="flex items-center gap-1.5 mb-1">
               <svg className="w-3.5 h-3.5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -119,7 +86,7 @@ const RunningTableCard = memo(({ table }: RunningTableCardProps) => {
 
       {/* Hover Glow Effect */}
       <div className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
-        <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-emerald-500/5 to-teal-500/5" />
+        <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-primary/5 to-primary-light/5" />
       </div>
     </motion.div>
   );
@@ -142,7 +109,7 @@ export default function RunningTablesSection() {
 
   // Subscribe to table:updated socket event
   useEffect(() => {
-    const unsubscribe = onTableUpdated(() => {
+    const unsubscribe = onTableUpdated((_data) => {
       // Invalidate and refetch running tables
       queryClient.invalidateQueries({ queryKey: ['runningTables'] });
     });
@@ -191,11 +158,33 @@ export default function RunningTablesSection() {
     return null; // Don't show section if no running tables
   }
 
+  // Group running tables by section
+  const grouped = (() => {
+    const sectionMap = new Map<string | null, { name: string | null; tables: RunningTable[] }>();
+    runningTables.forEach((t) => {
+      const key = t.sectionId ?? null;
+      if (!sectionMap.has(key)) {
+        sectionMap.set(key, { name: t.sectionName ?? null, tables: [] });
+      }
+      sectionMap.get(key)!.tables.push(t);
+    });
+    // Named sections first, then unassigned
+    const entries = Array.from(sectionMap.entries());
+    entries.sort((a, b) => {
+      if (a[0] === null && b[0] !== null) return 1;
+      if (a[0] !== null && b[0] === null) return -1;
+      return 0;
+    });
+    return entries;
+  })();
+
+  const hasSections = grouped.some(([key]) => key !== null);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 shadow-md">
+          <div className="p-2 rounded-lg bg-gradient-to-br from-primary to-primary-light shadow-md">
             <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
             </svg>
@@ -209,14 +198,32 @@ export default function RunningTablesSection() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
-        {runningTables.map((table) => (
-          <RunningTableCard
-            key={table.tableId}
-            table={table}
-          />
-        ))}
-      </div>
+      {hasSections ? (
+        <div className="space-y-6">
+          {grouped.map(([sectionId, group]) => (
+            <div key={sectionId ?? 'unassigned'}>
+              <div className="flex items-center gap-2 mb-3">
+                <h3 className="text-sm font-semibold text-text-primary uppercase tracking-wide">
+                  {group.name ?? 'Unassigned'}
+                </h3>
+                <span className="text-xs text-text-muted">({group.tables.length})</span>
+                <div className="flex-1 h-px bg-gray-200" />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+                {group.tables.map((table) => (
+                  <RunningTableCard key={table.tableId} table={table} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+          {runningTables.map((table) => (
+            <RunningTableCard key={table.tableId} table={table} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

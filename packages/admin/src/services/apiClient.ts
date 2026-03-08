@@ -1,5 +1,6 @@
 import type { ApiResponse, ApiError } from '../types';
 import { useAuthStore } from '../state/authStore';
+import { useBranchStore } from '../state/branchStore';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
@@ -32,6 +33,7 @@ class ApiClient {
     const url = `${this._baseUrl}${endpoint}`;
 
     const headers: Record<string, string> = {
+      'X-Requested-With': 'XMLHttpRequest',
       ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
       ...(options.headers as Record<string, string>),
     };
@@ -39,6 +41,12 @@ class ApiClient {
     const token = useAuthStore.getState().accessToken;
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    // Inject active branch context
+    const branchId = useBranchStore.getState().activeBranchId;
+    if (branchId) {
+      headers['X-Branch-Id'] = branchId;
     }
 
     const config: RequestInit = { ...options, headers, credentials: 'include' };
@@ -63,7 +71,13 @@ class ApiClient {
 
       if (!response.ok) {
         const errorData = (await response.json()) as ApiError;
-        throw new Error(errorData.error?.message || 'An error occurred');
+        let msg = errorData.error?.message || 'An error occurred';
+        // Append validation field details if present
+        const details = (errorData.error as any)?.details;
+        if (Array.isArray(details) && details.length) {
+          msg += ': ' + details.map((d: { path: string; message: string }) => `${d.path} – ${d.message}`).join(', ');
+        }
+        throw new Error(msg);
       }
 
       return (await response.json()) as T;
@@ -90,6 +104,12 @@ class ApiClient {
     const token = useAuthStore.getState().accessToken;
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    // Inject active branch context
+    const branchId = useBranchStore.getState().activeBranchId;
+    if (branchId) {
+      headers['X-Branch-Id'] = branchId;
     }
 
     const config: RequestInit = {
@@ -121,7 +141,12 @@ class ApiClient {
 
       if (!response.ok) {
         const errorData = (await response.json()) as ApiError;
-        throw new Error(errorData.error?.message || 'An error occurred');
+        let msg = errorData.error?.message || 'An error occurred';
+        const details = (errorData.error as any)?.details;
+        if (Array.isArray(details) && details.length) {
+          msg += ': ' + details.map((d: { path: string; message: string }) => `${d.path} – ${d.message}`).join(', ');
+        }
+        throw new Error(msg);
       }
 
       const data = (await response.json()) as ApiResponse<T>;
@@ -191,8 +216,11 @@ class ApiClient {
     });
   }
 
-  async delete<T>(endpoint: string): Promise<T> {
-    return this.request<T>(endpoint, { method: 'DELETE' });
+  async delete<T>(endpoint: string, data?: unknown): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'DELETE',
+      body: data ? JSON.stringify(data) : undefined,
+    });
   }
 
   async upload<T>(endpoint: string, formData: FormData): Promise<T> {

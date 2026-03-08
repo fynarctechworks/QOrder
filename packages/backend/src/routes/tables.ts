@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { tableController } from '../controllers/index.js';
 import { authenticate, authorize } from '../middlewares/auth.js';
+import { resolveBranch } from '../middlewares/resolveBranch.js';
 import { validate } from '../middlewares/validate.js';
 import { 
   createTableSchema, 
@@ -11,8 +12,9 @@ import {
 
 const router = Router();
 
-// All routes require authentication
+// All routes require authentication + branch context
 router.use(authenticate);
+router.use(resolveBranch);
 
 router.get('/', tableController.getTables);
 
@@ -73,6 +75,13 @@ router.post(
   authorize('OWNER', 'ADMIN', 'MANAGER'),
   validate(idParamSchema, 'params'),
   tableController.regenerateQRCode
+);
+
+router.post(
+  '/:id/regenerate-session',
+  authorize('OWNER', 'ADMIN', 'MANAGER', 'STAFF'),
+  validate(idParamSchema, 'params'),
+  tableController.regenerateSessionToken
 );
 
 export default router;

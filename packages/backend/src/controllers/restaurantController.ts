@@ -15,6 +15,24 @@ export const restaurantController = {
       const restaurantId = req.restaurantId!;
       const restaurant = await restaurantService.getById(restaurantId);
 
+      // Strip secrets from settings before sending to client
+      if (restaurant && restaurant.settings) {
+        const settings = { ...(restaurant.settings as Record<string, unknown>) };
+        const hasLockPin = typeof settings.lockPin === 'string' && settings.lockPin.length > 0;
+        delete settings.lockPin;
+        (settings as Record<string, unknown>).hasLockPin = hasLockPin;
+
+        // Mask Razorpay secret — never send the real value to frontend
+        if (typeof settings.razorpayKeySecret === 'string' && settings.razorpayKeySecret.length > 0) {
+          const secret = settings.razorpayKeySecret as string;
+          settings.razorpayKeySecret = secret.length > 4
+            ? '••••' + secret.slice(-4)
+            : '••••••••';
+        }
+
+        (restaurant as Record<string, unknown>).settings = settings;
+      }
+
       res.json({
         success: true,
         data: restaurant,
@@ -86,7 +104,7 @@ export const restaurantController = {
       const { password, ...settingsPayload } = req.body as UpdateRestaurantSettingsInput & { password?: string };
 
       // When turning off acceptsOrders, require password confirmation
-      if (settingsPayload.acceptsOrders === false || settingsPayload.acceptingOrders === false) {
+      if (settingsPayload.acceptsOrders === false) {
         if (!password) {
           throw AppError.badRequest('Password is required to disable order acceptance');
         }
@@ -124,7 +142,7 @@ export const restaurantController = {
   ) {
     try {
       const restaurantId = req.restaurantId!;
-      const stats = await restaurantService.getDashboardStats(restaurantId);
+      const stats = await restaurantService.getDashboardStats(restaurantId, req.branchId);
 
       res.json({
         success: true,
