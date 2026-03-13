@@ -188,7 +188,7 @@ export default function DashboardLayout() {
 }
 
 function DashboardLayoutInner() {
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarCollapsed, _setIsSidebarCollapsed] = useState(false);
   const [isSidebarHidden, setIsSidebarHidden] = useState(false);
   const [isServicePanelOpen, setIsServicePanelOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);

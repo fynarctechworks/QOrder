@@ -402,7 +402,7 @@ export default function ReportsPage() {
         </div>
 
         {/* Mobile selector */}
-        <select value={activeReport} onChange={e => setActiveReport(e.target.value)}
+        <select value={activeReport ?? ''} onChange={e => setActiveReport(e.target.value)}
           className="lg:hidden w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-4">
           {REPORT_CATEGORIES.map(c => (
             <optgroup key={c.label} label={c.label}>

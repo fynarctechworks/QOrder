@@ -367,14 +367,6 @@ export default function OrdersPage() {
     [all],
   );
 
-  const runningTablesCount = useMemo(() => {
-    const tableIds = new Set<string>();
-    for (const o of all) {
-      if (o.tableId && ACTIVE_STATUSES.includes(o.status)) tableIds.add(o.tableId);
-    }
-    return tableIds.size;
-  }, [all]);
-
   /* ── Search helper ── */
   const matchesSearch = useCallback((o: Order) => {
     if (!search.trim()) return true;

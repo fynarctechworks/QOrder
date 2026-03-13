@@ -3,7 +3,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import Modal from './Modal';
 import { apiClient } from '../services/apiClient';
-import { sessionService } from '../services/sessionService';
 import { settingsService } from '../services/settingsService';
 import { creditService } from '../services/creditService';
 import type { CreditAccount } from '../services/creditService';
@@ -113,7 +112,6 @@ export default function SettlementModal({
   const [settledSessionId, setSettledSessionId] = useState<string | null>(null);
   const [showSplitMode, setShowSplitMode] = useState(false);
   const [selectedQuickMethod, setSelectedQuickMethod] = useState<PaymentMethod | null>(null);
-  const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
   const autoPrintedRef = useRef(false);
 
   /* ── Settings (for auto-print config) ── */
