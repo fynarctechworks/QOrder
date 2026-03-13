@@ -10,7 +10,7 @@ import {
 } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useQueryClient } from '@tanstack/react-query';
-import type { OrderStatusUpdate, SocketEvents } from '../types';
+import type { OrderStatusUpdate } from '../types';
 
 interface SocketContextValue {
   socket: Socket | null;

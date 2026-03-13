@@ -31,7 +31,7 @@ export default function CustomerInfoSheet({
   open,
   onClose,
   onConfirm,
-  isPending,
+  isPending: _isPending,
   totalLabel,
   restaurantId,
   tableId,
@@ -194,7 +194,7 @@ export default function CustomerInfoSheet({
     if (!pasted) return;
     const newDigits = [...otpDigits];
     for (let i = 0; i < pasted.length; i++) {
-      newDigits[i] = pasted[i];
+      newDigits[i] = pasted[i]!;
     }
     setOtpDigits(newDigits);
     if (pasted.length === 6) {
