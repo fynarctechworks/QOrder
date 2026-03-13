@@ -46,7 +46,7 @@ export default function FeedbackPage() {
 
       {/* Stats Overview */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
           <StatsCard label="Overall Rating" value={stats.averages.overall?.toFixed(1) ?? null} />
           <StatsCard label="Food" value={stats.averages.food?.toFixed(1) ?? null} />
           <StatsCard label="Service" value={stats.averages.service?.toFixed(1) ?? null} />
@@ -85,7 +85,7 @@ export default function FeedbackPage() {
           <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" />
         </div>
       ) : isError ? (
-        <div className="card p-8 text-center space-y-3">
+        <div className="card p-4 sm:p-8 text-center space-y-3">
           <p className="text-red-500">Failed to load feedback: {error?.message}</p>
           <button className="btn-primary text-sm" onClick={() => refetch()}>Retry</button>
         </div>

@@ -343,7 +343,7 @@ export default function ReportsPage() {
           <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
             className="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" />
         </div>
-        <div className="flex gap-1.5 ml-auto">
+        <div className="flex gap-1.5">
           {[
             { label: 'Today', fn: () => { setFromDate(todayStr); setToDate(todayStr); } },
             { label: '7D', fn: () => { const d = new Date(); d.setDate(d.getDate() - 7); setFromDate(d.toISOString().slice(0, 10)); setToDate(todayStr); } },
@@ -358,7 +358,7 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      <div className="flex gap-6 items-start">
+      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-stretch lg:items-start">
         {/* Sidebar */}
         <div className="w-56 shrink-0 space-y-1 hidden lg:block">
           {REPORT_CATEGORIES.map(cat => {
@@ -403,7 +403,8 @@ export default function ReportsPage() {
 
         {/* Mobile selector */}
         <select value={activeReport ?? ''} onChange={e => setActiveReport(e.target.value)}
-          className="lg:hidden w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-4">
+          className="lg:hidden w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+          <option value="" disabled>Select a report...</option>
           {REPORT_CATEGORIES.map(c => (
             <optgroup key={c.label} label={c.label}>
               {c.items.map(i => (
@@ -414,14 +415,14 @@ export default function ReportsPage() {
         </select>
 
         {/* Chart / Table Area */}
-        <div className="flex-1 bg-white rounded-2xl border border-gray-100 shadow-sm p-6 min-h-[500px] sticky top-24 max-h-[calc(100vh-120px)] overflow-y-auto">
+        <div className="flex-1 min-w-0 w-full lg:w-auto bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6 min-h-[300px] sm:min-h-[500px] lg:sticky top-24 lg:max-h-[calc(100vh-120px)] overflow-y-auto">
           {!activeReport ? (
             <div className="flex items-center justify-center h-80">
               <div className="text-center space-y-3">
                 <svg className="w-12 h-12 mx-auto text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
-                <p className="text-text-muted text-sm">Select a report from the sidebar to get started</p>
+                <p className="text-text-muted text-sm">Select a report to get started</p>
               </div>
             </div>
           ) : (<>
@@ -558,7 +559,7 @@ function ReportChart({ reportKey, data, chartType, formatCurrency }: {
   if (reportKey === 'ordersSummary' && !Array.isArray(data)) {
     return (
       <div className="space-y-6">
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {[
             { label: 'Total Orders', value: data.total_orders, color: 'text-primary', bg: 'bg-primary/10' },
             { label: 'Completed', value: data.completed_orders, color: 'text-green-600', bg: 'bg-green-50' },
@@ -569,23 +570,23 @@ function ReportChart({ reportKey, data, chartType, formatCurrency }: {
           ].map(s => (
             <div key={s.label} className={`rounded-xl p-4 ${s.bg}`}>
               <p className="text-xs font-medium text-text-muted uppercase tracking-wide">{s.label}</p>
-              <p className={`text-2xl font-bold mt-1 ${s.color}`}>{s.value}</p>
+              <p className={`text-xl sm:text-2xl font-bold mt-1 ${s.color}`}>{s.value}</p>
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="rounded-xl p-4 bg-green-50">
             <p className="text-xs font-medium text-text-muted uppercase tracking-wide">Completion Rate</p>
-            <p className="text-3xl font-bold mt-1 text-green-600">{data.completion_rate}%</p>
+            <p className="text-2xl sm:text-3xl font-bold mt-1 text-green-600">{data.completion_rate}%</p>
           </div>
           <div className="rounded-xl p-4 bg-red-50">
             <p className="text-xs font-medium text-text-muted uppercase tracking-wide">Cancellation Rate</p>
-            <p className="text-3xl font-bold mt-1 text-red-500">{data.cancellation_rate}%</p>
+            <p className="text-2xl sm:text-3xl font-bold mt-1 text-red-500">{data.cancellation_rate}%</p>
           </div>
         </div>
         <div className="rounded-xl p-4 bg-gray-50">
           <p className="text-xs font-medium text-text-muted uppercase tracking-wide">Total Revenue</p>
-          <p className="text-3xl font-bold mt-1 text-text-primary">{formatCurrency(data.total_revenue || 0)}</p>
+          <p className="text-2xl sm:text-3xl font-bold mt-1 text-text-primary">{formatCurrency(data.total_revenue || 0)}</p>
         </div>
       </div>
     );
@@ -597,10 +598,10 @@ function ReportChart({ reportKey, data, chartType, formatCurrency }: {
     const labeled = data.map((d: any) => ({ ...d, label: TYPE_LABELS[d.order_type] || d.order_type }));
     return (
       <div className="space-y-4">
-        <ResponsiveContainer width="100%" height={320}>
+        <ResponsiveContainer width="100%" height={260}>
           <PieChart>
             <Pie data={labeled} dataKey="count" nameKey="label" cx="50%" cy="50%"
-              outerRadius={120} innerRadius={50} paddingAngle={3}
+              outerRadius={90} innerRadius={40} paddingAngle={3}
               label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
               {labeled.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
             </Pie>
@@ -608,7 +609,7 @@ function ReportChart({ reportKey, data, chartType, formatCurrency }: {
             <Legend />
           </PieChart>
         </ResponsiveContainer>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {labeled.map((d: any, i: number) => (
             <div key={d.order_type} className="rounded-xl border border-gray-100 p-3 text-center">
               <div className="w-3 h-3 rounded-full mx-auto mb-1" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
@@ -949,9 +950,9 @@ function RevenueComparisonCard({ data, formatCurrency }: { data: any; formatCurr
     { label: 'Growth', value: data.revenueChange ?? 0, isPercentage: true },
   ];
   return (
-    <div className="grid grid-cols-3 gap-4 mt-8">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-8">
       {items.map((item, i) => (
-        <div key={i} className="bg-gray-50 rounded-xl p-6 text-center">
+        <div key={i} className="bg-gray-50 rounded-xl p-4 sm:p-6 text-center">
           <p className="text-xs text-text-muted font-medium uppercase">{item.label}</p>
           {'isPercentage' in item ? (
             <p className={`text-3xl font-bold mt-2 ${Number(item.value) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -1009,7 +1010,7 @@ function SalesSummaryCard({ data, formatCurrency }: { data: any; formatCurrency:
     { label: 'Lowest Order', value: formatCurrency(Number(data.lowest_order ?? 0)), color: 'text-rose-600' },
   ];
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
       {metrics.map((m) => (
         <div key={m.label} className="bg-gray-50 rounded-xl p-5 text-center">
           <p className="text-[11px] text-text-muted font-medium uppercase tracking-wide">{m.label}</p>
@@ -1031,7 +1032,7 @@ function QrConversionCard({ data, formatCurrency }: { data: any; formatCurrency:
     { label: 'Avg Time to Order', value: `${Number(data.avg_time_to_order_min ?? 0).toFixed(1)} min` },
   ];
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
       {metrics.map((m) => (
         <div key={m.label} className={`rounded-xl p-5 text-center ${m.highlight ? 'bg-primary/10' : 'bg-gray-50'}`}>
           <p className="text-[11px] text-text-muted font-medium uppercase tracking-wide">{m.label}</p>

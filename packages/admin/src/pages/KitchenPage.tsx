@@ -412,7 +412,7 @@ export default function KitchenPage() {
   return (
     <div className="h-screen bg-gray-950 text-white flex flex-col select-none overflow-hidden">
       {/* ─── Header Bar ─── */}
-      <header className="flex items-center justify-between px-5 py-2.5 bg-gray-900 border-b border-gray-800 shrink-0">
+      <header className="flex items-center justify-between px-3 sm:px-5 py-2.5 bg-gray-900 border-b border-gray-800 shrink-0">
         <div className="flex items-center gap-4">
           {backPath && (
             <button
@@ -433,13 +433,13 @@ export default function KitchenPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-5 text-sm">
-          <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2 sm:gap-5 text-sm">
+          <div className="hidden sm:flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-blue-400" />
             <span className="text-gray-500">Preparing</span>
             <span className="font-bold text-blue-400 tabular-nums">{columnData.cooking.length}</span>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="hidden sm:flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-400" />
             <span className="text-gray-500">Ready</span>
             <span className="font-bold text-emerald-400 tabular-nums">{columnData.ready.length}</span>
@@ -481,17 +481,17 @@ export default function KitchenPage() {
             </div>
           </div>
         ) : (
-          <div className="flex gap-3 h-full">
+          <div className="flex gap-2 sm:gap-3 h-full overflow-x-auto">
             {COLUMNS.map((col) => {
               const items = columnData[col.key];
               const isReady = col.key === 'ready';
               return (
-                <div key={col.key} className={`flex flex-col h-full min-h-0 ${isReady ? 'w-[320px] shrink-0' : 'flex-1 min-w-0'}`}>
+                <div key={col.key} className={`flex flex-col h-full min-h-0 ${isReady ? 'w-1/2 sm:w-[320px] shrink-0' : 'w-1/2 sm:flex-1 sm:min-w-0'}`}>
                   {/* Column header */}
-                  <div className={`flex items-center justify-between px-4 py-2 rounded-t-xl ${col.headerBg} border ${col.borderColor} border-b-0`}>
-                    <div className="flex items-center gap-2">
-                      <span className={`w-2.5 h-2.5 rounded-full ${col.dot}`} />
-                      <span className={`text-sm font-bold uppercase tracking-wider ${col.headerText}`}>
+                  <div className={`flex items-center justify-between px-2 sm:px-4 py-2 rounded-t-xl ${col.headerBg} border ${col.borderColor} border-b-0`}>
+                    <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                      <span className={`w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full shrink-0 ${col.dot}`} />
+                      <span className={`text-[11px] sm:text-sm font-bold uppercase tracking-wider truncate ${col.headerText}`}>
                         {col.label}
                       </span>
                     </div>
@@ -501,11 +501,15 @@ export default function KitchenPage() {
                   </div>
 
                   {/* Column body — scrollable */}
-                  <div className={`flex-1 overflow-y-auto rounded-b-xl border ${col.borderColor} border-t-0 bg-gray-900/40 p-2 ${col.key === 'cooking' ? 'grid grid-cols-3 gap-1.5 auto-rows-min content-start' : 'space-y-1.5'}`}>
+                  <div className={`flex-1 overflow-y-auto rounded-b-xl border ${col.borderColor} border-t-0 bg-gray-900/40 p-2 ${
+                    items.length === 0
+                      ? 'flex items-center justify-center'
+                      : col.key === 'cooking'
+                        ? 'grid grid-cols-2 sm:grid-cols-3 gap-1.5 auto-rows-min content-start'
+                        : 'space-y-1.5'
+                  }`}>
                     {items.length === 0 ? (
-                      <div className={`flex items-center justify-center h-full ${col.key === 'cooking' ? 'col-span-3' : ''}`}>
-                        <p className="text-sm text-gray-600">{col.emptyMsg}</p>
-                      </div>
+                      <p className="text-sm text-gray-600">{col.emptyMsg}</p>
                     ) : isReady ? (
                       readyByTable.map((group) => (
                         <div key={group.key} className="bg-gray-800/60 rounded-lg overflow-hidden border-l-3 border-l-emerald-400">

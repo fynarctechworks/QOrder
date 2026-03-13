@@ -505,7 +505,7 @@ export default function OrdersPage() {
   }, []);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3 md:space-y-5">
       {/* ═══ Header ═══ */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -590,7 +590,7 @@ export default function OrdersPage() {
       </div>
 
       {/* ═══ Quick Stats ═══ */}
-      <div className="grid grid-cols-2 lg:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {[
           { label: 'Active Orders', value: String(activeCount), color: 'text-violet-600', iconBg: 'bg-violet-500', icon: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z', ring: '' },
           { label: 'Pending Payments', value: formatCurrency(pendingPayments), color: 'text-primary', iconBg: 'bg-primary', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6', ring: pendingPayments > 0 ? 'ring-1 ring-orange-200' : '' },
@@ -645,7 +645,7 @@ export default function OrdersPage() {
 
       {/* ═══ Board / Grid ═══ */}
       {isError ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 md:p-6 text-center">
           <p className="text-red-700 font-semibold">Failed to load orders</p>
           <p className="text-red-500 text-sm mt-1">Please check your connection and try refreshing.</p>
           <button onClick={() => refetch()} className="mt-3 px-4 py-2 text-sm font-medium text-red-700 bg-red-100 rounded-lg hover:bg-red-200 transition-colors">Retry</button>
@@ -654,7 +654,7 @@ export default function OrdersPage() {
         <OrderSkeleton />
       ) : view === 'board' ? (
         /* ── 3-column Kanban Board ── */
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
           {BOARD_COL_META.map(col => {
             const bills = boardBills[col.key] || [];
             return (
@@ -1423,8 +1423,8 @@ function OrderDetail({
         className="fixed top-0 right-0 bottom-0 w-full max-w-md bg-white shadow-2xl z-50 flex flex-col"
       >
         {/* ── Header ── */}
-        <div className="px-6 py-5 border-b border-gray-100">
-          <div className="flex items-start justify-between gap-4">
+        <div className="px-4 md:px-6 py-4 md:py-5 border-b border-gray-100">
+          <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2.5 flex-wrap">
                 <h2 className="text-lg font-bold text-text-primary leading-6">

@@ -376,12 +376,12 @@ export default function TakeawaySettlementModal({
               <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">
                 Pay via
               </p>
-              <div className="grid grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                 {PAYMENT_METHODS.map((method) => (
                   <button
                     key={method.value}
                     onClick={() => handleQuickPay(method.value)}
-                    className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all active:scale-95 ${
+                    className={`flex flex-col items-center gap-2 p-3 sm:p-4 rounded-xl border-2 transition-all active:scale-95 ${
                       selectedQuickMethod === method.value
                         ? `${method.bg} border-current ${method.color} shadow-sm`
                         : 'border-border-primary bg-white hover:border-primary hover:bg-primary/5'
@@ -541,7 +541,7 @@ export default function TakeawaySettlementModal({
               </div>
 
               {/* Method pills */}
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                 {PAYMENT_METHODS.map((method) => (
                   <button
                     key={method.value}

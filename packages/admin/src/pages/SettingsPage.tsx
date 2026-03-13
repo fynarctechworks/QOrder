@@ -232,7 +232,7 @@ function SectionCard({
       animate={{ opacity: 1, y: 0 }}
       className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
     >
-      <div className="px-6 pt-6 pb-4 flex items-center gap-3">
+      <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4 flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
           <svg className="w-5 h-5 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d={icon} />
@@ -243,7 +243,7 @@ function SectionCard({
           {subtitle && <p className="text-xs text-text-muted mt-0.5">{subtitle}</p>}
         </div>
       </div>
-      <div className="px-6 pb-6 space-y-5">
+      <div className="px-4 sm:px-6 pb-4 sm:pb-6 space-y-5">
         {children}
       </div>
     </motion.div>
@@ -335,7 +335,7 @@ function PrinterTestButton({
 /** Skeleton */
 function SettingsSkeleton() {
   return (
-    <div className="space-y-6 w-fit min-w-[36rem]">
+    <div className="space-y-6 w-full max-w-2xl">
       {/* Header skeleton */}
       <div className="animate-pulse">
         <div className="h-7 w-32 bg-gray-200 rounded mb-2" />
@@ -849,7 +849,7 @@ export default function SettingsPage() {
   if (isLoading && profileLoading) return <SettingsSkeleton />;
 
   if (profileError || settingsError) return (
-    <div className="w-fit min-w-[36rem] space-y-6">
+    <div className="w-full max-w-2xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-text-primary tracking-tight">Settings</h1>
       </div>
@@ -863,7 +863,7 @@ export default function SettingsPage() {
   /* ═════════════════════════ RENDER ═════════════════════════ */
 
   return (
-    <div className="space-y-6 w-fit min-w-[36rem]">
+    <div className="space-y-6 w-full max-w-2xl">
 
       {/* ── Header ──────────────────────────────────────────── */}
       <div>
@@ -2416,7 +2416,7 @@ export default function SettingsPage() {
               className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden"
             >
               {/* Header */}
-              <div className="px-6 pt-6 pb-4 flex items-center gap-3">
+              <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4 flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center shrink-0">
                   <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -2431,7 +2431,7 @@ export default function SettingsPage() {
               </div>
 
               {/* Body */}
-              <div className="px-6 pb-4 space-y-3">
+              <div className="px-4 sm:px-6 pb-4 space-y-3">
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2">
                   <svg className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
@@ -2468,7 +2468,7 @@ export default function SettingsPage() {
               </div>
 
               {/* Actions */}
-              <div className="px-6 pb-6 flex items-center gap-2">
+              <div className="px-4 sm:px-6 pb-4 sm:pb-6 flex items-center gap-2">
                 <button
                   onClick={() => { setShowPasswordModal(false); setPasswordError(''); setConfirmPassword(''); }}
                   className="flex-1 px-4 py-2.5 bg-gray-100 text-text-secondary rounded-xl text-sm font-medium hover:bg-gray-200 transition-all"
@@ -2504,7 +2504,7 @@ export default function SettingsPage() {
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
               transition={{ duration: 0.2 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-5"
+              className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-4 sm:p-6 space-y-5"
             >
               {/* Header */}
               <div className="text-center">

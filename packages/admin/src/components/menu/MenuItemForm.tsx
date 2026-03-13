@@ -429,7 +429,7 @@ export default function MenuItemForm({
       </div>
 
       {/* ───── Price + Discount Price ────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-text-secondary mb-1">
             Price <span className="text-error">*</span>
@@ -463,7 +463,7 @@ export default function MenuItemForm({
       </div>
 
       {/* ───── Category + Badge ──────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-text-secondary mb-1">
             Category <span className="text-error">*</span>
@@ -544,7 +544,7 @@ export default function MenuItemForm({
       </div>
 
       {/* ───── Prep time · Calories · Available ──────────────────────────── */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
           <label className="block text-sm font-medium text-text-secondary mb-1">Prep Time (min)</label>
           <input

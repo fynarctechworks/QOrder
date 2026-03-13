@@ -49,16 +49,6 @@ export function createApp(): Application {
   app.use(compression());
 
   // Body parsing
-  // Capture raw body for webhook signature verification
-  app.use('/api/payment/webhook', express.raw({ type: 'application/json' }), (req, _res, next) => {
-    (req as any).rawBody = req.body.toString();
-    try {
-      req.body = JSON.parse(req.body.toString());
-    } catch {
-      req.body = {};
-    }
-    next();
-  });
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -76,11 +66,8 @@ export function createApp(): Application {
   // Value of 1 means trust exactly one hop (the first proxy).
   app.set('trust proxy', 1);
 
-  // Rate limiting (global) — exempt webhook endpoint (Razorpay retries aggressively)
-  app.use('/api', (req, res, next) => {
-    if (req.path === '/payment/webhook') return next();
-    return apiLimiter(req, res, next);
-  });
+  // Rate limiting (global)
+  app.use('/api', apiLimiter);
 
   // Serve static uploads
   app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

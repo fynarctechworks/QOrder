@@ -111,7 +111,7 @@ function DashboardTab({ fmt }: { fmt: (v: number) => string }) {
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="card p-5 animate-pulse">
             <div className="h-4 bg-gray-200 rounded w-20 mb-2" />
@@ -124,7 +124,7 @@ function DashboardTab({ fmt }: { fmt: (v: number) => string }) {
 
   if (isError) {
     return (
-      <div className="card p-8 text-center space-y-3">
+      <div className="card p-4 sm:p-8 text-center space-y-3">
         <p className="text-error">Failed to load overview: {error instanceof Error ? error.message : 'Unknown error'}</p>
         <button className="btn-primary text-sm" onClick={() => refetch()}>Retry</button>
       </div>
@@ -136,7 +136,7 @@ function DashboardTab({ fmt }: { fmt: (v: number) => string }) {
   return (
     <div className="space-y-6">
       {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: 'Total Products', value: String(ov.totalIngredients), icon: '📦', color: 'bg-primary' },
           { label: 'Stock Value', value: fmt(ov.totalInventoryValue), icon: '💰', color: 'bg-emerald-500' },
@@ -254,12 +254,12 @@ function ProductsTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<t
   });
 
   if (isLoading) {
-    return <div className="card p-8 text-center text-text-secondary">Loading products...</div>;
+    return <div className="card p-4 sm:p-8 text-center text-text-secondary">Loading products...</div>;
   }
 
   if (isError) {
     return (
-      <div className="card p-8 text-center space-y-3">
+      <div className="card p-4 sm:p-8 text-center space-y-3">
         <p className="text-error">Failed to load products: {error instanceof Error ? error.message : 'Unknown error'}</p>
         <button className="btn-primary text-sm" onClick={() => refetch()}>Retry</button>
       </div>
@@ -385,7 +385,7 @@ function ProductFormModal({ item, onClose, onSaved }: {
           <label className="text-sm font-medium">Name *</label>
           <input className="input mt-1" value={name} onChange={e => setName(e.target.value)} autoFocus />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="text-sm font-medium">Unit</label>
             <select className="select mt-1" value={unit} onChange={e => setUnit(e.target.value)}>
@@ -397,7 +397,7 @@ function ProductFormModal({ item, onClose, onSaved }: {
             <input className="input mt-1" type="number" min={0} step="0.01" value={costPerUnit} onChange={e => setCostPerUnit(+e.target.value)} />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {!item && (
             <div>
               <label className="text-sm font-medium">Opening Stock</label>
@@ -732,11 +732,11 @@ function SuppliersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
     );
   }, [suppliers, search]);
 
-  if (isLoading) return <div className="card p-8 text-center text-text-secondary">Loading...</div>;
+  if (isLoading) return <div className="card p-4 sm:p-8 text-center text-text-secondary">Loading...</div>;
 
   if (isError) {
     return (
-      <div className="card p-8 text-center space-y-3">
+      <div className="card p-4 sm:p-8 text-center space-y-3">
         <p className="text-error">Failed to load suppliers: {error instanceof Error ? error.message : 'Unknown error'}</p>
         <button className="btn-primary text-sm" onClick={() => refetch()}>Retry</button>
       </div>
@@ -847,7 +847,7 @@ function SupplierFormModal({ supplier, onClose, onSaved }: {
           <label className="text-sm font-medium">Company Name *</label>
           <input className="input mt-1" value={name} onChange={e => setName(e.target.value)} autoFocus />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="text-sm font-medium">Contact Person</label>
             <input className="input mt-1" value={contactName} onChange={e => setContactName(e.target.value)} />

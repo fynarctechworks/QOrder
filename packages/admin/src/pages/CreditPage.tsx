@@ -144,7 +144,7 @@ export default function CreditPage() {
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         </div>
       ) : isError ? (
-        <div className="card p-8 text-center space-y-3">
+        <div className="card p-4 sm:p-8 text-center space-y-3">
           <p className="text-red-500">Failed to load credit accounts: {error?.message}</p>
           <button className="btn-primary text-sm" onClick={() => refetch()}>Retry</button>
         </div>
@@ -365,7 +365,7 @@ function AccountForm({
           className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
         />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="block text-sm font-medium text-text-primary mb-1">Phone</label>
           <input
@@ -599,7 +599,7 @@ function RepaymentForm({
 
       <div>
         <label className="block text-sm font-medium text-text-primary mb-1">Payment Method</label>
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {['CASH', 'UPI', 'CARD', 'WALLET'].map((m) => (
             <button
               key={m}

@@ -74,14 +74,14 @@ export default function Modal({ open, title, onClose, children, maxWidth }: Moda
       <div
         ref={dialogRef}
         tabIndex={-1}
-        className={`relative bg-white rounded-xl shadow-xl w-full ${maxWidth || 'max-w-lg'} mx-4 max-h-[90vh] overflow-y-auto p-6 outline-none`}
+        className={`relative bg-white rounded-xl shadow-xl w-full ${maxWidth || 'max-w-lg'} mx-2 sm:mx-4 max-h-[90vh] overflow-y-auto p-4 sm:p-6 outline-none`}
       >
         <div className="flex items-center justify-between mb-4">
-          <h2 id={titleId} className="text-lg font-bold text-text-primary">{title}</h2>
+          <h2 id={titleId} className="text-base sm:text-lg font-bold text-text-primary">{title}</h2>
           <button
             onClick={onClose}
             aria-label="Close"
-            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-elevated text-text-secondary"
+            className="w-10 h-10 min-h-[44px] flex items-center justify-center rounded-full hover:bg-surface-elevated text-text-secondary"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

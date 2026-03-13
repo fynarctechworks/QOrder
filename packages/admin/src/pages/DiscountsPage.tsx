@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { discountService, type Discount, type Coupon, type CreateDiscountInput, type CreateCouponInput } from '../services/discountService';
 import Modal from '../components/Modal';
@@ -30,7 +30,7 @@ function DiscountForm({ initial, onSubmit, loading }: { initial?: Partial<Create
         <input type="text" required value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))} className="input w-full" placeholder="e.g. Summer 20% Off" />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-text-primary mb-1">Type</label>
           <select value={form.type} onChange={(e) => setForm(f => ({ ...f, type: e.target.value as 'PERCENTAGE' | 'FLAT' }))} className="input w-full">
@@ -44,7 +44,7 @@ function DiscountForm({ initial, onSubmit, loading }: { initial?: Partial<Create
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-text-primary mb-1">Min Order Amount</label>
           <input type="number" min="0" step="0.01" value={form.minOrderAmount ?? ''} onChange={(e) => setForm(f => ({ ...f, minOrderAmount: e.target.value ? Number(e.target.value) : null }))} className="input w-full" placeholder="No minimum" />
@@ -64,7 +64,7 @@ function DiscountForm({ initial, onSubmit, loading }: { initial?: Partial<Create
 
       <div>
         <label className="block text-sm font-medium text-text-primary mb-1">Active Days</label>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {DAY_NAMES.map((name, i) => (
             <button key={i} type="button"
               onClick={() => setForm(f => ({ ...f, activeDays: f.activeDays?.includes(i) ? f.activeDays.filter(d => d !== i) : [...(f.activeDays || []), i] }))}
@@ -76,7 +76,7 @@ function DiscountForm({ initial, onSubmit, loading }: { initial?: Partial<Create
         <p className="text-xs text-text-muted mt-1">Leave empty for all days</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-text-primary mb-1">Active Time From</label>
           <input type="time" value={form.activeTimeFrom ?? ''} onChange={(e) => setForm(f => ({ ...f, activeTimeFrom: e.target.value || null }))} className="input w-full" />
@@ -118,10 +118,10 @@ function CouponForm({ discounts, initial, onSubmit, loading }: { discounts: Disc
       <div>
         <label className="block text-sm font-medium text-text-primary mb-1">Linked Discount</label>
         <select required value={form.discountId} onChange={(e) => setForm(f => ({ ...f, discountId: e.target.value }))} className="input w-full">
-          {discounts.map(d => <option key={d.id} value={d.id}>{d.name} ({d.type === 'PERCENTAGE' ? `${d.value}%` : `₹${d.value}`})</option>)}
+          {discounts.map(d => <option key={d.id} value={d.id}>{d.name} ({d.type === 'PERCENTAGE' ? `${d.value}%` : `â‚¹${d.value}`})</option>)}
         </select>
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-text-primary mb-1">Max Total Uses</label>
           <input type="number" min="1" value={form.maxUses ?? ''} onChange={(e) => setForm(f => ({ ...f, maxUses: e.target.value ? Number(e.target.value) : null }))} className="input w-full" placeholder="Unlimited" />
@@ -201,12 +201,12 @@ export default function DiscountsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-text-primary">Discounts & Coupons</h1>
           <p className="text-sm text-text-muted mt-1">Manage your offers, discounts, and coupon codes</p>
         </div>
-        <button onClick={() => tab === 'discounts' ? setShowDiscountModal(true) : setShowCouponModal(true)} className="btn-primary flex items-center gap-2">
+        <button onClick={() => tab === 'discounts' ? setShowDiscountModal(true) : setShowCouponModal(true)} className="btn-primary flex items-center gap-2 self-start sm:self-auto">
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
           {tab === 'discounts' ? 'Add Discount' : 'Add Coupon'}
         </button>
@@ -226,12 +226,12 @@ export default function DiscountsPage() {
           <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" />
         </div>
       ) : isError ? (
-        <div className="card p-8 text-center space-y-3">
+        <div className="card p-4 sm:p-8 text-center space-y-3">
           <p className="text-red-500">Failed to load {tab}: {error?.message}</p>
           <button className="btn-primary text-sm" onClick={() => refetch()}>Retry</button>
         </div>
       ) : tab === 'discounts' ? (
-        /* ─── Discounts List ─── */
+        /* â”€â”€â”€ Discounts List â”€â”€â”€ */
         discounts.length === 0 ? (
           <div className="text-center py-20 text-text-muted">
             <p className="text-lg font-medium">No discounts yet</p>
@@ -240,7 +240,7 @@ export default function DiscountsPage() {
         ) : (
           <div className="grid gap-4">
             {discounts.map(d => (
-              <div key={d.id} className="bg-white rounded-xl border border-border p-5 flex items-center justify-between">
+              <div key={d.id} className="bg-white rounded-xl border border-border p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3">
                     <h3 className="font-semibold text-text-primary">{d.name}</h3>
@@ -250,17 +250,17 @@ export default function DiscountsPage() {
                     {d.isAutoApply && <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">Auto-apply</span>}
                   </div>
                   <p className="text-sm text-text-muted mt-1">
-                    {d.type === 'PERCENTAGE' ? `${d.value}% off` : `₹${d.value} off`}
-                    {d.minOrderAmount ? ` · Min order ₹${d.minOrderAmount}` : ''}
-                    {d.maxDiscount ? ` · Max ₹${d.maxDiscount}` : ''}
-                    {d.activeDays.length > 0 ? ` · ${d.activeDays.map(i => DAY_NAMES[i]).join(', ')}` : ''}
+                    {d.type === 'PERCENTAGE' ? `${d.value}% off` : `â‚¹${d.value} off`}
+                    {d.minOrderAmount ? ` Â· Min order â‚¹${d.minOrderAmount}` : ''}
+                    {d.maxDiscount ? ` Â· Max â‚¹${d.maxDiscount}` : ''}
+                    {d.activeDays.length > 0 ? ` Â· ${d.activeDays.map(i => DAY_NAMES[i]).join(', ')}` : ''}
                   </p>
                   <p className="text-xs text-text-muted mt-1">
                     Used {d._count?.orderDiscounts ?? d.usedCount} times
-                    {d.coupons && d.coupons.length > 0 ? ` · ${d.coupons.length} coupon(s)` : ''}
+                    {d.coupons && d.coupons.length > 0 ? ` Â· ${d.coupons.length} coupon(s)` : ''}
                   </p>
                 </div>
-                <div className="flex items-center gap-2 ml-4">
+                <div className="flex items-center gap-2">
                   <button onClick={() => setEditingDiscount(d)} className="p-2 text-text-muted hover:text-primary rounded-lg hover:bg-surface-secondary transition-colors">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                   </button>
@@ -273,7 +273,7 @@ export default function DiscountsPage() {
           </div>
         )
       ) : (
-        /* ─── Coupons List ─── */
+        /* â”€â”€â”€ Coupons List â”€â”€â”€ */
         coupons.length === 0 ? (
           <div className="text-center py-20 text-text-muted">
             <p className="text-lg font-medium">No coupons yet</p>
@@ -282,7 +282,7 @@ export default function DiscountsPage() {
         ) : (
           <div className="grid gap-4">
             {coupons.map(c => (
-              <div key={c.id} className="bg-white rounded-xl border border-border p-5 flex items-center justify-between">
+              <div key={c.id} className="bg-white rounded-xl border border-border p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3">
                     <code className="text-lg font-bold text-primary">{c.code}</code>
@@ -291,14 +291,14 @@ export default function DiscountsPage() {
                     </span>
                   </div>
                   <p className="text-sm text-text-muted mt-1">
-                    Linked to: {c.discount?.name ?? '—'}
-                    {c.expiresAt ? ` · Expires ${new Date(c.expiresAt).toLocaleDateString()}` : ''}
+                    Linked to: {c.discount?.name ?? 'â€”'}
+                    {c.expiresAt ? ` Â· Expires ${new Date(c.expiresAt).toLocaleDateString()}` : ''}
                   </p>
                   <p className="text-xs text-text-muted mt-1">
-                    Used {c.usedCount}{c.maxUses ? `/${c.maxUses}` : ''} times · Max {c.maxUsesPerCustomer}/customer
+                    Used {c.usedCount}{c.maxUses ? `/${c.maxUses}` : ''} times Â· Max {c.maxUsesPerCustomer}/customer
                   </p>
                 </div>
-                <div className="flex items-center gap-2 ml-4">
+                <div className="flex items-center gap-2">
                   <button onClick={() => setEditingCoupon(c)} className="p-2 text-text-muted hover:text-primary rounded-lg hover:bg-surface-secondary transition-colors">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                   </button>
@@ -312,7 +312,7 @@ export default function DiscountsPage() {
         )
       )}
 
-      {/* ─── Discount Modal ─── */}
+      {/* â”€â”€â”€ Discount Modal â”€â”€â”€ */}
       <Modal open={showDiscountModal || !!editingDiscount} onClose={() => { setShowDiscountModal(false); setEditingDiscount(null); }} title={editingDiscount ? 'Edit Discount' : 'Create Discount'}>
         <DiscountForm
           initial={editingDiscount ?? undefined}
@@ -321,7 +321,7 @@ export default function DiscountsPage() {
         />
       </Modal>
 
-      {/* ─── Coupon Modal ─── */}
+      {/* â”€â”€â”€ Coupon Modal â”€â”€â”€ */}
       <Modal open={showCouponModal || !!editingCoupon} onClose={() => { setShowCouponModal(false); setEditingCoupon(null); }} title={editingCoupon ? 'Edit Coupon' : 'Create Coupon'}>
         <CouponForm
           discounts={discounts}

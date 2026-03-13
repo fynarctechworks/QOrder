@@ -77,7 +77,7 @@ export default function BranchesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-text-primary">Branches</h1>
           <p className="text-sm text-text-muted mt-1">
@@ -86,7 +86,7 @@ export default function BranchesPage() {
         </div>
         <button
           onClick={() => setIsCreateOpen(true)}
-          className="btn-primary flex items-center gap-2"
+          className="btn-primary flex items-center gap-2 self-start sm:self-auto"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -194,7 +194,7 @@ export default function BranchesPage() {
               )}
 
               {/* Stats */}
-              <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-border">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-4 pt-3 border-t border-border">
                 <div className="text-center">
                   <p className="text-lg font-bold text-text-primary">{branch._count?.tables ?? 0}</p>
                   <p className="text-xs text-text-muted">Tables</p>
@@ -418,7 +418,7 @@ function BranchFormModal({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-text-secondary mb-1">
                 Phone

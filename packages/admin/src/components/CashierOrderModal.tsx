@@ -230,7 +230,7 @@ export default function CashierOrderModal({ open, onClose, onSubmit, isSubmittin
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
       {/* Modal */}
-      <div className="relative z-[51] w-[92vw] max-w-6xl h-[88vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="relative z-[51] w-[96vw] sm:w-[92vw] max-w-6xl h-[92vh] sm:h-[88vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
       {dataError && (
         <div className="bg-red-50 border-b border-red-200 px-5 py-2 text-sm text-red-600 shrink-0">
           Failed to load some data. Close and reopen to retry.
@@ -303,7 +303,7 @@ export default function CashierOrderModal({ open, onClose, onSubmit, isSubmittin
       <div className="flex flex-1 overflow-hidden bg-background">
 
         {/* ── LEFT: Current Ticket ── */}
-        <div className="w-[300px] xl:w-[340px] flex flex-col bg-white border-r border-gray-200 shrink-0">
+        <div className="hidden sm:flex w-[300px] xl:w-[340px] flex-col bg-white border-r border-gray-200 shrink-0">
           <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
             <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Current Ticket</h2>
             {cart.length > 0 && (

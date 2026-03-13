@@ -98,11 +98,11 @@
   }
 
   .table th {
-    @apply px-4 py-3 text-xs font-semibold uppercase tracking-wider text-text-secondary bg-surface-elevated;
+    @apply px-2 md:px-4 py-2.5 md:py-3 text-xs font-semibold uppercase tracking-wider text-text-secondary bg-surface-elevated;
   }
 
   .table td {
-    @apply px-4 py-4 text-sm text-text-primary border-b border-surface-elevated;
+    @apply px-2 md:px-4 py-3 md:py-4 text-sm text-text-primary border-b border-surface-elevated;
   }
 
   .table tr:hover td {

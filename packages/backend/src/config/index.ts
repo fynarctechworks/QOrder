@@ -32,11 +32,6 @@ const envSchema = z.object({
   TWILIO_TPL_EARLY_CHECKOUT: z.string().default(''),
   TWILIO_TPL_ORDER_INVOICE: z.string().default(''),
 
-  // Razorpay (payment gateway)
-  RAZORPAY_KEY_ID: z.string().default(''),
-  RAZORPAY_KEY_SECRET: z.string().default(''),
-  RAZORPAY_WEBHOOK_SECRET: z.string().default(''),
-
   // Gemini AI (chatbot)
   GEMINI_API_KEY: z.string().default(''),
 
@@ -100,11 +95,6 @@ export const config = {
       earlyCheckout: parsed.data.TWILIO_TPL_EARLY_CHECKOUT,
       orderInvoice: parsed.data.TWILIO_TPL_ORDER_INVOICE,
     },
-  },
-  razorpay: {
-    keyId: parsed.data.RAZORPAY_KEY_ID,
-    keySecret: parsed.data.RAZORPAY_KEY_SECRET,
-    webhookSecret: parsed.data.RAZORPAY_WEBHOOK_SECRET,
   },
   gemini: {
     apiKey: parsed.data.GEMINI_API_KEY,

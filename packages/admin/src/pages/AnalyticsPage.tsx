@@ -121,14 +121,14 @@ function ChartCard({
       animate={{ opacity: 1, y: 0 }}
       className={`bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden ${className}`}
     >
-      <div className="flex items-center justify-between px-6 pt-6 pb-2">
+      <div className="flex items-center justify-between px-4 sm:px-6 pt-4 sm:pt-6 pb-2">
         <div>
           <h2 className="text-[15px] font-semibold text-text-primary">{title}</h2>
           {subtitle && <p className="text-xs text-text-muted mt-0.5">{subtitle}</p>}
         </div>
         {action}
       </div>
-      <div className="px-6 pb-6 flex-1 flex flex-col">
+      <div className="px-4 sm:px-6 pb-4 sm:pb-6 flex-1 flex flex-col">
         {children}
       </div>
     </motion.div>
@@ -138,7 +138,7 @@ function ChartCard({
 /** Stats skeleton */
 function StatsSkeleton() {
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
       {Array.from({ length: 4 }).map((_, i) => (
         <div key={i} className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 animate-pulse flex items-center gap-4">
           <div className="w-11 h-11 rounded-xl bg-gray-200" />
@@ -158,7 +158,7 @@ function ChartsSkeleton() {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
       {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className={`bg-white rounded-2xl border border-gray-100 shadow-sm p-6 animate-pulse ${i >= 2 ? '' : ''}`}>
+        <div key={i} className={`bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6 animate-pulse ${i >= 2 ? '' : ''}`}>
           <div className="h-5 w-32 bg-gray-200 rounded mb-1" />
           <div className="h-3 w-48 bg-gray-100 rounded mb-6" />
           <div className="h-56 bg-gray-50 rounded-xl flex items-end gap-2 px-6 pb-4">
@@ -374,7 +374,7 @@ const revenueTrend = useMemo(() => {
   /* ═════════════════════════ RENDER ═════════════════════════ */
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 overflow-hidden">
 
       {/* ── Header ──────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -385,7 +385,7 @@ const revenueTrend = useMemo(() => {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           {/* Tab selector */}
           <div className="inline-flex items-center bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
             {([
@@ -395,7 +395,7 @@ const revenueTrend = useMemo(() => {
               <button
                 key={t.value}
                 onClick={() => setTab(t.value)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                   tab === t.value
                     ? 'bg-gray-900 text-white shadow-sm'
                     : 'text-text-secondary hover:text-text-primary hover:bg-gray-50'
@@ -413,7 +413,7 @@ const revenueTrend = useMemo(() => {
                 <button
                   key={opt.value}
                   onClick={() => setPeriod(opt.value)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                     period === opt.value
                       ? 'bg-primary text-white shadow-sm'
                       : 'text-text-secondary hover:text-text-primary hover:bg-gray-50'
@@ -429,14 +429,14 @@ const revenueTrend = useMemo(() => {
 
       {/* ── Stat Cards ──────────────────────────────────────── */}
       {tab === 'overview' && (isError ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 sm:p-6 text-center">
           <p className="text-red-700 font-semibold">Failed to load analytics</p>
           <p className="text-red-500 text-sm mt-1">Please check your connection and try refreshing.</p>
         </div>
       ) : isLoading ? (
         <StatsSkeleton />
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <MetricCard
             icon="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"
             label="Total Revenue"
@@ -615,7 +615,7 @@ const revenueTrend = useMemo(() => {
           animate={{ opacity: 1, y: 0 }}
           className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5"
         >
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
             {[
               {
                 label: 'Best Day',

@@ -82,7 +82,7 @@ export default function SignUpPage() {
         {/* Form card */}
         <form
           onSubmit={handleSubmit}
-          className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-7 space-y-4"
+          className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 sm:px-6 py-6 sm:py-7 space-y-4"
         >
           {/* Username */}
           <div>

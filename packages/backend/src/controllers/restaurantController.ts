@@ -22,14 +22,6 @@ export const restaurantController = {
         delete settings.lockPin;
         (settings as Record<string, unknown>).hasLockPin = hasLockPin;
 
-        // Mask Razorpay secret — never send the real value to frontend
-        if (typeof settings.razorpayKeySecret === 'string' && settings.razorpayKeySecret.length > 0) {
-          const secret = settings.razorpayKeySecret as string;
-          settings.razorpayKeySecret = secret.length > 4
-            ? '••••' + secret.slice(-4)
-            : '••••••••';
-        }
-
         // Mask WhatsApp Access Token
         if (typeof settings.whatsappAccessToken === 'string' && settings.whatsappAccessToken.length > 0) {
           const token = settings.whatsappAccessToken as string;

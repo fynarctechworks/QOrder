@@ -89,6 +89,7 @@ export default function CreateOrderPage() {
   // Hold & Recall state
   const [heldTickets, setHeldTickets] = useState<HeldTicket[]>(loadHeldTickets);
   const [showRecall, setShowRecall] = useState(false);
+  const [showCart, setShowCart] = useState(false);
 
   // Discount state
   const [discountType, setDiscountType] = useState<'PERCENTAGE' | 'FLAT'>('PERCENTAGE');
@@ -372,21 +373,21 @@ export default function CreateOrderPage() {
   };
 
   return (
-    <div className="-m-6 flex flex-col" style={{ height: 'calc(100vh - 4rem)' }}>
+    <div className="-m-3 md:-m-6 flex flex-col" style={{ height: 'calc(100vh - 3.5rem)' }}>
       {dataError && (
-        <div className="bg-red-50 border-b border-red-200 px-6 py-2 flex items-center gap-3">
+        <div className="bg-red-50 border-b border-red-200 px-3 md:px-6 py-2 flex items-center gap-3">
           <span className="text-sm text-red-600">Failed to load some data.</span>
           <button className="text-sm font-medium text-red-700 underline" onClick={() => { refetchMenu(); refetchCat(); refetchTables(); }}>Retry</button>
         </div>
       )}
       {/* ═══ Top bar ═══ */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shrink-0">
+      <div className="bg-white border-b border-gray-200 px-3 md:px-6 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3 shrink-0">
         <div>
-          <h1 className="text-xl font-bold text-text-primary tracking-tight">Create Order</h1>
-          <p className="text-sm text-text-muted">Build and place orders for walk-in or dine-in customers</p>
+          <h1 className="text-lg md:text-xl font-bold text-text-primary tracking-tight">Create Order</h1>
+          <p className="text-xs md:text-sm text-text-muted hidden sm:block">Build and place orders for walk-in or dine-in customers</p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 md:gap-3 flex-wrap">
           {/* View Orders */}
           <button
             onClick={() => navigate('/orders')}
@@ -401,7 +402,7 @@ export default function CreateOrderPage() {
           <select
             value={selectedTable}
             onChange={e => setSelectedTable(e.target.value)}
-            className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-white min-w-[160px]"
+            className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-white min-w-0 w-full sm:w-auto sm:min-w-[160px]"
           >
             <option value="">Takeaway</option>
             {groupedDropdownTables ? (
@@ -437,7 +438,7 @@ export default function CreateOrderPage() {
             value={customerName}
             onChange={e => setCustomerName(e.target.value)}
             placeholder="Customer name"
-            className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary w-36"
+            className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary w-28 sm:w-36"
           />
 
           {/* Customer phone */}
@@ -446,7 +447,7 @@ export default function CreateOrderPage() {
             value={customerPhone}
             onChange={e => setCustomerPhone(e.target.value)}
             placeholder="Phone number"
-            className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary w-36"
+            className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary w-28 sm:w-36"
           />
 
           {/* New Order (reset) */}
@@ -479,13 +480,21 @@ export default function CreateOrderPage() {
       </div>
 
       {/* ═══ Body ═══ */}
-      <div className="flex flex-1 overflow-hidden bg-background">
+      <div className="flex flex-1 overflow-hidden bg-background relative">
+
+        {/* Mobile cart overlay */}
+        {showCart && (
+          <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={() => setShowCart(false)} />
+        )}
 
         {/* ── LEFT: Current Ticket ── */}
-        <div className="w-[300px] xl:w-[340px] flex flex-col bg-white border-r border-gray-200 shrink-0">
+        <div className={`fixed inset-y-0 left-0 z-40 w-[300px] md:static md:z-auto xl:w-[340px] flex flex-col bg-white border-r border-gray-200 shrink-0 transform transition-transform duration-200 ${showCart ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
           <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
             <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Current Ticket</h2>
             <div className="flex items-center gap-2">
+              <button onClick={() => setShowCart(false)} className="md:hidden text-gray-400 hover:text-gray-600">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
               {cart.length > 0 && (
                 <button
                   onClick={() => { setCart([]); setActiveCartItemId(null); }}
@@ -711,8 +720,20 @@ export default function CreateOrderPage() {
 
         {/* ── RIGHT: Menu grid ── */}
         <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Mobile cart toggle FAB */}
+          <button
+            onClick={() => setShowCart(true)}
+            className="md:hidden fixed bottom-6 right-6 z-30 w-14 h-14 rounded-full bg-primary text-white shadow-lg flex items-center justify-center active:scale-95 transition-transform"
+          >
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z" />
+            </svg>
+            {totalItems > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{totalItems}</span>
+            )}
+          </button>
           {/* Search + Category tabs */}
-          <div className="px-5 py-3 bg-white border-b border-gray-200 shrink-0">
+          <div className="px-3 md:px-5 py-3 bg-white border-b border-gray-200 shrink-0">
             {/* Search bar */}
             <div className="relative mb-3">
               <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -756,7 +777,7 @@ export default function CreateOrderPage() {
           </div>
 
           {/* Items grid */}
-          <div className="flex-1 overflow-y-auto p-5">
+          <div className="flex-1 overflow-y-auto p-3 md:p-5">
             {availableItems.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-gray-400">
                 <svg className="w-16 h-16 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
@@ -765,7 +786,7 @@ export default function CreateOrderPage() {
                 <p className="text-sm font-medium">No items found</p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                 {availableItems.map((item) => {
                   const qty = getCartQty(item.id);
                   const price = item.discountPrice ?? item.price;

@@ -18,7 +18,6 @@ vi.mock('../config/index.js', () => ({
     smtp: { host: '', port: 587, user: '', pass: '', from: '' },
     whatsapp: { token: '', phoneNumberId: '' },
     twilio: { accountSid: '', authToken: '', verifyServiceSid: '' },
-    razorpay: { keyId: '', keySecret: '', webhookSecret: '' },
   },
 }));
 

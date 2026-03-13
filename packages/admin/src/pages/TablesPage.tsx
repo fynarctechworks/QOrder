@@ -107,7 +107,7 @@ function StatCard({
 /** Stats skeleton */
 function StatsSkeleton() {
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
       {Array.from({ length: 4 }).map((_, i) => (
         <div key={i} className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4 animate-pulse flex items-center gap-4">
           <div className="w-10 h-10 rounded-xl bg-gray-200" />
@@ -127,7 +127,7 @@ function GridSkeleton() {
     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
       {Array.from({ length: 8 }).map((_, i) => (
         <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden animate-pulse">
-          <div className="p-6">
+          <div className="p-4 sm:p-6">
             <div className="flex items-center justify-between mb-5">
               <div className="w-14 h-14 rounded-2xl bg-gray-200" />
               <div className="h-7 w-20 bg-gray-100 rounded-full" />
@@ -136,7 +136,7 @@ function GridSkeleton() {
             <div className="h-4 w-32 bg-gray-100 rounded mb-4" />
             <div className="h-10 w-full bg-gray-100 rounded-xl" />
           </div>
-          <div className="border-t border-gray-100 px-6 py-3 flex justify-between">
+          <div className="border-t border-gray-100 px-4 sm:px-6 py-3 flex justify-between">
             <div className="h-8 w-24 bg-gray-100 rounded-lg" />
             <div className="h-8 w-8 bg-gray-100 rounded-lg" />
           </div>
@@ -493,14 +493,14 @@ export default function TablesPage() {
 
       {/* ── Stat Cards ──────────────────────────────────────── */}
       {isError ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 sm:p-6 text-center">
           <p className="text-red-700 font-semibold">Failed to load tables</p>
           <p className="text-red-500 text-sm mt-1">Please check your connection and try refreshing.</p>
         </div>
       ) : isLoading ? (
         <StatsSkeleton />
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard icon="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" label="Total Tables" value={sectionFiltered.length} accent="bg-violet-500" delay={0} />
           <StatCard icon="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" label="Available" value={counts.available ?? 0} accent="bg-green-500" delay={0.05} />
           <StatCard icon="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" label="Total Capacity" value={totalCapacity} accent="bg-sky-500" delay={0.10} />
@@ -750,7 +750,7 @@ function TableCard({
       className={`group relative bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md hover:border-gray-200 transition-all duration-300`}
     >
       {/* ── Main body ── */}
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         {/* Top row: number badge + status chip */}
         <div className="flex items-center justify-between mb-5">
           <div className={`min-w-14 h-14 px-3 rounded-2xl ${s.bg} ring-2 ${s.ring} flex items-center justify-center`}>
@@ -844,7 +844,7 @@ function TableCard({
       </div>
 
       {/* ── Footer actions ── */}
-      <div className="border-t border-gray-100 px-6 py-3 flex items-center justify-between">
+      <div className="border-t border-gray-100 px-4 sm:px-6 py-3 flex items-center justify-between">
         <button
           onClick={onGenerateQR}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-text-secondary bg-gray-50 hover:bg-gray-100 hover:text-text-primary transition-colors"

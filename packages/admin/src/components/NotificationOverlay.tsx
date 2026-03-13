@@ -101,8 +101,7 @@ export default function NotificationOverlay({ notifications, onDismiss, onDismis
   if (notifications.length === 0) return null;
 
   return (
-    <div className="fixed top-4 right-4 z-[100] flex flex-col items-end gap-2.5 max-h-[85vh] overflow-y-auto pointer-events-none"
-      style={{ width: '380px', maxWidth: 'calc(100vw - 2rem)' }}
+    <div className="fixed top-4 right-2 sm:right-4 z-[100] flex flex-col items-end gap-2.5 max-h-[85vh] overflow-y-auto pointer-events-none w-[calc(100vw-1rem)] sm:w-96"
     >
       <AnimatePresence mode="popLayout">
         {notifications.map((notif) => {

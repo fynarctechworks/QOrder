@@ -48,7 +48,6 @@ router.use('/inventory', inventoryRoutes);
 router.use('/discounts', discountRoutes);
 router.use('/features', featureRoutes);
 
-// Razorpay webhook removed
 router.use('/crm', crmRoutes);
 router.use('/reports', reportRoutes);
 router.use('/staff-management', staffManagementRoutes);

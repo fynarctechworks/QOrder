@@ -33,7 +33,6 @@
     "openai": "^6.26.0",
     "pino": "^10.3.1",
     "rate-limit-redis": "^4.3.1",
-    "razorpay": "^2.9.6",
     "socket.io": "^4.7.4",
     "uuid": "^9.0.1",
     "ws": "^8.18.3",

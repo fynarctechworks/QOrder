@@ -465,7 +465,7 @@ export default function SettlementModal({
               <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">
                 Pay via
               </p>
-              <div className="grid grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                 {PAYMENT_METHODS.filter((m) => m.value !== 'CREDIT').map((method) => (
                   <button
                     key={method.value}
@@ -635,7 +635,7 @@ export default function SettlementModal({
               </div>
 
               {/* Method pills */}
-              <div className="grid grid-cols-5 gap-1.5">
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
                 {PAYMENT_METHODS.map((method) => (
                   <button
                     key={method.value}

@@ -62,7 +62,7 @@ export default function LoginPage() {
         {/* Form card */}
         <form
           onSubmit={handleSubmit}
-          className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-7 space-y-5"
+          className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 sm:px-6 py-6 sm:py-7 space-y-5"
         >
           {/* Email or Username */}
           <div>

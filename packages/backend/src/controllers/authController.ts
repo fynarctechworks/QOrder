@@ -13,6 +13,14 @@ const COOKIE_OPTIONS = {
   path: '/',
 };
 
+/** clearCookie must include sameSite + secure to match how the cookie was set (cross-origin). */
+const CLEAR_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: config.isProduction,
+  sameSite: config.isProduction ? 'none' as const : 'lax' as const,
+  path: '/',
+};
+
 export const authController = {
   async register(
     req: Request<unknown, unknown, RegisterInput>,
@@ -133,7 +141,7 @@ export const authController = {
       });
     } catch (error) {
       // Clear invalid cookie
-      res.clearCookie(REFRESH_TOKEN_COOKIE, { path: '/' });
+      res.clearCookie(REFRESH_TOKEN_COOKIE, CLEAR_COOKIE_OPTIONS);
       next(error);
     }
   },
@@ -150,7 +158,7 @@ export const authController = {
         await authService.logout(refreshToken);
       }
 
-      res.clearCookie(REFRESH_TOKEN_COOKIE, { path: '/' });
+      res.clearCookie(REFRESH_TOKEN_COOKIE, CLEAR_COOKIE_OPTIONS);
 
       res.json({
         success: true,
@@ -180,7 +188,7 @@ export const authController = {
 
       await authService.logoutAll(req.user.id);
 
-      res.clearCookie(REFRESH_TOKEN_COOKIE, { path: '/' });
+      res.clearCookie(REFRESH_TOKEN_COOKIE, CLEAR_COOKIE_OPTIONS);
 
       res.json({
         success: true,
@@ -229,7 +237,7 @@ export const authController = {
 
       await authService.changePassword(req.user.id, currentPassword, newPassword);
 
-      res.clearCookie(REFRESH_TOKEN_COOKIE, { path: '/' });
+      res.clearCookie(REFRESH_TOKEN_COOKIE, CLEAR_COOKIE_OPTIONS);
 
       res.json({
         success: true,

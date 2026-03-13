@@ -49,8 +49,6 @@ interface SettingsPayload {
     /** Payment gateway settings */
     paymentGatewayEnabled?: boolean;
     paymentMode?: 'pay_before' | 'pay_after';
-    razorpayKeyId?: string;
-    razorpayKeySecret?: string;
   };
 }
 

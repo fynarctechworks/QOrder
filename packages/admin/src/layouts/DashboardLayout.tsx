@@ -189,7 +189,20 @@ export default function DashboardLayout() {
 
 function DashboardLayoutInner() {
   const [isSidebarCollapsed, _setIsSidebarCollapsed] = useState(false);
-  const [isSidebarHidden, setIsSidebarHidden] = useState(false);
+  const [isSidebarHidden, setIsSidebarHidden] = useState(() => window.innerWidth < 768);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+
+  // Auto-hide sidebar on resize
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const handler = (e: MediaQueryListEvent | MediaQueryList) => {
+      setIsMobile(e.matches);
+      if (e.matches) setIsSidebarHidden(true);
+    };
+    handler(mq);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
   const [isServicePanelOpen, setIsServicePanelOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const { user, logout } = useAuth();
@@ -202,7 +215,9 @@ function DashboardLayoutInner() {
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [isKdsDropdownOpen, setIsKdsDropdownOpen] = useState(false);
+  const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
   const kdsDropdownRef = useRef<HTMLDivElement>(null);
+  const headerMenuRef = useRef<HTMLDivElement>(null);
   const mainContentRef = useRef<HTMLDivElement>(null);
 
   // Scroll to top on route change
@@ -372,6 +387,14 @@ function DashboardLayoutInner() {
 
   return (
     <div className="min-h-screen bg-background flex">
+      {/* Mobile overlay */}
+      {isMobile && !isSidebarHidden && (
+        <div
+          className="fixed inset-0 bg-black/40 z-40 md:hidden"
+          onClick={() => setIsSidebarHidden(true)}
+        />
+      )}
+
       {/* Sidebar */}
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-sidebar border-r border-border transition-all duration-300 ${
@@ -435,6 +458,7 @@ function DashboardLayoutInner() {
               <li key={item.path}>
                 <NavLink
                   to={item.path}
+                  onClick={() => { if (isMobile) setIsSidebarHidden(true); }}
                   className={({ isActive }) =>
                     `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
                       isActive
@@ -493,7 +517,7 @@ function DashboardLayoutInner() {
             {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (
               <button
                 onClick={lock}
-                className="btn-icon text-text-muted hover:text-red-500"
+                className="btn-icon text-text-muted hover:text-red-500 min-h-[44px] min-w-[44px] flex items-center justify-center"
                 title="Lock screen"
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -504,7 +528,7 @@ function DashboardLayoutInner() {
             {/* Logout */}
             <button
               onClick={confirmLogout}
-              className="btn-icon text-text-muted hover:text-error"
+              className="btn-icon text-text-muted hover:text-error min-h-[44px] min-w-[44px] flex items-center justify-center"
               title="Logout"
             >
               <svg
@@ -529,13 +553,13 @@ function DashboardLayoutInner() {
       <div
         ref={mainContentRef}
         className={`flex-1 h-screen overflow-y-auto transition-all duration-300 ${
-          isSidebarHidden ? 'ml-0' : isSidebarCollapsed ? 'ml-[72px]' : 'ml-64'
+          isMobile ? 'ml-0' : isSidebarHidden ? 'ml-0' : isSidebarCollapsed ? 'ml-[72px]' : 'ml-64'
         }`}
       >
         {/* Top bar */}
-        <header className="sticky top-0 z-40 h-16 bg-background border-b border-border flex items-center justify-between px-6">
+        <header className="sticky top-0 z-40 h-14 md:h-16 bg-background border-b border-border flex items-center justify-between px-3 md:px-6">
           <div className="flex items-center gap-3">
-            {isSidebarHidden && (
+            {(isSidebarHidden || isMobile) && (
               <button
                 onClick={() => setIsSidebarHidden(false)}
                 className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-surface-elevated transition-colors"
@@ -546,11 +570,12 @@ function DashboardLayoutInner() {
                 </svg>
               </button>
             )}
-            <h1 className="text-lg font-semibold text-text-primary">
+            <h1 className="text-base md:text-lg font-semibold text-text-primary truncate">
               {pageTitle}
             </h1>
           </div>
-          <div className="flex items-center gap-4">
+          {/* Desktop header nav items */}
+          <div className="hidden md:flex items-center gap-2 md:gap-4">
             {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (<>
             {/* Sync Button */}
             <button
@@ -640,7 +665,7 @@ function DashboardLayoutInner() {
               )}
             </div>
 
-            {/* Browser Fullscreen Toggle — icon only, last in nav */}
+            {/* Browser Fullscreen Toggle */}
             <button
               onClick={() => {
                 if (!document.fullscreenElement) {
@@ -658,6 +683,111 @@ function DashboardLayoutInner() {
             </button>
           </div>
 
+          {/* Mobile hamburger menu */}
+          <div className="md:hidden relative" ref={headerMenuRef}>
+            {/* Connection dot indicator — always visible */}
+            <span className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ${isConnected ? 'bg-success' : 'bg-error'}`} />
+            <button
+              onClick={() => setIsHeaderMenuOpen(!isHeaderMenuOpen)}
+              className="flex items-center justify-center w-10 h-10 min-h-[44px] rounded-lg hover:bg-surface-elevated transition-colors"
+              title="Menu"
+            >
+              <svg className="w-5 h-5 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" />
+              </svg>
+            </button>
+
+            {isHeaderMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setIsHeaderMenuOpen(false)} />
+                <div className="absolute right-0 top-full mt-2 z-50 bg-white rounded-xl shadow-lg border border-border py-2 w-56">
+                  {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (
+                    <>
+                      {/* Sync */}
+                      <button
+                        onClick={() => { handleSync(); setIsHeaderMenuOpen(false); }}
+                        disabled={isSyncing}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-surface-elevated transition-colors text-sm disabled:opacity-60"
+                      >
+                        <svg
+                          className={`w-4 h-4 text-text-secondary ${isSyncing ? 'animate-spin' : ''}`}
+                          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        <span className="text-text-primary font-medium">{isSyncing ? 'Syncing...' : 'Sync'}</span>
+                      </button>
+
+                      {/* Service Requests */}
+                      <button
+                        onClick={() => { setIsServicePanelOpen(!isServicePanelOpen); setIsHeaderMenuOpen(false); }}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-surface-elevated transition-colors text-sm"
+                      >
+                        <svg className="w-4 h-4 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                        </svg>
+                        <span className="text-text-primary font-medium">Requests</span>
+                      </button>
+
+                      <div className="border-t border-border my-1" />
+                    </>
+                  )}
+
+                  {/* Connection status */}
+                  <div className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                    <span className={`w-2.5 h-2.5 rounded-full ${isConnected ? 'bg-success' : 'bg-error'}`} />
+                    <span className="text-text-primary font-medium">{isConnected ? 'Connected' : 'Disconnected'}</span>
+                  </div>
+
+                  {/* KDS status */}
+                  <div className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                    <span className={`w-2.5 h-2.5 rounded-full ${kdsCount > 0 ? 'bg-success' : 'bg-gray-300'}`} />
+                    <span className="text-text-primary font-medium">KDS {kdsCount > 0 ? `(${kdsCount})` : 'Off'}</span>
+                  </div>
+
+                  {kdsCount > 0 && kdsUsers.length > 0 && (
+                    <>
+                      <div className="border-t border-border my-1" />
+                      <div className="px-3 py-1.5 text-xs font-semibold text-text-muted uppercase tracking-wider">KDS Users</div>
+                      {kdsUsers.map((u) => {
+                        const displayRole = u.roleTitle || (u.role === 'STAFF' ? 'Cashier' : u.role.charAt(0) + u.role.slice(1).toLowerCase());
+                        return (
+                        <div key={u.id} className="flex items-center gap-2.5 px-4 py-2 hover:bg-surface-elevated">
+                          <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center">
+                            <span className="text-[10px] font-semibold text-primary">{u.name.charAt(0).toUpperCase()}</span>
+                          </div>
+                          <p className="text-sm text-text-primary truncate flex-1">{u.name}</p>
+                          <span className="text-[10px] font-semibold text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">{displayRole}</span>
+                        </div>
+                        );
+                      })}
+                    </>
+                  )}
+
+                  <div className="border-t border-border my-1" />
+
+                  {/* Fullscreen */}
+                  <button
+                    onClick={() => {
+                      if (!document.fullscreenElement) {
+                        document.documentElement.requestFullscreen();
+                      } else {
+                        document.exitFullscreen();
+                      }
+                      setIsHeaderMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-surface-elevated transition-colors text-sm"
+                  >
+                    <svg className="w-4 h-4 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                    </svg>
+                    <span className="text-text-primary font-medium">Fullscreen</span>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
           {/* Service Requests Panel */}
           <AnimatePresence>
             {isServicePanelOpen && (
@@ -665,7 +795,7 @@ function DashboardLayoutInner() {
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="absolute top-16 right-4 w-96 bg-white rounded-2xl shadow-xl border border-border z-50 p-4"
+                className="absolute top-14 md:top-16 right-2 md:right-4 w-[calc(100vw-1rem)] sm:w-96 bg-white rounded-2xl shadow-xl border border-border z-50 p-4"
               >
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="font-semibold text-text-primary">Service Requests</h3>
@@ -680,7 +810,7 @@ function DashboardLayoutInner() {
         </header>
 
         {/* Page content */}
-        <main className="p-6">
+        <main className="p-3 md:p-6">
           <Outlet />
         </main>
       </div>
@@ -714,7 +844,7 @@ function DashboardLayoutInner() {
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-2xl shadow-xl p-6 w-80"
+              className="bg-white rounded-2xl shadow-xl p-5 sm:p-6 w-[calc(100vw-2rem)] sm:w-80"
               onClick={(e) => e.stopPropagation()}
             >
               <h3 className="text-lg font-semibold text-text-primary mb-2">Confirm Logout</h3>

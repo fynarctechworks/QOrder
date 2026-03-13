@@ -163,11 +163,6 @@ export const restaurantService = {
       settings.lockPin = await bcrypt.hash(settings.lockPin, 10);
     }
 
-    // If razorpayKeySecret is the masked value from GET, don't overwrite the real secret
-    if (typeof settings.razorpayKeySecret === 'string' && settings.razorpayKeySecret.startsWith('••••')) {
-      delete settings.razorpayKeySecret;
-    }
-
     // Same for WhatsApp Access Token
     if (typeof settings.whatsappAccessToken === 'string' && settings.whatsappAccessToken.startsWith('••••')) {
       delete settings.whatsappAccessToken;

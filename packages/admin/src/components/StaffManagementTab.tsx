@@ -260,7 +260,7 @@ function CreateStaffModal({
           </div>
 
           {/* Body */}
-          <div className="px-6 py-5 space-y-4 overflow-y-auto">
+          <div className="px-4 sm:px-6 py-5 space-y-4 overflow-y-auto">
             <div>
               <label className="block text-sm font-medium text-text-primary mb-1.5">Full Name</label>
               <input

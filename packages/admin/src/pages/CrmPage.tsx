@@ -88,7 +88,7 @@ export default function CrmPage() {
 
       {/* Insight Cards */}
       {insights && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {[
             { label: 'Total Customers', value: String(insights.totalCustomers), color: 'bg-primary' },
             { label: 'VIP Customers', value: String(insights.tagDistribution.find(t => t.tag === 'VIP')?.count ?? 0), color: 'bg-amber-500' },
@@ -111,7 +111,7 @@ export default function CrmPage() {
           placeholder="Search by name, phone, or email..."
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-          className="flex-1 min-w-[200px] border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+          className="flex-1 min-w-0 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
         />
         <select
           value={filterTag}
@@ -208,7 +208,7 @@ export default function CrmPage() {
               className="fixed top-0 right-0 bottom-0 w-full max-w-md bg-white shadow-2xl z-50 flex flex-col">
               
               {/* Header */}
-              <div className="px-6 py-5 border-b border-gray-100">
+              <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-gray-100">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2.5 flex-wrap">
@@ -318,7 +318,7 @@ export default function CrmPage() {
               {/* Body — scrollable */}
               <div className="flex-1 overflow-y-auto">
                 {/* Stats */}
-                <div className="grid grid-cols-2 gap-3 px-6 py-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 px-4 sm:px-6 py-4 sm:py-5">
                   {[
                     { l: 'Total Visits', v: String(detail.totalVisits), icon: 'M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z', iconBg: 'bg-blue-500' },
                     { l: 'Total Spend', v: formatCurrency(detail.totalSpend), icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6', iconBg: 'bg-green-500' },
@@ -343,7 +343,7 @@ export default function CrmPage() {
 
                 {/* Edit Fields */}
                 {editMode && (
-                  <div className="px-6 pb-5 space-y-3">
+                  <div className="px-4 sm:px-6 pb-5 space-y-3">
                     <div>
                       <label className="text-xs font-medium text-text-muted">Name</label>
                       <input value={editData.name} onChange={e => setEditData(d => ({ ...d, name: e.target.value }))}
@@ -363,7 +363,7 @@ export default function CrmPage() {
                 )}
 
                 {/* Interaction History */}
-                <div className="px-6 py-5 border-t border-gray-100">
+                <div className="px-4 sm:px-6 py-4 sm:py-5 border-t border-gray-100">
                   <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-3">Recent Activity</h3>
                   <div className="space-y-2">
                     {detail.interactions.length === 0 ? (

@@ -31,13 +31,13 @@ export default function ViewOrderModal({ tableId, onClose, onSettleBill }: ViewO
       />
       
       {/* Modal Content */}
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-hidden">
-        <div className="p-6 overflow-y-auto max-h-[90vh]">
-          <div className="space-y-6">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-2 sm:mx-4 max-h-[90vh] overflow-hidden">
+        <div className="p-4 sm:p-6 overflow-y-auto max-h-[90vh]">
+          <div className="space-y-4 sm:space-y-6">
         {/* Header */}
         <div className="flex items-start justify-between pb-4 border-b border-gray-200">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Order Details</h2>
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Order Details</h2>
             {sessionData && (
               <p className="mt-1 text-sm text-gray-600">
                 Table {sessionData.tableNumber}

@@ -205,14 +205,14 @@ export default function DashboardPage() {
 
       {/* ═══════════════════ Stat Cards ═══════════════════ */}
       {isError ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 sm:p-6 text-center">
           <p className="text-red-700 font-semibold">Failed to load dashboard data</p>
           <p className="text-red-500 text-sm mt-1">Please check your connection and try refreshing.</p>
         </div>
       ) : isLoading ? (
         <StatCardsSkeleton />
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
             icon={
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -276,7 +276,7 @@ export default function DashboardPage() {
 
       {/* ═══════════════════ Secondary KPIs ═══════════════════ */}
       {extras && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
           <StatCard
             icon={
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -338,16 +338,15 @@ export default function DashboardPage() {
 
       {/* ═══════════════════ Charts + Performance ═══════════════════ */}
       {!isLoading && analytics && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-3 md:gap-4">
           {/* Revenue Area Chart */}
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="lg:col-span-5 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
+            className="md:col-span-1 lg:col-span-5 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
           >
-            <div className="px-6 pt-5 pb-2">
+            <div className="px-4 sm:px-6 pt-5 pb-2">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-[15px] font-semibold text-text-primary">Revenue</h3>
@@ -374,13 +373,13 @@ export default function DashboardPage() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15 }}
-            className="lg:col-span-4 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
+            className="md:col-span-1 lg:col-span-4 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
           >
-            <div className="px-6 pt-5 pb-2 flex items-center justify-between">
+            <div className="px-4 sm:px-6 pt-5 pb-2 flex items-center justify-between">
               <h3 className="text-[15px] font-semibold text-text-primary">Top Items Breakdown</h3>
               <span className="text-[11px] text-text-muted">Today</span>
             </div>
-            <div className="px-6 pb-5">
+            <div className="px-4 sm:px-6 pb-5">
               <RevenueDonut data={topItemsDonut} formatCurrency={formatCurrency} />
             </div>
           </motion.div>
@@ -390,7 +389,7 @@ export default function DashboardPage() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="lg:col-span-3 flex flex-col gap-4"
+            className="md:col-span-2 lg:col-span-3 flex flex-col gap-3 md:gap-4"
           >
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex-1">
               <div className="flex items-center justify-between mb-4">
@@ -469,16 +468,16 @@ export default function DashboardPage() {
 
       {/* ═══════════════════ Bottom Grid ═══════════════════ */}
       {!isLoading && analytics && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-3 md:gap-4">
 
           {/* Recent Orders */}
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15 }}
-            className="lg:col-span-7 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
+            className="md:col-span-2 lg:col-span-7 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
           >
-            <div className="px-6 pt-5 pb-3 flex items-center justify-between">
+            <div className="px-4 sm:px-6 pt-5 pb-3 flex items-center justify-between">
               <h3 className="text-[15px] font-semibold text-text-primary">Recent Orders</h3>
               <span className="text-[11px] text-text-muted">Today</span>
             </div>
@@ -490,7 +489,7 @@ export default function DashboardPage() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="lg:col-span-5 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
+            className="md:col-span-2 lg:col-span-5 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
           >
             <div className="px-5 pt-5 pb-3 flex items-center justify-between">
               <h3 className="text-[15px] font-semibold text-text-primary">Activity</h3>
@@ -507,7 +506,7 @@ export default function DashboardPage() {
 
       {/* ═══════════════════ Hourly + Summary ═══════════════════ */}
       {!isLoading && analytics && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
@@ -545,7 +544,7 @@ export default function DashboardPage() {
 
       {/* ═══════════════════ Table Status + Payments + Financial ═══════════════════ */}
       {extras && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
 
           {/* Table Status Overview */}
           <motion.div
@@ -593,7 +592,7 @@ export default function DashboardPage() {
 
       {/* ═══════════════════ Alerts + Low Performers ═══════════════════ */}
       {extras && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
 
           {/* Notifications & Alerts */}
           <motion.div
@@ -634,7 +633,7 @@ export default function DashboardPage() {
       )}
 
       {/* ═══════════════════ Quick Actions ═══════════════════ */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
         {[
           { label: 'Add Menu Item', icon: 'M12 4v16m8-8H4', path: '/menu', bg: 'bg-primary/10', color: 'text-primary' },
           { label: 'Manage Tables', icon: 'M4 6h16M4 10h16M4 14h10', path: '/tables', bg: 'bg-sky-50', color: 'text-sky-600' },
@@ -693,12 +692,12 @@ function StatCard({
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay }}
-      className={`bg-white rounded-2xl border shadow-sm p-5 hover:shadow-md transition-all duration-300 group ${
+      className={`bg-white rounded-2xl border shadow-sm p-4 md:p-5 hover:shadow-md transition-all duration-300 group ${
         highlight ? 'border-amber-200 ring-1 ring-amber-100' : 'border-gray-100'
       }`}
     >
-      <div className="flex items-start justify-between mb-3">
-        <div className={`w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-sm ${iconColor}`}>
+      <div className="flex items-start justify-between mb-2 md:mb-3">
+        <div className={`w-9 h-9 md:w-10 md:h-10 rounded-xl ${iconBg} flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-sm ${iconColor}`}>
           {icon}
         </div>
         {trend && (
@@ -714,7 +713,7 @@ function StatCard({
         )}
       </div>
       <p className="text-xs text-text-muted font-medium mb-1">{label}</p>
-      <p className="text-2xl font-bold text-text-primary leading-none tabular-nums mb-1.5">{value}</p>
+      <p className="text-xl md:text-2xl font-bold text-text-primary leading-none tabular-nums mb-1.5">{value}</p>
       <p className="text-[11px] text-text-muted leading-none">{sub}</p>
     </motion.div>
   );
@@ -834,7 +833,7 @@ function RecentOrdersTable({
 }) {
   if (orders.length === 0) {
     return (
-      <div className="px-6 pb-5 text-sm text-text-muted text-center py-8">
+      <div className="px-4 sm:px-6 pb-5 text-sm text-text-muted text-center py-8">
         No recent orders
       </div>
     );
@@ -845,11 +844,11 @@ function RecentOrdersTable({
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-gray-100">
-            <th className="text-left text-[11px] text-text-muted font-medium uppercase tracking-wider py-2.5 px-6">Order</th>
+            <th className="text-left text-[11px] text-text-muted font-medium uppercase tracking-wider py-2.5 px-3 md:px-6">Order</th>
             <th className="text-left text-[11px] text-text-muted font-medium uppercase tracking-wider py-2.5 px-2">Table</th>
-            <th className="text-left text-[11px] text-text-muted font-medium uppercase tracking-wider py-2.5 px-2">Time</th>
+            <th className="hidden sm:table-cell text-left text-[11px] text-text-muted font-medium uppercase tracking-wider py-2.5 px-2">Time</th>
             <th className="text-right text-[11px] text-text-muted font-medium uppercase tracking-wider py-2.5 px-2">Amount</th>
-            <th className="text-right text-[11px] text-text-muted font-medium uppercase tracking-wider py-2.5 px-6">Status</th>
+            <th className="text-right text-[11px] text-text-muted font-medium uppercase tracking-wider py-2.5 px-3 md:px-6">Status</th>
           </tr>
         </thead>
         <tbody>
@@ -861,20 +860,20 @@ function RecentOrdersTable({
                   idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
                 }`}
               >
-                <td className="py-3 px-6">
+                <td className="py-3 px-3 md:px-6">
                   <p className="font-mono text-xs font-semibold text-text-primary">#{order.id.slice(-6).toUpperCase()}</p>
                   <p className="text-[11px] text-text-muted mt-0.5">{order.items.length} item{order.items.length !== 1 ? 's' : ''}</p>
                 </td>
                 <td className="py-3 px-2">
                   <span className="inline-flex items-center gap-1 text-xs font-medium text-text-secondary bg-surface-elevated px-2 py-0.5 rounded">{order.tableName}</span>
                 </td>
-                <td className="py-3 px-2">
+                <td className="hidden sm:table-cell py-3 px-2">
                   <span className="text-xs text-text-muted tabular-nums">{timeAgo(order.createdAt)}</span>
                 </td>
                 <td className="py-3 px-2 text-right">
                   <span className="text-sm font-semibold text-text-primary tabular-nums">{formatCurrency(order.total)}</span>
                 </td>
-                <td className="py-3 px-6 text-right">
+                <td className="py-3 px-3 md:px-6 text-right">
                   <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold ${meta.bg} ${meta.text}`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
                     {meta.label}
@@ -1125,7 +1124,7 @@ function DailySummaryPanel({
 
 function StatCardsSkeleton() {
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       {Array.from({ length: 4 }).map((_, i) => (
         <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 animate-pulse">
           <div className="flex items-start justify-between mb-3">

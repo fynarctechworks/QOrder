@@ -80,7 +80,7 @@ export default function BranchSelector() {
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1 w-56 bg-surface rounded-xl shadow-lg border border-border z-50 py-1 animate-in fade-in slide-in-from-top-1 duration-150">
+        <div className="absolute top-full left-0 mt-1 w-[calc(100vw-2rem)] sm:w-56 bg-surface rounded-xl shadow-lg border border-border z-50 py-1 animate-in fade-in slide-in-from-top-1 duration-150">
           {/* All branches option */}
           <button
             onClick={() => switchBranch(null, null)}

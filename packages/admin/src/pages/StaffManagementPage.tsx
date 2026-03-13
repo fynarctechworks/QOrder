@@ -55,7 +55,7 @@ export default function StaffManagementPage() {
   const activeStaff = staffList.filter(s => s.role !== 'OWNER' && s.isActive);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 overflow-hidden">
       <div>
         <h1 className="text-2xl font-bold text-text-primary tracking-tight">
           {isAdmin ? 'Staff Management' : 'Leave Management'}
@@ -67,10 +67,10 @@ export default function StaffManagementPage() {
 
       {/* Tab Bar — only show if more than 1 tab */}
       {TABS.length > 1 && (
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-full sm:w-fit overflow-x-auto">
           {TABS.map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
-              className={`relative px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+              className={`relative px-3 sm:px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
                 tab === t.key ? 'text-primary' : 'text-text-secondary hover:text-text-primary'
               }`}>
               {tab === t.key && (
@@ -145,7 +145,7 @@ function OverviewTab({ staff, loading, onNavigate }: { staff: StaffMember[]; loa
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: 'Active Staff', value: String(activeCount), color: 'text-blue-600', bg: 'bg-blue-50' },
           { label: 'Present Today', value: `${presentToday}/${activeCount}`, color: 'text-green-600', bg: 'bg-green-50' },
@@ -165,6 +165,7 @@ function OverviewTab({ staff, loading, onNavigate }: { staff: StaffMember[]; loa
           <h3 className="text-sm font-semibold text-text-primary">Staff Directory</h3>
           <span className="text-xs text-text-muted">{staff.length} members</span>
         </div>
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-gray-100">
             <tr>
@@ -237,6 +238,7 @@ function OverviewTab({ staff, loading, onNavigate }: { staff: StaffMember[]; loa
             })}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Quick Actions */}
@@ -266,7 +268,7 @@ function StaffPicker({ staff, value, onChange, label = 'Staff Member' }: {
   staff: StaffMember[]; value: string; onChange: (id: string) => void; label?: string;
 }) {
   return (
-    <div className="flex-1 min-w-[180px]">
+    <div className="flex-1 min-w-0">
       <label className="text-xs font-medium text-text-muted block mb-1">{label}</label>
       <select value={value} onChange={e => onChange(e.target.value)}
         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20">
@@ -334,7 +336,7 @@ function ShiftsTab() {
 
       {showForm && (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className="text-xs font-medium text-text-muted block mb-1">Name</label>
               <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -376,6 +378,7 @@ function ShiftsTab() {
       )}
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-gray-100">
             <tr>
@@ -411,6 +414,7 @@ function ShiftsTab() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );
@@ -488,6 +492,7 @@ function AttendanceTab({ staff }: { staff: StaffMember[] }) {
 
       {/* Records Table */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-gray-100">
             <tr>
@@ -527,6 +532,7 @@ function AttendanceTab({ staff }: { staff: StaffMember[] }) {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
     </div>
@@ -746,6 +752,7 @@ function MyAttendanceTab() {
 
       {/* Attendance history table */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-gray-100">
             <tr>
@@ -774,6 +781,7 @@ function MyAttendanceTab() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );
@@ -823,7 +831,7 @@ function LeaveTab({ staff, isAdmin, currentUserId }: { staff: StaffMember[]; isA
 
       {showForm && (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             {isAdmin ? (
               <StaffPicker staff={staff} value={form.userId} onChange={id => setForm(f => ({ ...f, userId: id }))} />
             ) : null}
@@ -860,6 +868,7 @@ function LeaveTab({ staff, isAdmin, currentUserId }: { staff: StaffMember[]; isA
       )}
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-gray-100">
             <tr>
@@ -907,6 +916,7 @@ function LeaveTab({ staff, isAdmin, currentUserId }: { staff: StaffMember[]; isA
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );
@@ -1015,7 +1025,7 @@ function PayrollConfigModal({ staff, userId, onClose }: {
                 onChange={e => setBaseSalary(Number(e.target.value))}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-medium text-text-muted block mb-1">Overtime Rate (multiplier)</label>
                 <input type="number" step={0.1} min={0} value={overtimeRate}
@@ -1094,7 +1104,7 @@ function PayrollTab({ staff }: { staff: StaffMember[] }) {
       )}
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { label: 'Total Payroll', value: formatCurrency(totalNet) },
           { label: 'Paid', value: formatCurrency(totalPaid) },

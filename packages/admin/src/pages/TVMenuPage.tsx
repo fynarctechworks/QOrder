@@ -34,7 +34,7 @@ export default function TVMenuPage() {
       </div>
 
       {/* Quick Actions Card */}
-      <div className="bg-surface rounded-xl border border-border p-6 space-y-5">
+      <div className="bg-surface rounded-xl border border-border p-4 sm:p-6 space-y-5">
         <div className="flex items-start gap-4">
           <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
             <svg className="w-6 h-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -50,7 +50,7 @@ export default function TVMenuPage() {
         </div>
 
         {/* URL display & launch button */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <div className="flex-1 min-w-0 bg-surface-elevated rounded-lg border border-border px-4 py-3 font-mono text-sm text-text-secondary truncate">
             {tvMenuUrl || 'Loading...'}
           </div>
@@ -101,7 +101,7 @@ export default function TVMenuPage() {
       </div>
 
       {/* Setup Guide */}
-      <div className="bg-surface rounded-xl border border-border p-6">
+      <div className="bg-surface rounded-xl border border-border p-4 sm:p-6">
         <h3 className="text-lg font-semibold text-text-primary mb-4">Setup Guide</h3>
         <div className="space-y-3">
           <Step number={1} text="Connect a TV or large display to a device with a web browser (Smart TV, Chromecast, Fire Stick, mini PC, etc.)" />
