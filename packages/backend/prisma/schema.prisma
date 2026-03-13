@@ -113,6 +113,7 @@ enum UserRole {
   OWNER
   ADMIN
   MANAGER
+  CASHIER
   STAFF
 }
 

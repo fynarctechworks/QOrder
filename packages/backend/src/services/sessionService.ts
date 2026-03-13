@@ -734,7 +734,7 @@ export const sessionService = {
             name: mod.name,
             price: Number(mod.price),
           })),
-          notes: item.notes,
+          notes: item.notes ?? undefined,
         }))
       )),
       subtotal: Number(session.subtotal),
