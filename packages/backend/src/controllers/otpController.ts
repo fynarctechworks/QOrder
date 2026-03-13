@@ -32,13 +32,20 @@ export const otpController = {
         } as unknown as ApiResponse);
       }
 
-      // Check if OTP verification is enabled for this branch
-      // Get table to find branchId
+      // Parallel: table lookup + session phone status (saves ~250ms vs sequential)
       const { prisma } = await import('../lib/index.js');
-      const table = await prisma.table.findUnique({
-        where: { id: tableId },
-        select: { branchId: true },
-      });
+      const [table, sessionStatus] = await Promise.all([
+        prisma.table.findUnique({ where: { id: tableId }, select: { branchId: true } }),
+        otpService.getSessionPhoneStatus(restaurantId, tableId),
+      ]);
+
+      // If session already has this phone verified, skip everything
+      if (sessionStatus.phoneVerified && sessionStatus.phone === phone) {
+        return res.json({
+          success: true,
+          data: { otpRequired: false, phoneSaved: true },
+        });
+      }
 
       const isRequired = await otpService.isPhoneVerificationRequired(restaurantId, table?.branchId);
 
@@ -54,15 +61,6 @@ export const otpController = {
       if (!isTwilioConfigured()) {
         // OTP required but Twilio not configured — save phone without verification
         await otpService.savePhoneToSession(restaurantId, tableId, phone, false);
-        return res.json({
-          success: true,
-          data: { otpRequired: false, phoneSaved: true },
-        });
-      }
-
-      // If the active session already has this phone verified, skip OTP
-      const sessionStatus = await otpService.getSessionPhoneStatus(restaurantId, tableId);
-      if (sessionStatus.phoneVerified && sessionStatus.phone === phone) {
         return res.json({
           success: true,
           data: { otpRequired: false, phoneSaved: true },

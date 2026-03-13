@@ -19,7 +19,7 @@ export default function CreditPage() {
   const [showRepayModal, setShowRepayModal] = useState<string | null>(null);
 
   // ─── Queries ──────────────────────────────────────────
-  const { data: accounts = [], isLoading } = useQuery({
+  const { data: accounts = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['credit-accounts', search],
     queryFn: () => creditService.getAccounts({ search: search || undefined }),
   });
@@ -142,6 +142,11 @@ export default function CreditPage() {
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        </div>
+      ) : isError ? (
+        <div className="card p-8 text-center space-y-3">
+          <p className="text-red-500">Failed to load credit accounts: {error?.message}</p>
+          <button className="btn-primary text-sm" onClick={() => refetch()}>Retry</button>
         </div>
       ) : accounts.length === 0 ? (
         <div className="text-center py-12 text-text-muted">

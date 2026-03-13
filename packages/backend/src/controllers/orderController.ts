@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { orderService } from '../services/index.js';
 import { printService } from '../services/printService.js';
+import { alertService } from '../services/alertService.js';
+import { whatsappService } from '../services/whatsappService.js';
 import { getIO } from '../socket/index.js';
 import { AppError } from '../lib/index.js';
 import { logger } from '../lib/logger.js';
@@ -47,6 +49,7 @@ interface RawOrder {
   id: string;
   orderNumber: string;
   restaurantId: string;
+  orderType?: string | null;
   tableId?: string | null;
   table?: { id: string; number: string; name?: string | null; section?: { id: string; name: string } | null } | null;
   status: string;
@@ -98,7 +101,7 @@ function transformOrder(raw: RawOrder) {
     tableId: raw.tableId ?? '',
     tableName: raw.table
       ? (raw.table.name ? `${raw.table.name} ${raw.table.number}` : `Table ${raw.table.number}`)
-      : 'Takeaway',
+      : raw.orderType === 'QSR' ? 'QSR Order' : 'Takeaway',
     sectionName: raw.table?.section?.name ?? null,
     status,
     items: raw.items.map((item) => {
@@ -215,27 +218,38 @@ export const orderController = {
       const restaurantData = (req as unknown as { restaurantData?: RestaurantMiddlewareData }).restaurantData;
       const order = await orderService.createOrder(restaurantId, req.body, restaurantData);
 
-      // Emit new order to restaurant room via Socket.io
-      const io = getIO();
-      if (io) {
-        const payload = orderService.toSocketPayload(order as unknown as Awaited<ReturnType<typeof orderService.getOrderById>>);
-        const fullOrder = transformOrder(order as unknown as RawOrder);
-        io.to(`restaurant:${restaurantId}`).emit('order:new', payload);
-        io.to(`restaurant:${restaurantId}`).emit('order:newFull', fullOrder);
-        
-        // Emit table update for running bills
-        if (order.tableId) {
-          io.to(`restaurant:${restaurantId}`).emit('table:updated', { tableId: order.tableId });
-        }
-      }
-
+      // Respond to the customer immediately with minimal data.
+      // The customer only needs the newSessionToken — the rest is for convenience.
       res.status(201).json({
         success: true,
         data: {
-          ...transformOrder(order as unknown as RawOrder),
+          id: order.id,
+          orderNumber: order.orderNumber,
+          status: order.status?.toLowerCase?.() ?? order.status,
+          total: Number(order.total),
+          createdAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : order.createdAt,
           newSessionToken: (order as Record<string, unknown>)._newSessionToken as string | undefined,
         },
       });
+
+      // Async: fetch full order data and emit to admin sockets.
+      // This doesn't block the customer response.
+      const io = getIO();
+      if (io) {
+        orderService.getOrderById(order.id, restaurantId)
+          .then((fullOrderData) => {
+            const payload = orderService.toSocketPayload(fullOrderData);
+            const fullOrder = transformOrder(fullOrderData as unknown as RawOrder);
+            io.to(`restaurant:${restaurantId}`).emit('order:new', payload);
+            io.to(`restaurant:${restaurantId}`).emit('order:newFull', fullOrder);
+            if (order.tableId) {
+              io.to(`restaurant:${restaurantId}`).emit('table:updated', { tableId: order.tableId });
+            }
+          })
+          .catch((err) => {
+            logger.error({ err, orderId: order.id }, 'Failed to emit order socket event');
+          });
+      }
     } catch (error) {
       next(error);
     }
@@ -252,11 +266,14 @@ export const orderController = {
       const restaurantData = (req as unknown as { restaurantData?: RestaurantMiddlewareData }).restaurantData;
       const order = await orderService.createOrder(restaurantId, req.body, restaurantData, 'PREPARING', req.branchId);
 
+      // Fetch full order data for admin response + socket
+      const fullOrderData = await orderService.getOrderById(order.id, restaurantId);
+      const fullOrder = transformOrder(fullOrderData as unknown as RawOrder);
+
       // Emit new order to restaurant room via Socket.io
       const io = getIO();
       if (io) {
-        const payload = orderService.toSocketPayload(order as unknown as Awaited<ReturnType<typeof orderService.getOrderById>>);
-        const fullOrder = transformOrder(order as unknown as RawOrder);
+        const payload = orderService.toSocketPayload(fullOrderData);
         io.to(`restaurant:${restaurantId}`).emit('order:new', payload);
         io.to(`restaurant:${restaurantId}`).emit('order:newFull', fullOrder);
 
@@ -267,7 +284,38 @@ export const orderController = {
 
       res.status(201).json({
         success: true,
-        data: transformOrder(order as unknown as RawOrder),
+        data: fullOrder,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // QSR order creation — goes straight to COMPLETED (pre-paid at counter)
+  async createQSROrder(
+    req: Request<unknown, unknown, CreateOrderInput>,
+    res: Response<ApiResponse>,
+    next: NextFunction
+  ) {
+    try {
+      const restaurantId = req.restaurantId!;
+      const restaurantData = (req as unknown as { restaurantData?: RestaurantMiddlewareData }).restaurantData;
+      const order = await orderService.createOrder(restaurantId, req.body, restaurantData, 'COMPLETED', req.branchId, 'QSR');
+
+      // Fetch full order data for admin response + socket
+      const fullOrderData = await orderService.getOrderById(order.id, restaurantId);
+      const fullOrder = transformOrder(fullOrderData as unknown as RawOrder);
+
+      const io = getIO();
+      if (io) {
+        const payload = orderService.toSocketPayload(fullOrderData);
+        io.to(`restaurant:${restaurantId}`).emit('order:new', payload);
+        io.to(`restaurant:${restaurantId}`).emit('order:newFull', fullOrder);
+      }
+
+      res.status(201).json({
+        success: true,
+        data: fullOrder,
       });
     } catch (error) {
       next(error);
@@ -333,6 +381,13 @@ export const orderController = {
         printService.autoPrintOrder(order!.id, restaurantId).catch((err) => {
           logger.error({ err, orderId: order!.id }, 'Auto-print failed after completion');
         });
+        // Auto-send WhatsApp invoice (fire-and-forget)
+        // Skip when caller will send a combined invoice (e.g. multi-order settlement)
+        if (!req.body.skipAutoInvoice) {
+          alertService.sendAutoInvoice(order!.id, restaurantId).catch((err) => {
+            logger.error({ err, orderId: order!.id }, 'Auto-invoice failed after completion');
+          });
+        }
       }
 
       res.json({
@@ -605,6 +660,50 @@ export const orderController = {
       res.json({
         success: true,
         data: transformOrder(updated as unknown as RawOrder),
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * Manually send WhatsApp bill for takeaway/QSR orders
+   */
+  async sendWhatsAppBill(
+    req: Request<{ orderIds: string }>,
+    res: Response<ApiResponse>,
+    next: NextFunction
+  ) {
+    try {
+      const restaurantId = req.restaurantId!;
+      const orderIds = req.params.orderIds.split(',').filter(Boolean);
+
+      if (orderIds.length === 0) {
+        res.status(400).json({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'No order IDs provided' },
+        });
+        return;
+      }
+
+      const result = await whatsappService.sendOrderBill(orderIds, restaurantId);
+
+      if (!result.sent) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'WHATSAPP_SEND_FAILED',
+            message: result.phone
+              ? 'Failed to send WhatsApp message. Check your WhatsApp API configuration.'
+              : 'No customer phone number found for this order.',
+          },
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        data: { sent: true, phone: result.phone },
       });
     } catch (error) {
       next(error);

@@ -237,6 +237,39 @@ export interface AdvancedAnalytics {
   orderStatusBreakdown: OrderStatusBreakdown[];
 }
 
+// Dashboard Extras Types
+export interface DashboardExtras {
+  tableStatus: {
+    total: number;
+    available: number;
+    occupied: number;
+    reserved: number;
+    inactive: number;
+  };
+  customersToday: number;
+  qrScansToday: number;
+  paymentSummary: { method: string; count: number; total: number }[];
+  financials: {
+    totalDiscount: number;
+    totalTax: number;
+    totalSubtotal: number;
+  };
+  lowStockItems: {
+    id: string;
+    name: string;
+    currentStock: number;
+    minStock: number;
+    unit: string;
+  }[];
+  lowPerformingItems: {
+    itemName: string;
+    quantity: number;
+    revenue: number;
+  }[];
+  pendingServiceRequests: number;
+  pendingPayments: number;
+}
+
 // API Types
 export interface ApiResponse<T> {
   success: boolean;

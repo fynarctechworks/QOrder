@@ -26,6 +26,8 @@ export const staffService = {
               lastLoginAt: true,
               createdAt: true,
               restaurantId: true,
+              defaultShiftId: true,
+              defaultShift: { select: { id: true, name: true, startTime: true, endTime: true } },
               branches: {
                 select: {
                   branch: {
@@ -56,6 +58,8 @@ export const staffService = {
         isVerified: true,
         lastLoginAt: true,
         createdAt: true,
+        defaultShiftId: true,
+        defaultShift: { select: { id: true, name: true, startTime: true, endTime: true } },
         branches: {
           select: {
             branch: {
@@ -96,6 +100,7 @@ export const staffService = {
         name,
         role: role || 'STAFF',
         roleTitle: roleTitle?.trim() || null,
+        defaultShiftId: input.defaultShiftId || null,
         restaurantId,
         isVerified: true, // Staff created by owner are pre-verified
         isActive: true,
@@ -110,6 +115,7 @@ export const staffService = {
         isActive: true,
         isVerified: true,
         createdAt: true,
+        defaultShiftId: true,
       },
     });
 
@@ -177,6 +183,7 @@ export const staffService = {
         ...(input.role !== undefined && { role: input.role }),
         ...(input.roleTitle !== undefined && { roleTitle: input.roleTitle?.trim() || null }),
         ...(input.isActive !== undefined && { isActive: input.isActive }),
+        ...(input.defaultShiftId !== undefined && { defaultShiftId: input.defaultShiftId || null }),
       },
       select: {
         id: true,
@@ -188,6 +195,7 @@ export const staffService = {
         isActive: true,
         isVerified: true,
         createdAt: true,
+        defaultShiftId: true,
       },
     });
 

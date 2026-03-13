@@ -113,7 +113,7 @@ export const TOOL_DEFINITIONS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'get_table_status',
-      description: 'Get current status of all tables (available, occupied, reserved) with section info.',
+      description: 'Get current status of all tables (available, occupied) with section info.',
       parameters: { type: 'object', properties: {}, required: [] },
     },
   },
@@ -475,7 +475,7 @@ export async function executeTool(
           include: { section: { select: { name: true } } },
           orderBy: { number: 'asc' },
         });
-        const summary = { available: 0, occupied: 0, reserved: 0, inactive: 0 };
+        const summary = { available: 0, occupied: 0, inactive: 0 };
         const list = tables.map(t => {
           const s = t.status.toLowerCase() as keyof typeof summary;
           if (s in summary) summary[s]++;

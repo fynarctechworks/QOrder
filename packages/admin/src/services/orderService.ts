@@ -86,11 +86,14 @@ export const orderService = {
     return raw.map(mapApiOrder);
   },
 
-  async updateStatus(orderId: string, status: OrderStatus): Promise<Order> {
+  async updateStatus(orderId: string, status: OrderStatus, opts?: { skipAutoInvoice?: boolean }): Promise<Order> {
     // Backend uses UPPERCASE enums
     const statusMap: Record<string, string> = { payment_pending: 'PAYMENT_PENDING' };
     const backendStatus = statusMap[status] || status.toUpperCase();
-    const raw = await apiClient.patch<Record<string, unknown>>(`/orders/${orderId}/status`, { status: backendStatus });
+    const raw = await apiClient.patch<Record<string, unknown>>(`/orders/${orderId}/status`, {
+      status: backendStatus,
+      ...(opts?.skipAutoInvoice ? { skipAutoInvoice: true } : {}),
+    });
     return mapApiOrder(raw);
   },
 
@@ -117,6 +120,17 @@ export const orderService = {
     notes?: string;
   }): Promise<Order> {
     const raw = await apiClient.post<Record<string, unknown>>('/orders/cashier', data);
+    return mapApiOrder(raw);
+  },
+
+  /** QSR order — created directly as COMPLETED (pre-paid at counter) */
+  async createQSROrder(data: {
+    items: Array<{ menuItemId: string; quantity: number; notes?: string; modifiers?: Array<{ modifierId: string }> }>;
+    customerName?: string;
+    customerPhone?: string;
+    notes?: string;
+  }): Promise<Order> {
+    const raw = await apiClient.post<Record<string, unknown>>('/orders/qsr', data);
     return mapApiOrder(raw);
   },
 

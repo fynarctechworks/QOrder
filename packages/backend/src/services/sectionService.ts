@@ -19,7 +19,7 @@ export const sectionService = {
     return prisma.section.findMany({
       where: {
         restaurantId,
-        ...(branchId ? { branchId } : {}),
+        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
       },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       include: {

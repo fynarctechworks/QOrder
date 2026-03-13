@@ -24,7 +24,10 @@ export const inventoryController = {
   async createIngredient(req: Request, res: Response, next: NextFunction) {
     try {
       const restaurantId = req.user!.restaurantId;
-      const data = await inventoryService.createIngredient(restaurantId, req.body);
+      const data = await inventoryService.createIngredient(restaurantId, {
+        ...req.body,
+        branchId: req.branchId ?? null,
+      });
       res.status(201).json({ success: true, data });
     } catch (err) { next(err); }
   },
@@ -160,6 +163,7 @@ export const inventoryController = {
       const data = await inventoryService.createPurchaseOrder(restaurantId, {
         ...req.body,
         createdBy: userId,
+        branchId: req.branchId ?? null,
       });
       res.status(201).json({ success: true, data });
     } catch (err) { next(err); }

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { orderController } from '../controllers/index.js';
+import { dashboardService } from '../services/index.js';
 import { authenticate, authorize } from '../middlewares/auth.js';
 import { resolveBranch } from '../middlewares/resolveBranch.js';
 import { validate } from '../middlewares/validate.js';
@@ -51,6 +52,21 @@ router.get(
   resolveBranch,
   authorize('OWNER', 'ADMIN', 'MANAGER'),
   orderController.getAdvancedAnalytics
+);
+
+router.get(
+  '/analytics/dashboard-extras',
+  authenticate,
+  resolveBranch,
+  authorize('OWNER', 'ADMIN', 'MANAGER'),
+  async (req, res, next) => {
+    try {
+      const data = await dashboardService.getExtras(req.restaurantId!, req.branchId);
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
 );
 
 router.get(
@@ -121,6 +137,23 @@ router.post(
   resolveBranch,
   validate(createOrderSchema),
   orderController.createCashierOrder
+);
+
+// QSR order creation (authenticated) — pre-paid, goes straight to COMPLETED
+router.post(
+  '/qsr',
+  authenticate,
+  resolveBranch,
+  validate(createOrderSchema),
+  orderController.createQSROrder
+);
+
+// Manually send WhatsApp bill for takeaway/QSR orders
+router.post(
+  '/:orderIds/whatsapp-bill',
+  authenticate,
+  authorize('OWNER', 'ADMIN', 'MANAGER', 'CASHIER'),
+  orderController.sendWhatsAppBill
 );
 
 export default router;

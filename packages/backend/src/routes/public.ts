@@ -4,7 +4,6 @@ import { discountController } from '../controllers/discountController.js';
 import { serviceRequestController } from '../controllers/serviceRequestController.js';
 import { feedbackController } from '../controllers/feedbackController.js';
 import { receiptController } from '../controllers/receiptController.js';
-import { paymentGatewayController } from '../controllers/paymentGatewayController.js';
 import { otpController } from '../controllers/otpController.js';
 import { validate } from '../middlewares/validate.js';
 import { orderLimiter, otpLimiter, couponLimiter, apiLimiter } from '../middlewares/rateLimiter.js';
@@ -69,7 +68,35 @@ router.get(
 );
 
 // ── Phone OTP verification (customer-facing) ──
-router.post('/otp/send', otpLimiter, otpController.sendOtp);
+// Only rate-limit /otp/send when OTP verification is actually enabled;
+// otherwise the rate limiter fires on phone-save requests that never send an OTP.
+const conditionalOtpLimiter = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { restaurantId, tableId } = req.body as { restaurantId?: string; tableId?: string };
+    if (restaurantId) {
+      const [restaurant, table] = await Promise.all([
+        prisma.restaurant.findUnique({ where: { id: restaurantId }, select: { settings: true } }),
+        tableId ? prisma.table.findUnique({ where: { id: tableId }, select: { branchId: true } }) : null,
+      ]);
+      const rSettings = (restaurant?.settings as Record<string, unknown>) ?? {};
+
+      // Check branch-level override first, then restaurant-level
+      if (table?.branchId) {
+        const branch = await prisma.branch.findUnique({ where: { id: table.branchId }, select: { settings: true } });
+        const bSettings = (branch?.settings as Record<string, unknown>) ?? {};
+        if (typeof bSettings.requirePhoneVerification === 'boolean') {
+          if (!bSettings.requirePhoneVerification) return next(); // Skip limiter
+          return otpLimiter(req, res, next);
+        }
+      }
+
+      if (rSettings.requirePhoneVerification === false) return next(); // Skip limiter
+    }
+  } catch { /* fall through to rate limiter on error */ }
+  return otpLimiter(req, res, next);
+};
+
+router.post('/otp/send', conditionalOtpLimiter, otpController.sendOtp);
 router.post('/otp/verify', otpLimiter, otpController.verifyOtp);
 router.get('/:restaurantId/tables/:tableId/phone-status', otpController.getPhoneStatus);
 
@@ -301,11 +328,6 @@ router.post('/:restaurantId/feedback', feedbackController.create);
 
 // ─── Receipt: Customer requests e-bill ───
 router.post('/orders/:orderId/receipt', receiptController.send);
-
-// ─── Payment Gateway: Online payment endpoints ───
-router.get('/:restaurantId/payment/config', paymentGatewayController.getCheckoutConfig);
-router.post('/:restaurantId/payment/create-order', paymentGatewayController.createOrder);
-router.post('/:restaurantId/payment/verify', paymentGatewayController.verifyPayment);
 
 // ─── Queue Display: Public endpoint for TV/display showing active orders ───
 router.get('/:restaurantId/queue', apiLimiter, async (req: Request, res: Response, next: NextFunction) => {

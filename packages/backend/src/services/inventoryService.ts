@@ -1,5 +1,6 @@
 import { Decimal } from '@prisma/client/runtime/library';
 import { prisma, cache, AppError } from '../lib/index.js';
+import { alertService } from './alertService.js';
 
 export const inventoryService = {
   // ─── INGREDIENTS ───────────────────────────────────────────
@@ -8,7 +9,7 @@ export const inventoryService = {
     return prisma.ingredient.findMany({
       where: {
         restaurantId,
-        ...(branchId ? { branchId } : {}),
+        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
       },
       include: {
         suppliers: {
@@ -151,6 +152,15 @@ export const inventoryService = {
       }),
     ]);
 
+    // Real-time low stock alert — only for deductive operations
+    if (!ADDITIVE_TYPES.includes(data.type)) {
+      alertService.checkItemsForLowStock(restaurantId, [{
+        ingredientId,
+        previousStock: previousQty.toNumber(),
+        newStock: newQty.toNumber(),
+      }]).catch(() => {});
+    }
+
     return updated;
   },
 
@@ -247,7 +257,19 @@ export const inventoryService = {
     }
 
     await prisma.$transaction(operations);
-    await this.checkLowStock(restaurantId);
+
+    // Real-time low stock alert for all deducted items
+    const stockChanges = data.items.map(item => {
+      const ingredient = ingredientMap.get(item.ingredientId)!;
+      const previousStock = new Decimal(ingredient.currentStock).toNumber();
+      return {
+        ingredientId: item.ingredientId,
+        previousStock,
+        newStock: previousStock - item.quantity,
+      };
+    });
+    alertService.checkItemsForLowStock(restaurantId, stockChanges).catch(() => {});
+
     return { deducted: data.items.length };
   },
 

@@ -28,7 +28,7 @@ qr_order_web/
 └── packages/
     ├── customer/             # Vite + React 18 + TypeScript — Port 5173
     ├── admin/                # Vite + React 18 + TypeScript — Port 5174
-    └── backend/              # Express + TypeScript + Prisma — Port 3000
+    └── backend/              # Express + TypeScript + Prisma — Port 3000 (+ fingerprint bridge on port 9200)
 ```
 
 ### Tech Stack
@@ -264,7 +264,12 @@ src/
 │   ├── authService.ts
 │   ├── menuService.ts
 │   ├── orderService.ts
+│   ├── biometricService.ts  # Fingerprint enrollment, verification, attendance
 │   └── ...
+├── fingerprint-bridge/ # Embedded fingerprint scanner bridge (WebSocket on port 9200)
+│   ├── index.ts        # startFingerprintBridge() / stopFingerprintBridge()
+│   ├── adapters/       # Scanner adapters (mantra, simulate, secugen, digitalpersona)
+│   └── scripts/        # Native SDK helper scripts (mantra-helper.ps1)
 ├── socket/             # Socket.IO handlers
 ├── types/              # TypeScript types
 └── validators/         # Zod/Joi schemas
@@ -272,7 +277,7 @@ src/
 
 ### Database Schema (Prisma + PostgreSQL)
 
-**Models**: Restaurant, User, RefreshToken, Category, MenuItem, ModifierGroup, Modifier, MenuItemModifierGroup, Table, Order, OrderItem, OrderItemModifier
+**Models**: Restaurant, User, RefreshToken, Category, MenuItem, ModifierGroup, Modifier, MenuItemModifierGroup, Table, Order, OrderItem, OrderItemModifier, BiometricDevice, BiometricTemplate, BiometricLog, BiometricUserMap, Attendance
 
 **Key relationships**:
 - Everything is multi-tenant via `restaurantId`
@@ -395,3 +400,30 @@ npm run db:seed          # Seed database
 | File | Key Changes |
 |------|------------|
 | `src/scripts/seed.ts` | name: 'Q Order' |
+
+---
+
+## Biometric Fingerprint Attendance
+
+### Overview
+Staff attendance via USB fingerprint scanners. The fingerprint bridge runs embedded in the backend (WebSocket on port 9200).
+
+### Architecture
+- **Bridge**: `packages/backend/src/fingerprint-bridge/` — starts with backend, runs WebSocket server on `ws://127.0.0.1:9200`
+- **Adapter pattern**: Auto-detects scanner hardware (mantra → secugen → digitalpersona → simulate)
+- **Mantra MFS100**: Native .NET SDK via 32-bit PowerShell helper script (`mantra-helper.ps1`)
+- **Templates**: AES-256-CBC encrypted in DB, decrypted only for local matching
+- **Matching**: Done bridge-side using scanner SDK (ISO template matching)
+
+### Environment Variables
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FINGERPRINT_BRIDGE_PORT` | `9200` | WebSocket port |
+| `FINGERPRINT_BRIDGE_ADAPTER` | `auto` | Force adapter: mantra, simulate, auto |
+| `FINGERPRINT_BRIDGE_DISABLED` | `false` | Set to true to disable |
+| `BIOMETRIC_ENCRYPTION_KEY` | — | AES-256 key for template encryption |
+
+### API Endpoints (`/api/biometric/`)
+- **Devices**: GET/POST/PATCH/DELETE `/devices`, POST `/devices/test`, GET `/devices/:id/users`, POST `/devices/:id/sync`
+- **Enrollment**: POST `/enroll`, GET/DELETE `/templates/:userId`, GET `/templates/:userId/verify`
+- **Attendance**: POST `/verify`, GET `/logs`, GET `/enrollment-status`, GET `/failed-attempts`, GET `/daily-attendance/:date`

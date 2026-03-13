@@ -12,7 +12,7 @@ export default function ViewOrderModal({ tableId, onClose, onSettleBill }: ViewO
   const formatCurrency = useCurrency();
 
   // Fetch order data for the table
-  const { data: sessionData, isLoading } = useQuery<TableOrderDetails>({
+  const { data: sessionData, isLoading, isError, error } = useQuery<TableOrderDetails>({
     queryKey: ['tableOrders', tableId],
     queryFn: () => tableService.getTableOrders(tableId),
   });
@@ -61,6 +61,13 @@ export default function ViewOrderModal({ tableId, onClose, onSettleBill }: ViewO
           <div className="py-12 text-center">
             <div className="inline-block w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
             <p className="mt-3 text-sm text-gray-500">Loading order details...</p>
+          </div>
+        )}
+
+        {/* Error State */}
+        {isError && !isLoading && (
+          <div className="py-12 text-center">
+            <p className="text-red-500">Failed to load order details: {error?.message}</p>
           </div>
         )}
 

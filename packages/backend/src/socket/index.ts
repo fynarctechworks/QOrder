@@ -13,7 +13,6 @@ import type {
   InterServerEvents, 
   SocketData,
   AccessTokenPayload,
-  PaymentRequestPayload,
   GroupParticipantPayload,
   GroupCartUpdatePayload,
 } from '../types/index.js';
@@ -40,14 +39,6 @@ async function isRateLimited(key: string): Promise<boolean> {
 
 // Socket event payload schemas
 const uuidSchema = z.string().uuid();
-const paymentRequestSchema = z.object({
-  tableId: z.string().uuid(),
-  restaurantId: z.string().uuid(),
-  tableName: z.string().max(100).optional(),
-  orderId: z.string().uuid().optional(),
-  amount: z.number().positive().optional(),
-  method: z.string().max(20).optional(),
-}).strict();
 
 export function initializeSocket(httpServer: HTTPServer) {
   io = new Server<ClientToServerEvents, ServerToClientEvents, InterServerEvents, SocketData>(
@@ -207,57 +198,6 @@ export function initializeSocket(httpServer: HTTPServer) {
       logger.debug({ socketId: socket.id, groupCode: code }, 'Left group room');
     });
 
-    // ── Payment request (customer → admin) — validated & rate-limited ──
-    socket.on('payment:request', async (data: PaymentRequestPayload) => {
-      // Validate payload shape
-      const parsed = paymentRequestSchema.safeParse(data);
-      if (!parsed.success) {
-        socket.emit('error', 'Invalid payment request data');
-        return;
-      }
-      const validData = parsed.data as PaymentRequestPayload;
-
-      // Rate-limit by socket id
-      if (await isRateLimited(`payment:${socket.id}`)) {
-        socket.emit('error', 'Too many payment requests. Please wait.');
-        return;
-      }
-
-      // Verify the socket user is connected to this table
-      if (socket.data.tableId && socket.data.tableId !== validData.tableId) {
-        socket.emit('error', 'Unauthorized: not connected to this table');
-        return;
-      }
-
-      try {
-        // Validate the table belongs to the claimed restaurant and has an active session
-        const table = await prisma.table.findFirst({
-          where: { id: validData.tableId, restaurantId: validData.restaurantId },
-        });
-
-        if (!table) {
-          socket.emit('error', 'Invalid table or restaurant');
-          return;
-        }
-
-        const activeSession = await prisma.tableSession.findFirst({
-          where: { tableId: validData.tableId, status: 'ACTIVE' },
-        });
-
-        if (!activeSession) {
-          socket.emit('error', 'No active session for this table');
-          return;
-        }
-
-        logger.info({ socketId: socket.id, tableId: validData.tableId, restaurantId: validData.restaurantId }, 'Payment request received');
-        // Forward validated data to the restaurant's admin room
-        io!.to(`restaurant:${validData.restaurantId}`).emit('payment:request', validData as PaymentRequestPayload);
-      } catch (err) {
-        logger.error({ err }, 'Failed to validate payment request');
-        socket.emit('error', 'Payment request failed');
-      }
-    });
-
     // ── Sync trigger (admin → all customers in restaurant) ──
     socket.on('sync:trigger', async () => {
       if (!socket.data.userId || !socket.data.restaurantId) {
@@ -276,17 +216,6 @@ export function initializeSocket(httpServer: HTTPServer) {
       logger.info({ socketId: socket.id, restaurantId: socket.data.restaurantId }, 'Sync triggered by admin');
       // Broadcast refresh to all clients in the restaurant room
       io!.to(`restaurant:${socket.data.restaurantId}`).emit('sync:refresh');
-    });
-
-    // ── Payment acknowledge (admin → customer) ──
-    socket.on('payment:acknowledge', ({ tableId }: { tableId: string }) => {
-      if (!socket.data.userId) {
-        socket.emit('error', 'Authentication required');
-        return;
-      }
-      logger.info({ socketId: socket.id, tableId }, 'Payment acknowledged by admin');
-      // Notify the customer's table room
-      io!.to(`table:${tableId}`).emit('payment:acknowledged', { tableId });
     });
 
     // ── Helper to build KDS status payload ──

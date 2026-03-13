@@ -160,7 +160,7 @@ export interface Table {
   sessionToken?: string | null;
 }
 
-export type TableStatus = 'available' | 'occupied' | 'reserved' | 'cleaning';
+export type TableStatus = 'available' | 'occupied' | 'cleaning';
 
 // API Response Types
 export interface ApiResponse<T> {

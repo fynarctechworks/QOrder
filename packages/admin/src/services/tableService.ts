@@ -5,7 +5,6 @@ import type { Table, TableStatus } from '../types';
 const STATUS_MAP: Record<string, TableStatus> = {
   AVAILABLE: 'available',
   OCCUPIED: 'occupied',
-  RESERVED: 'reserved',
   INACTIVE: 'cleaning',  // backend INACTIVE ≈ frontend cleaning
   CLEANING: 'cleaning',
 };
@@ -14,7 +13,6 @@ const STATUS_MAP: Record<string, TableStatus> = {
 const TO_BACKEND_STATUS: Record<string, string> = {
   available: 'AVAILABLE',
   occupied: 'OCCUPIED',
-  reserved: 'RESERVED',
   cleaning: 'INACTIVE',  // frontend cleaning → backend INACTIVE
 };
 

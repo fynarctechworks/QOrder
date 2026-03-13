@@ -76,13 +76,35 @@ export const settingsService = {
     const branchId = useBranchStore.getState().activeBranchId;
     const { settings, ...topLevel } = payload;
     const hasTopLevel = Object.keys(topLevel).length > 0;
-    const hasSettings = Object.keys(settings).length > 0;
 
-    if (branchId && hasSettings) {
-      // Write settings to the branch level
-      await apiClient.patch(`/branches/${branchId}/settings`, settings);
-    } else if (hasSettings) {
-      await apiClient.patch<RestaurantInfo>('/restaurant/settings', settings);
+    // Settings that are always restaurant-level (not branch-level)
+    const restaurantOnlyKeys = [
+      'acceptsOrders', 'requirePhoneVerification', 'password',
+      'adminWhatsAppPhone', 'whatsappAlertLowStock', 'whatsappAlertStaffLate',
+      'whatsappAlertEarlyCheckout', 'whatsappAlertAutoInvoice',
+      'staffLateThresholdMinutes', 'earlyCheckoutThresholdMinutes',
+    ];
+    const restaurantSettings: Record<string, unknown> = {};
+    const branchSettings: Record<string, unknown> = {};
+
+    for (const [key, value] of Object.entries(settings)) {
+      if (restaurantOnlyKeys.includes(key)) {
+        restaurantSettings[key] = value;
+      } else {
+        branchSettings[key] = value;
+      }
+    }
+
+    // Always save WhatsApp alert settings at restaurant level
+    if (Object.keys(restaurantSettings).length > 0) {
+      await apiClient.patch<RestaurantInfo>('/restaurant/settings', restaurantSettings);
+    }
+
+    if (branchId && Object.keys(branchSettings).length > 0) {
+      // Write branch-specific settings to the branch level
+      await apiClient.patch(`/branches/${branchId}/settings`, branchSettings);
+    } else if (Object.keys(branchSettings).length > 0) {
+      await apiClient.patch<RestaurantInfo>('/restaurant/settings', branchSettings);
     }
 
     // Top-level restaurant fields (name, currency, taxRate) are always restaurant-level

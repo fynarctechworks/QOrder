@@ -87,11 +87,35 @@ export const updateRestaurantSettingsSchema = z.object({
   autoLockTimeout: z.coerce.number().int().min(1).max(60).optional(),
   lockPin: z.string().regex(/^\d{6}$/).optional(),
   requirePhoneVerification: z.boolean().optional(),
-  /** Payment gateway settings */
-  paymentGatewayEnabled: z.boolean().optional(),
-  paymentMode: z.enum(['pay_before', 'pay_after']).optional(),
-  razorpayKeyId: z.string().max(255).optional(),
-  razorpayKeySecret: z.string().max(255).optional(),
+  /** WhatsApp bill sharing via Meta Business API */
+  whatsappBillEnabled: z.boolean().optional(),
+  whatsappPhoneNumberId: z.string().max(255).optional(),
+  whatsappBusinessAccountId: z.string().max(255).optional(),
+  whatsappAccessToken: z.string().max(500).optional(),
+  /** Twilio settings */
+  twilioEnabled: z.boolean().optional(),
+  twilioAccountSid: z.string().max(255).optional(),
+  twilioAuthToken: z.string().max(255).optional(),
+  twilioPhoneNumber: z.string().max(20).optional(),
+  /** WhatsApp alert settings */
+  whatsappAlertLowStock: z.boolean().optional(),
+  whatsappAlertStaffLate: z.boolean().optional(),
+  whatsappAlertEarlyCheckout: z.boolean().optional(),
+  whatsappAlertAutoInvoice: z.boolean().optional(),
+  adminWhatsAppPhone: z.string().max(20).optional(),
+  staffLateThresholdMinutes: z.coerce.number().int().min(1).max(120).optional(),
+  earlyCheckoutThresholdMinutes: z.coerce.number().int().min(1).max(120).optional(),
+  /** Print layout settings */
+  printLogoUrl: z.string().max(500).optional(),
+  printHeaderText: z.string().max(500).optional(),
+  printFooterText: z.string().max(500).optional(),
+  printShowLogo: z.boolean().optional(),
+  printShowAddress: z.boolean().optional(),
+  printShowCustomerInfo: z.boolean().optional(),
+  printShowItemModifiers: z.boolean().optional(),
+  printShowSpecialInstructions: z.boolean().optional(),
+  printShowSubtotal: z.boolean().optional(),
+  printShowTax: z.boolean().optional(),
 });
 
 // ==================== MENU ====================
@@ -179,7 +203,7 @@ export const updateTableSchema = z.object({
   number: z.string().min(1).max(20).optional(),
   name: z.string().max(100).optional().nullable(),
   capacity: z.number().int().min(1).max(50).optional(),
-  status: z.enum(['AVAILABLE', 'OCCUPIED', 'RESERVED', 'INACTIVE']).optional(),
+  status: z.enum(['AVAILABLE', 'OCCUPIED', 'INACTIVE']).optional(),
   sectionId: z.string().uuid().optional().nullable(),
 });
 
@@ -254,6 +278,8 @@ export const createOrderSchema = z.object({
   customerPhone: z.string().max(20).optional(),
   notes: z.string().max(500).optional(),
   couponCode: z.string().max(50).optional(),
+  manualDiscount: z.number().nonnegative().optional(),
+  manualDiscountType: z.enum(['PERCENTAGE', 'FLAT']).optional(),
   // Geo-fence validation
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
@@ -262,6 +288,7 @@ export const createOrderSchema = z.object({
 export const updateOrderStatusSchema = z.object({
   status: z.enum(['PENDING', 'PREPARING', 'READY', 'PAYMENT_PENDING', 'COMPLETED', 'CANCELLED']),
   estimatedTime: z.number().int().positive().optional(),
+  skipAutoInvoice: z.boolean().optional(),
 });
 
 export const orderQuerySchema = z.object({
@@ -283,6 +310,7 @@ export const createUserSchema = z.object({
   name: z.string().min(2).max(100),
   role: z.enum(['ADMIN', 'MANAGER', 'STAFF']).default('STAFF'),
   roleTitle: z.string().max(50).optional(),
+  defaultShiftId: z.string().uuid().nullable().optional(),
 });
 
 export const updateUserSchema = z.object({
@@ -293,6 +321,7 @@ export const updateUserSchema = z.object({
   role: z.enum(['ADMIN', 'MANAGER', 'STAFF']).optional(),
   roleTitle: z.string().max(50).nullable().optional(),
   isActive: z.boolean().optional(),
+  defaultShiftId: z.string().uuid().nullable().optional(),
 });
 
 export const changePasswordSchema = z.object({

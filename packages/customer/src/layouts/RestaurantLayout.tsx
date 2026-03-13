@@ -1,6 +1,8 @@
 import { Outlet } from 'react-router-dom';
 import { RestaurantProvider, useRestaurant } from '../context/RestaurantContext';
 import { SocketProvider } from '../context/SocketContext';
+import { useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import AnimatedPage from '../components/AnimatedPage';
 import BottomNav from '../components/BottomNav';
 
@@ -32,8 +34,19 @@ function NotAcceptingOrders({ restaurantName }: { restaurantName?: string }) {
 
 function RestaurantContent() {
   const { restaurant, isLoading } = useRestaurant();
+  const queryClient = useQueryClient();
+  const notAccepting = !isLoading && restaurant && restaurant.settings?.acceptsOrders === false;
 
-  if (!isLoading && restaurant && restaurant.settings?.acceptsOrders === false) {
+  // Auto-poll every 15s while orders are paused so the page recovers automatically
+  useEffect(() => {
+    if (!notAccepting) return;
+    const id = setInterval(() => {
+      queryClient.invalidateQueries({ queryKey: ['restaurant'] });
+    }, 15_000);
+    return () => clearInterval(id);
+  }, [notAccepting, queryClient]);
+
+  if (notAccepting) {
     return <NotAcceptingOrders restaurantName={restaurant.name} />;
   }
 

@@ -4,12 +4,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
-import { PaymentRequestProvider, usePaymentRequests } from '../context/PaymentRequestContext';
 import Logo from '../components/Logo';
-import PaymentRequestsOverlay from '../components/PaymentRequestsOverlay';
 import ServiceRequestsPanel from '../components/ServiceRequestsPanel';
 import LockScreen from '../components/LockScreen';
-import BranchSelector from '../components/BranchSelector';
 import { settingsService } from '../services/settingsService';
 import { DEFAULT_PERMISSIONS, type PageKey, type RolePermissions } from '../components/PermissionsTab';
 import { useIdleLock } from '../hooks/useIdleLock';
@@ -33,6 +30,15 @@ const navigation = [
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+      </svg>
+    ),
+  },
+  {
+    name: 'QSR',
+    path: '/qsr',
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
       </svg>
     ),
   },
@@ -110,15 +116,6 @@ const navigation = [
     ),
   },
   {
-    name: 'Captain',
-    path: '/captain',
-    icon: (
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-      </svg>
-    ),
-  },
-  {
     name: 'CRM',
     path: '/crm',
     icon: (
@@ -164,6 +161,15 @@ const navigation = [
     ),
   },
   {
+    name: 'TV Menu',
+    path: '/tv-menu',
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+      </svg>
+    ),
+  },
+  {
     name: 'Settings',
     path: '/settings',
     icon: (
@@ -177,18 +183,17 @@ const navigation = [
 
 export default function DashboardLayout() {
   return (
-    <PaymentRequestProvider>
       <DashboardLayoutInner />
-    </PaymentRequestProvider>
   );
 }
 
 function DashboardLayoutInner() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarHidden, setIsSidebarHidden] = useState(false);
   const [isServicePanelOpen, setIsServicePanelOpen] = useState(false);
-  const { paymentRequests, clearPaymentRequest, isOverlayOpen, setIsOverlayOpen } = usePaymentRequests();
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const { user, logout } = useAuth();
-  const { isConnected, onNewOrder, onPaymentRequest, onServiceRequest, onItemKitchenReady, onLeaveRequest, triggerSync, kdsCount, kdsUsers } = useSocket();
+  const { isConnected, onNewOrder, onServiceRequest, onItemKitchenReady, onLeaveRequest, onStockLow, onStaffLate, onStaffEarlyCheckout, triggerSync, kdsCount, kdsUsers } = useSocket();
   const { play: playSound } = useNotificationSound();
   const { notifications, push: pushNotification, dismiss: dismissNotification, dismissAll: dismissAllNotifications } = useNotificationOverlay();
   const queryClient = useQueryClient();
@@ -198,6 +203,12 @@ function DashboardLayoutInner() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isKdsDropdownOpen, setIsKdsDropdownOpen] = useState(false);
   const kdsDropdownRef = useRef<HTMLDivElement>(null);
+  const mainContentRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to top on route change
+  useEffect(() => {
+    mainContentRef.current?.scrollTo(0, 0);
+  }, [location.pathname]);
 
   // Fetch restaurant settings for role permissions
   const { data: restaurant, isLoading: isSettingsLoading } = useQuery({
@@ -239,10 +250,6 @@ function DashboardLayoutInner() {
       const items = order.items?.map((i: any) => `${i.quantity}× ${i.name}`).join(', ');
       pushNotification('newOrder', 'New Order', `Table ${table}  ·  Order #${order.orderNumber}`, items);
     });
-    const u2 = onPaymentRequest((data) => {
-      playSound('payment');
-      pushNotification('payment', 'Payment Requested', `Table ${data.tableNumber}`, `Amount: ₹${data.total}  ·  ${data.orderCount} order(s)`);
-    });
     const u3 = onServiceRequest((data: any) => {
       playSound('serviceRequest');
       const label = SERVICE_LABELS[data.type] || data.type.replace(/_/g, ' ');
@@ -260,24 +267,43 @@ function DashboardLayoutInner() {
       pushNotification('leaveRequest', 'Leave Request', `${data.userName}  ·  ${data.leaveType}`, `${period}${data.reason ? ` — ${data.reason}` : ''}`);
       queryClient.invalidateQueries({ queryKey: ['leaves'] });
     });
-    return () => { u1(); u2(); u3(); u4(); u5(); };
-  }, [onNewOrder, onPaymentRequest, onServiceRequest, onItemKitchenReady, onLeaveRequest, playSound, pushNotification, queryClient]);
+    const u6 = onStockLow((data) => {
+      playSound('stockLow');
+      const names = data.items.slice(0, 3).map(i => i.name).join(', ');
+      const more = data.count > 3 ? ` +${data.count - 3} more` : '';
+      pushNotification('stockLow', 'Low Stock Alert', `${data.count} ingredient(s) running low`, `${names}${more}`);
+    });
+    const u7 = onStaffLate((data) => {
+      playSound('staffLate');
+      const names = data.staff.slice(0, 3).map(s => s.name).join(', ');
+      const more = data.count > 3 ? ` +${data.count - 3} more` : '';
+      pushNotification('staffLate', 'Staff Late', `${data.count} staff not checked in`, `${names}${more}`);
+    });
+    const u8 = onStaffEarlyCheckout((data) => {
+      playSound('staffEarlyCheckout');
+      const names = data.staff.slice(0, 3).map(s => s.name).join(', ');
+      const more = data.count > 3 ? ` +${data.count - 3} more` : '';
+      pushNotification('staffEarlyCheckout', 'Early Checkout', `${data.count} staff left early`, `${names}${more}`);
+    });
+    return () => { u1(); u3(); u4(); u5(); u6(); u7(); u8(); };
+  }, [onNewOrder, onServiceRequest, onItemKitchenReady, onLeaveRequest, onStockLow, onStaffLate, onStaffEarlyCheckout, playSound, pushNotification, queryClient]);
 
   // Map nav paths to permission page keys
   const pathToPageKey: Record<string, PageKey> = {
     '/dashboard': 'dashboard',
     '/create-order': 'create-order',
+    '/qsr': 'qsr',
     '/orders': 'orders',
     '/menu': 'menu',
     '/tables': 'tables',
     '/analytics': 'analytics',
     '/inventory': 'inventory',
     '/kitchen': 'kitchen',
-    '/captain': 'captain',
     '/crm': 'crm',
     '/credit': 'credit',
     '/reports': 'reports',
     '/staff-management': 'staff-management',
+    '/tv-menu': 'tv-menu',
   };
 
   // Determine which pages the user has access to
@@ -342,13 +368,15 @@ function DashboardLayoutInner() {
     navigate('/login');
   };
 
+  const confirmLogout = () => setShowLogoutConfirm(true);
+
   return (
     <div className="min-h-screen bg-background flex">
       {/* Sidebar */}
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-sidebar border-r border-border transition-all duration-300 ${
-          isSidebarCollapsed ? 'w-[72px]' : 'w-64'
-        }`}
+          isSidebarHidden ? '-translate-x-full' : isSidebarCollapsed ? 'w-[72px]' : 'w-64'
+        } ${isSidebarHidden ? 'w-0 overflow-hidden' : ''}`}
       >
         {/* Logo */}
         <div className={`flex items-center h-16 border-b border-border overflow-hidden ${
@@ -378,7 +406,7 @@ function DashboardLayoutInner() {
             </AnimatePresence>
           </div>
           <button
-            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            onClick={() => setIsSidebarHidden(true)}
             className="btn-icon shrink-0"
             aria-label="Toggle sidebar"
           >
@@ -461,8 +489,21 @@ function DashboardLayoutInner() {
                 </motion.div>
               )}
             </AnimatePresence>
+            {/* Lock Screen */}
+            {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (
+              <button
+                onClick={lock}
+                className="btn-icon text-text-muted hover:text-red-500"
+                title="Lock screen"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </button>
+            )}
+            {/* Logout */}
             <button
-              onClick={handleLogout}
+              onClick={confirmLogout}
               className="btn-icon text-text-muted hover:text-error"
               title="Logout"
             >
@@ -486,19 +527,30 @@ function DashboardLayoutInner() {
 
       {/* Main content */}
       <div
+        ref={mainContentRef}
         className={`flex-1 h-screen overflow-y-auto transition-all duration-300 ${
-          isSidebarCollapsed ? 'ml-[72px]' : 'ml-64'
+          isSidebarHidden ? 'ml-0' : isSidebarCollapsed ? 'ml-[72px]' : 'ml-64'
         }`}
       >
         {/* Top bar */}
         <header className="sticky top-0 z-40 h-16 bg-background border-b border-border flex items-center justify-between px-6">
-          <h1 className="text-lg font-semibold text-text-primary">
-            {pageTitle}
-          </h1>
+          <div className="flex items-center gap-3">
+            {isSidebarHidden && (
+              <button
+                onClick={() => setIsSidebarHidden(false)}
+                className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-surface-elevated transition-colors"
+                title="Show sidebar"
+              >
+                <svg className="w-5 h-5 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+            )}
+            <h1 className="text-lg font-semibold text-text-primary">
+              {pageTitle}
+            </h1>
+          </div>
           <div className="flex items-center gap-4">
-            {/* Branch Selector — admin only */}
-            {(user?.role === 'OWNER' || user?.role === 'ADMIN') && <BranchSelector />}
-
             {(user?.role === 'OWNER' || user?.role === 'ADMIN') && (<>
             {/* Sync Button */}
             <button
@@ -517,22 +569,6 @@ function DashboardLayoutInner() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
               <span className="text-text-secondary font-medium">{isSyncing ? 'Syncing...' : 'Sync'}</span>
-            </button>
-
-            {/* Payment Requests */}
-            <button
-              onClick={() => setIsOverlayOpen(!isOverlayOpen)}
-              className="relative flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-surface-elevated transition-colors text-sm"
-            >
-              <svg className="w-4 h-4 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-              <span className="text-text-secondary font-medium">Payments</span>
-              {paymentRequests.length > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-5 h-5 flex items-center justify-center rounded-full bg-red-500 text-white text-xs font-bold px-1.5 animate-pulse">
-                  {paymentRequests.length}
-                </span>
-              )}
             </button>
 
             {/* Service Requests */}
@@ -604,28 +640,23 @@ function DashboardLayoutInner() {
               )}
             </div>
 
-            {/* Lock Screen — admin only */}
-            {hasLockPin && (user?.role === 'OWNER' || user?.role === 'ADMIN') && (
-              <button
-                onClick={lock}
-                className="relative flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors text-sm"
-                title="Lock screen"
-              >
-                <svg className="w-4 h-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
-                <span className="text-red-500 font-medium">Lock</span>
-              </button>
-            )}
+            {/* Browser Fullscreen Toggle — icon only, last in nav */}
+            <button
+              onClick={() => {
+                if (!document.fullscreenElement) {
+                  document.documentElement.requestFullscreen();
+                } else {
+                  document.exitFullscreen();
+                }
+              }}
+              className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-surface-elevated transition-colors"
+              title={document.fullscreenElement ? 'Exit fullscreen' : 'Enter fullscreen'}
+            >
+              <svg className="w-4 h-4 text-text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+              </svg>
+            </button>
           </div>
-
-          {/* Payment Requests Overlay */}
-          <PaymentRequestsOverlay
-            isOpen={isOverlayOpen}
-            onClose={() => setIsOverlayOpen(false)}
-            requests={paymentRequests}
-            onDismiss={clearPaymentRequest}
-          />
 
           {/* Service Requests Panel */}
           <AnimatePresence>
@@ -668,6 +699,44 @@ function DashboardLayoutInner() {
 
       {/* AI Chatbot */}
       <Chatbot />
+
+      {/* Logout Confirmation Modal */}
+      <AnimatePresence>
+        {showLogoutConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40"
+            onClick={() => setShowLogoutConfirm(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-xl p-6 w-80"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-lg font-semibold text-text-primary mb-2">Confirm Logout</h3>
+              <p className="text-sm text-text-secondary mb-6">Are you sure you want to logout?</p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowLogoutConfirm(false)}
+                  className="flex-1 px-4 py-2 rounded-lg border border-border text-sm font-medium text-text-secondary hover:bg-surface-elevated transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => { setShowLogoutConfirm(false); handleLogout(); }}
+                  className="flex-1 px-4 py-2 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition-colors"
+                >
+                  Logout
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

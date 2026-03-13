@@ -19,19 +19,8 @@ interface SocketContextValue {
   leaveOrderRoom: (orderId: string) => void;
   joinTableRoom: (tableId: string) => void;
   leaveTableRoom: (tableId: string) => void;
-  requestPayment: (data: PaymentRequestPayload) => void;
   onOrderStatusUpdate: (callback: (update: OrderStatusUpdate) => void) => () => void;
   onTableUpdated: (callback: (data: { tableId: string }) => void) => () => void;
-  onPaymentAcknowledged: (callback: (data: { tableId: string }) => void) => () => void;
-}
-
-export interface PaymentRequestPayload {
-  restaurantId: string;
-  tableId: string;
-  tableNumber: string;
-  total: number;
-  orderCount: number;
-  requestedAt: string;
 }
 
 const SocketContext = createContext<SocketContextValue | null>(null);
@@ -47,9 +36,6 @@ export function SocketProvider({ children }: SocketProviderProps) {
   const socketRef = useRef<Socket | null>(null);
   const queryClient = useQueryClient();
   const statusUpdateCallbacks = useRef<Set<(update: OrderStatusUpdate) => void>>(
-    new Set()
-  );
-  const paymentAckCallbacks = useRef<Set<(data: { tableId: string }) => void>>(
     new Set()
   );
   const tableUpdatedCallbacks = useRef<Set<(data: { tableId: string }) => void>>(
@@ -99,11 +85,6 @@ export function SocketProvider({ children }: SocketProviderProps) {
       statusUpdateCallbacks.current.forEach((callback) => callback(update));
     });
 
-    // Listen for payment acknowledgement from admin
-    socket.on('payment:acknowledged', (data: { tableId: string }) => {
-      paymentAckCallbacks.current.forEach((callback) => callback(data));
-    });
-
     // Listen for table status updates (e.g. session closed, table freed)
     socket.on('table:updated', (data: { tableId: string }) => {
       tableUpdatedCallbacks.current.forEach((callback) => callback(data));
@@ -151,25 +132,11 @@ export function SocketProvider({ children }: SocketProviderProps) {
     socketRef.current?.emit('leave:table', tableId);
   }, []);
 
-  const requestPayment = useCallback((data: PaymentRequestPayload) => {
-    (socketRef.current as Socket<SocketEvents, SocketEvents> | null)?.emit('payment:request', data);
-  }, []);
-
   const onOrderStatusUpdate = useCallback(
     (callback: (update: OrderStatusUpdate) => void) => {
       statusUpdateCallbacks.current.add(callback);
       return () => {
         statusUpdateCallbacks.current.delete(callback);
-      };
-    },
-    []
-  );
-
-  const onPaymentAcknowledged = useCallback(
-    (callback: (data: { tableId: string }) => void) => {
-      paymentAckCallbacks.current.add(callback);
-      return () => {
-        paymentAckCallbacks.current.delete(callback);
       };
     },
     []
@@ -193,12 +160,10 @@ export function SocketProvider({ children }: SocketProviderProps) {
       leaveOrderRoom,
       joinTableRoom,
       leaveTableRoom,
-      requestPayment,
       onOrderStatusUpdate,
       onTableUpdated,
-      onPaymentAcknowledged,
     }),
-    [isConnected, joinOrderRoom, leaveOrderRoom, joinTableRoom, leaveTableRoom, requestPayment, onOrderStatusUpdate, onTableUpdated, onPaymentAcknowledged]
+    [isConnected, joinOrderRoom, leaveOrderRoom, joinTableRoom, leaveTableRoom, onOrderStatusUpdate, onTableUpdated]
   );
 
   return (

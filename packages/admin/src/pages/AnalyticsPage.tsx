@@ -327,7 +327,7 @@ export default function AnalyticsPage() {
     staleTime: 0,
   });
 
-  const { data: advanced, isLoading: advLoading } = useQuery({
+  const { data: advanced, isLoading: advLoading, isError: _advError } = useQuery({
     queryKey: ['analytics', 'advanced', dateRange.startDate, dateRange.endDate],
     queryFn: () => analyticsService.getAdvanced(
       dateRange.startDate || dateRange.endDate

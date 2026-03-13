@@ -8,6 +8,7 @@ import { UserRole } from '@prisma/client';
 
 interface CachedUser {
   id: string;
+  name: string;
   email: string | null;
   role: UserRole;
   restaurantId: string;
@@ -39,7 +40,7 @@ export const authenticate = async (
     if (!user) {
       const dbUser = await prisma.user.findUnique({
         where: { id: payload.userId },
-        select: { id: true, email: true, role: true, restaurantId: true, isActive: true },
+        select: { id: true, name: true, email: true, role: true, restaurantId: true, isActive: true },
       });
 
       if (!dbUser || !dbUser.isActive) {

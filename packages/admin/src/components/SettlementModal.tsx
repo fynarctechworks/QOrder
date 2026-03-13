@@ -57,6 +57,26 @@ const PAYMENT_METHODS: Array<{ value: PaymentMethod; label: string; icon: string
 
 const METHOD_MAP = Object.fromEntries(PAYMENT_METHODS.map((m) => [m.value, m]));
 
+/* ── Group identical items (same name + same modifiers) ──── */
+function groupItems(items: OrderItem[]): OrderItem[] {
+  const map = new Map<string, OrderItem>();
+  for (const item of items) {
+    const modKey = item.modifiers
+      .map((m) => `${m.name}:${m.price}`)
+      .sort()
+      .join('|');
+    const key = `${item.name}::${modKey}`;
+    const existing = map.get(key);
+    if (existing) {
+      existing.quantity += item.quantity;
+      existing.totalPrice += item.totalPrice;
+    } else {
+      map.set(key, { ...item });
+    }
+  }
+  return Array.from(map.values());
+}
+
 /* ── Props ─────────────────────────────────────────────────── */
 interface SettlementModalProps {
   tableId: string;
@@ -77,6 +97,10 @@ export default function SettlementModal({
   const queryClient = useQueryClient();
   const amountRef = useRef<HTMLInputElement>(null);
   let nextId = useRef(1);
+
+  // Snapshot of session data captured at settlement time so the
+  // "Bill Settled" screen doesn't lose values when the query refetches.
+  const settledSnapshotRef = useRef<SessionData | null>(null);
 
   /* ── Local split builder state ── */
   const [splits, setSplits] = useState<SplitEntry[]>([]);
@@ -107,7 +131,7 @@ export default function SettlementModal({
   });
 
   /* ── Fetch session ── */
-  const { data: session, isLoading, error: sessionError } = useQuery<SessionData>({
+  const { data: session, isLoading, isFetching, error: sessionError } = useQuery<SessionData>({
     queryKey: ['tableSession', tableId],
     queryFn: async () => {
       const data = await apiClient.get<any>(`/sessions/table/${tableId}`);
@@ -219,6 +243,7 @@ export default function SettlementModal({
       });
       setSplits([{ id: nextId.current++, method: selectedQuickMethod, amount: billRemaining }]);
       setSettledSessionId(sessionId);
+      if (session) settledSnapshotRef.current = { ...session };
       invalidateAll();
       setSettled(true);
       toast.success('Bill settled! Table is now free.');
@@ -249,8 +274,7 @@ export default function SettlementModal({
           creditAccountId: split.creditAccountId,
         });
       }
-      setSettledSessionId(sessionId);
-      invalidateAll();
+      setSettledSessionId(sessionId);      if (session) settledSnapshotRef.current = { ...session };      invalidateAll();
       setSettled(true);
       toast.success('Bill settled! Table is now free.');
     } catch (err: any) {
@@ -298,7 +322,7 @@ export default function SettlementModal({
 
   return (
     <Modal open={true} onClose={onClose} title="" maxWidth="max-w-2xl">
-      {isLoading ? (
+      {(isLoading || (isFetching && !session?.items?.length)) ? (
         <div className="flex items-center justify-center py-16">
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" />
         </div>
@@ -312,6 +336,12 @@ export default function SettlementModal({
         </div>
       ) : (isFullyPaidFromServer || settled) ? (
         /* ═══ FULLY PAID / SETTLED STATE ═══ */
+        (() => {
+          // Use the snapshot captured at settlement time so that query
+          // refetches (which may zero-out the closed session) don't affect
+          // the "Bill Settled" display.
+          const display = settledSnapshotRef.current || session;
+          return (
         <div className="text-center space-y-6 py-4">
           <div>
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-100 mb-4">
@@ -321,7 +351,7 @@ export default function SettlementModal({
             </div>
             <h2 className="text-xl font-bold text-text-primary">Bill Settled!</h2>
             <p className="text-text-secondary mt-1">
-              Table {session.tableNumber}{session.tableName ? ` (${session.tableName})` : ''}
+              Table {display.tableNumber}{display.tableName ? ` (${display.tableName})` : ''}
             </p>
           </div>
 
@@ -330,7 +360,7 @@ export default function SettlementModal({
             <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">Bill Summary</p>
 
             {/* Items */}
-            {session.items.map((item, i) => (
+            {groupItems(display.items).map((item, i) => (
               <div key={i} className="flex justify-between py-1 text-sm">
                 <span className="text-text-secondary">{item.quantity}x {item.name}</span>
                 <span className="text-text-primary">{formatCurrency(item.totalPrice)}</span>
@@ -339,17 +369,17 @@ export default function SettlementModal({
             <div className="border-t border-border-primary my-2" />
             <div className="flex justify-between text-sm">
               <span className="text-text-secondary">Subtotal</span>
-              <span>{formatCurrency(session.subtotal)}</span>
+              <span>{formatCurrency(display.subtotal)}</span>
             </div>
-            {session.tax > 0 && (
+            {display.tax > 0 && (
               <div className="flex justify-between text-sm">
                 <span className="text-text-secondary">Tax</span>
-                <span>{formatCurrency(session.tax)}</span>
+                <span>{formatCurrency(display.tax)}</span>
               </div>
             )}
             <div className="flex justify-between font-bold text-sm pt-1 border-t border-border-primary mt-1">
               <span>Total</span>
-              <span>{formatCurrency(session.total)}</span>
+              <span>{formatCurrency(display.total)}</span>
             </div>
 
             {/* Payment Breakdown */}
@@ -388,30 +418,6 @@ export default function SettlementModal({
                 Print Bill
               </button>
             )}
-            {settledSessionId && (
-              <button
-                onClick={async () => {
-                  setSendingWhatsApp(true);
-                  try {
-                    const result = await sessionService.sendWhatsAppBill(settledSessionId);
-                    if (result.sent) {
-                      toast.success(`Bill sent to ${result.phone} via WhatsApp`);
-                    } else {
-                      toast.error('No customer phone found');
-                    }
-                  } catch {
-                    toast.error('Failed to send WhatsApp bill');
-                  } finally {
-                    setSendingWhatsApp(false);
-                  }
-                }}
-                disabled={sendingWhatsApp}
-                className="flex-1 px-5 py-3 bg-white border-2 border-green-500 text-green-600 hover:bg-green-500 hover:text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 text-sm disabled:opacity-60"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-                {sendingWhatsApp ? 'Sending...' : 'WhatsApp Bill'}
-              </button>
-            )}
             <button
               onClick={onClose}
               className="flex-1 px-5 py-3 bg-primary hover:bg-primary-hover text-white rounded-xl font-semibold transition-colors text-sm"
@@ -420,6 +426,8 @@ export default function SettlementModal({
             </button>
           </div>
         </div>
+          );
+        })()
       ) : (
         /* ═══ PAYMENT STATE ═══ */
         <div className="space-y-5">
@@ -485,7 +493,7 @@ export default function SettlementModal({
 
                   {/* Items */}
                   <div className="space-y-1">
-                    {session.items.map((item, i) => (
+                    {groupItems(session.items).map((item, i) => (
                       <div key={i} className="text-sm">
                         <div className="flex justify-between">
                           <span className="text-text-secondary">{item.quantity}x {item.name}</span>

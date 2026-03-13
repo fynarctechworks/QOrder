@@ -274,10 +274,22 @@ export const branchService = {
     const restaurantSettings = (restaurant?.settings as Record<string, unknown>) || {};
     const branchSettings = (branch.settings as Record<string, unknown>) || {};
 
+    // Restaurant-only keys must never be overridden by stale branch copies
+    const RESTAURANT_ONLY_KEYS = [
+      'acceptsOrders', 'requirePhoneVerification',
+      'adminWhatsAppPhone', 'whatsappAlertLowStock', 'whatsappAlertStaffLate',
+      'whatsappAlertEarlyCheckout', 'whatsappAlertAutoInvoice',
+      'staffLateThresholdMinutes', 'earlyCheckoutThresholdMinutes',
+    ];
+    const cleanBranchSettings = { ...branchSettings };
+    for (const key of RESTAURANT_ONLY_KEYS) {
+      delete cleanBranchSettings[key];
+    }
+
     return {
       branchId: branch.id,
       branchName: branch.name,
-      settings: { ...restaurantSettings, ...branchSettings },
+      settings: { ...restaurantSettings, ...cleanBranchSettings },
     };
   },
 
@@ -292,13 +304,30 @@ export const branchService = {
 
     if (!branch) throw AppError.notFound('Branch');
 
+    // Strip restaurant-only keys — they must only live at restaurant level
+    const RESTAURANT_ONLY_KEYS = [
+      'acceptsOrders', 'requirePhoneVerification',
+      'adminWhatsAppPhone', 'whatsappAlertLowStock', 'whatsappAlertStaffLate',
+      'whatsappAlertEarlyCheckout', 'whatsappAlertAutoInvoice',
+      'staffLateThresholdMinutes', 'earlyCheckoutThresholdMinutes',
+    ];
+    for (const key of RESTAURANT_ONLY_KEYS) {
+      delete settings[key];
+    }
+
     // Hash lockPin with bcrypt before saving
     if (typeof settings.lockPin === 'string' && /^\d{6}$/.test(settings.lockPin)) {
       settings.lockPin = await bcrypt.hash(settings.lockPin, 10);
     }
 
+    // Also strip stale restaurant-only keys from existing branch settings
+    const existingSettings = (branch.settings as Record<string, unknown>) || {};
+    for (const key of RESTAURANT_ONLY_KEYS) {
+      delete existingSettings[key];
+    }
+
     const mergedSettings = {
-      ...((branch.settings as Record<string, unknown>) || {}),
+      ...existingSettings,
       ...settings,
     };
 

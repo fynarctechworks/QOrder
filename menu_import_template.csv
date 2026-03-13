@@ -1,0 +1,24 @@
+category_name,category_description,item_name,item_description,price,discount_price,diet_type,badge,prep_time_mins,calories,tags,ingredients,allergens,is_available,modifier_group_name,modifier_group_min_select,modifier_group_max_select,modifier_group_is_required,modifier_name,modifier_price,modifier_is_default
+Starters,Appetizers and small bites,Paneer Tikka,Marinated cottage cheese grilled in tandoor,249,219,VEG,Bestseller,15,320,"popular,tandoor","paneer,bell pepper,onion,spices","dairy",TRUE,,,,,,
+Starters,,Chicken 65,Spicy deep-fried chicken,279,,NON_VEG,,20,450,"popular,spicy","chicken,flour,spices","gluten",TRUE,,,,,,
+Starters,,Veg Spring Rolls,Crispy rolls stuffed with vegetables,179,,VEG,New,10,280,"snack","cabbage,carrot,noodles","gluten,soy",TRUE,Dipping Sauce,1,1,TRUE,Schezwan Sauce,0,TRUE
+,,,,,,,,,,,,,,,,,,Sweet Chili Sauce,0,FALSE
+,,,,,,,,,,,,,,,,,,Mayonnaise,20,FALSE
+Main Course,Rice and curry dishes,Butter Chicken,Creamy tomato-based chicken curry,349,,NON_VEG,Bestseller,25,550,"popular,creamy","chicken,butter,tomato,cream","dairy",TRUE,Spice Level,1,1,TRUE,Mild,0,TRUE
+,,,,,,,,,,,,,,,,,,Medium,0,FALSE
+,,,,,,,,,,,,,,,,,,Extra Spicy,0,FALSE
+Main Course,,Dal Makhani,Slow-cooked black lentils in cream,249,,VEG,,30,380,"comfort food","urad dal,butter,cream","dairy",TRUE,,,,,,
+Main Course,,Paneer Butter Masala,Cottage cheese in rich tomato gravy,299,269,VEG,,20,480,"popular","paneer,tomato,butter,cream","dairy",TRUE,Add-ons,0,3,FALSE,Extra Paneer,60,FALSE
+,,,,,,,,,,,,,,,,,,Extra Gravy,30,FALSE
+,,,,,,,,,,,,,,,,,,Butter Naan,49,FALSE
+Breads,Indian breads and rotis,Butter Naan,Soft leavened bread with butter,59,,VEG,,5,280,"bread","flour,butter,yeast","gluten,dairy",TRUE,,,,,,
+Breads,,Garlic Naan,Naan topped with garlic and coriander,69,,VEG,,5,290,"bread,popular","flour,garlic,butter","gluten,dairy",TRUE,,,,,,
+Breads,,Laccha Paratha,Layered flaky whole wheat bread,59,,VEG,,8,310,"bread","wheat flour,ghee","gluten,dairy",TRUE,,,,,,
+Beverages,Drinks and refreshments,Masala Chai,Traditional Indian spiced tea,49,,VEG,,5,80,"drinks,hot","tea,milk,spices","dairy",TRUE,Size,1,1,TRUE,Regular,0,TRUE
+,,,,,,,,,,,,,,,,,,Large,20,FALSE
+Beverages,,Fresh Lime Soda,Lime juice with soda,79,,VEG,,3,60,"drinks,cold","lime,soda,sugar","",TRUE,Style,1,1,TRUE,Sweet,0,FALSE
+,,,,,,,,,,,,,,,,,,Salty,0,FALSE
+,,,,,,,,,,,,,,,,,,Mixed,0,TRUE
+Desserts,Sweets and desserts,Gulab Jamun,Deep-fried milk dumplings in sugar syrup,99,,VEG,Must Try,10,350,"dessert,popular","milk powder,flour,sugar","dairy,gluten",TRUE,Serving,1,1,TRUE,2 Pieces,0,TRUE
+,,,,,,,,,,,,,,,,,,4 Pieces,79,FALSE
+Desserts,,Rasmalai,Soft paneer discs in sweetened milk,129,,VEG,,5,300,"dessert","paneer,milk,cardamom","dairy",TRUE,,,,,,

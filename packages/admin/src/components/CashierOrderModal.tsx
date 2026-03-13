@@ -37,19 +37,19 @@ export default function CashierOrderModal({ open, onClose, onSubmit, isSubmittin
   const formatCurrency = useCurrency();
 
   /* ── Data fetching ── */
-  const { data: menuItems = [] } = useQuery({
+  const { data: menuItems = [], isError: menuErr } = useQuery({
     queryKey: ['menu'],
     queryFn: menuService.getItems,
     enabled: open,
   });
 
-  const { data: categories = [] } = useQuery({
+  const { data: categories = [], isError: catErr } = useQuery({
     queryKey: ['categories'],
     queryFn: menuService.getCategories,
     enabled: open,
   });
 
-  const { data: tables = [] } = useQuery({
+  const { data: tables = [], isError: tabErr } = useQuery({
     queryKey: ['tables'],
     queryFn: tableService.getAll,
     enabled: open,
@@ -60,6 +60,8 @@ export default function CashierOrderModal({ open, onClose, onSubmit, isSubmittin
     queryFn: settingsService.get,
     enabled: open,
   });
+
+  const dataError = menuErr || catErr || tabErr;
 
   const taxRate = settings?.taxRate ?? 0;
 
@@ -229,6 +231,11 @@ export default function CashierOrderModal({ open, onClose, onSubmit, isSubmittin
 
       {/* Modal */}
       <div className="relative z-[51] w-[92vw] max-w-6xl h-[88vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      {dataError && (
+        <div className="bg-red-50 border-b border-red-200 px-5 py-2 text-sm text-red-600 shrink-0">
+          Failed to load some data. Close and reopen to retry.
+        </div>
+      )}
       {/* ═══ Dark header ═══ */}
       <div className="bg-primary h-14 flex items-center justify-between px-5 shrink-0 shadow-lg z-10 rounded-t-2xl">
         <div className="flex items-center gap-3">

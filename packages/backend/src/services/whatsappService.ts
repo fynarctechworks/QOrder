@@ -85,7 +85,7 @@ function buildBillMessage(bill: BillData): string {
 }
 
 /**
- * Send a text message via Twilio WhatsApp API
+ * Send a text message via Twilio WhatsApp API (plain text fallback)
  */
 async function sendWhatsAppMessage(to: string, message: string): Promise<boolean> {
   const { accountSid, authToken, whatsappFrom } = config.twilio;
@@ -122,10 +122,82 @@ async function sendWhatsAppMessage(to: string, message: string): Promise<boolean
     }
 
     const data = await response.json() as { sid?: string };
-    logger.info({ messageSid: data.sid, to: formattedPhone }, 'WhatsApp bill sent via Twilio');
+    logger.info({ messageSid: data.sid, to: formattedPhone }, 'WhatsApp message sent via Twilio');
     return true;
   } catch (error) {
     logger.error({ error, to: formattedPhone }, 'Failed to send Twilio WhatsApp message');
+    return false;
+  }
+}
+
+/**
+ * Send a WhatsApp message using a Twilio Content Template (for business-initiated messages).
+ * Templates can be sent to ANY WhatsApp number without prior opt-in.
+ * Only falls back to plain text if no template SID is configured (session-based fallback).
+ */
+async function sendWhatsAppTemplate(
+  to: string,
+  contentSid: string,
+  variables: Record<string, string>,
+  fallbackMessage: string,
+): Promise<boolean> {
+  if (!contentSid) {
+    // No template configured — fall back to plain text (only works in 24hr session window)
+    logger.warn('No Content Template SID configured — falling back to plain text (requires opt-in)');
+    return sendWhatsAppMessage(to, fallbackMessage);
+  }
+
+  const { accountSid, authToken, whatsappFrom } = config.twilio;
+
+  if (!accountSid || !authToken || !whatsappFrom) {
+    logger.warn('Twilio WhatsApp not configured — skipping message send');
+    return false;
+  }
+
+  const formattedPhone = formatPhoneNumber(to);
+
+  try {
+    const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
+
+    // Twilio Content Variables do not support newline characters in values.
+    // Sanitize by replacing any newlines with comma-space.
+    const sanitized: Record<string, string> = {};
+    for (const [key, value] of Object.entries(variables)) {
+      sanitized[key] = value.replace(/\n/g, ', ');
+    }
+
+    const body = new URLSearchParams({
+      From: `whatsapp:${whatsappFrom.startsWith('+') ? whatsappFrom : '+' + whatsappFrom}`,
+      To: `whatsapp:+${formattedPhone}`,
+      ContentSid: contentSid,
+      ContentVariables: JSON.stringify(sanitized),
+    });
+
+    logger.info({ to: formattedPhone, contentSid }, 'Sending WhatsApp template message');
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Basic ' + Buffer.from(`${accountSid}:${authToken}`).toString('base64'),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: body.toString(),
+    });
+
+    const data = await response.json().catch(() => ({})) as Record<string, unknown>;
+
+    if (!response.ok) {
+      logger.error(
+        { status: response.status, errorCode: data.code, errorMessage: data.message, contentSid, to: formattedPhone },
+        'Twilio WhatsApp template API error — NOT falling back to plain text (template required for business-initiated messages)'
+      );
+      return false;
+    }
+
+    logger.info({ messageSid: data.sid, to: formattedPhone, contentSid }, 'WhatsApp template message sent via Twilio');
+    return true;
+  } catch (error) {
+    logger.error({ error, to: formattedPhone, contentSid }, 'Failed to send Twilio WhatsApp template');
     return false;
   }
 }
@@ -170,14 +242,33 @@ export const whatsappService = {
       return { sent: false };
     }
 
-    const items: BillItem[] = session.orders.flatMap((order) =>
+    const rawItems = session.orders.flatMap((order) =>
       order.items.map((item) => ({
         name: item.menuItem?.name ?? 'Deleted Item',
         quantity: item.quantity,
-        unitPrice: Number(item.unitPrice).toFixed(2),
-        totalPrice: Number(item.totalPrice).toFixed(2),
+        unitPrice: Number(item.unitPrice),
+        totalPrice: Number(item.totalPrice),
       }))
     );
+
+    // Group identical items
+    const grouped = new Map<string, { name: string; quantity: number; unitPrice: number; totalPrice: number }>();
+    for (const item of rawItems) {
+      const existing = grouped.get(item.name);
+      if (existing && existing.unitPrice === item.unitPrice) {
+        existing.quantity += item.quantity;
+        existing.totalPrice += item.totalPrice;
+      } else {
+        grouped.set(item.name + '::' + item.unitPrice, { ...item });
+      }
+    }
+
+    const items: BillItem[] = Array.from(grouped.values()).map((item) => ({
+      name: item.name,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice.toFixed(2),
+      totalPrice: item.totalPrice.toFixed(2),
+    }));
 
     const billData: BillData = {
       restaurantName: session.restaurant.name,
@@ -202,7 +293,25 @@ export const whatsappService = {
     };
 
     const message = buildBillMessage(billData);
-    const sent = await sendWhatsAppMessage(customerPhone, message);
+
+    // Universal 6-variable template: works for dine-in, takeaway, and QSR
+    const templateSid = config.twilio.templates.orderInvoice;
+    const orderInfo = `Dine-in | Table ${billData.tableNumber} | ${billData.sessionDate}`;
+    const itemsText = items.map(i => `${i.quantity}x ${i.name} ${billData.currency}${i.totalPrice}`).join(', ');
+
+    const sent = await sendWhatsAppTemplate(
+      customerPhone,
+      templateSid,
+      {
+        '1': billData.restaurantName,
+        '2': orderInfo,
+        '3': itemsText,
+        '4': `${billData.currency}${billData.subtotal}`,
+        '5': `${billData.currency}${billData.tax}`,
+        '6': `${billData.currency}${billData.total}`,
+      },
+      message,
+    );
 
     return { sent, phone: customerPhone };
   },
@@ -230,22 +339,46 @@ export const whatsappService = {
       return { sent: false };
     }
 
+    const firstOrder = orders[0]!;
+
     const customerPhone = orders.find((o) => o.customerPhone)?.customerPhone;
     if (!customerPhone) {
-      logger.info({ orderIds }, 'No customer phone found — skipping WhatsApp bill');
+      logger.info({ orderIds }, 'No customer phone found on order — skipping WhatsApp bill');
       return { sent: false };
     }
 
-    const restaurant = orders[0].restaurant;
+    logger.info({ customerPhone, orderIds, restaurantId }, 'Preparing WhatsApp invoice for customer');
 
-    const items: BillItem[] = orders.flatMap((order) =>
+    const restaurant = firstOrder.restaurant;
+
+    const rawOrderItems = orders.flatMap((order) =>
       order.items.map((item) => ({
         name: item.menuItem?.name ?? 'Deleted Item',
         quantity: item.quantity,
-        unitPrice: Number(item.unitPrice).toFixed(2),
-        totalPrice: Number(item.totalPrice).toFixed(2),
+        unitPrice: Number(item.unitPrice),
+        totalPrice: Number(item.totalPrice),
       }))
     );
+
+    // Group identical items
+    const groupedOrder = new Map<string, { name: string; quantity: number; unitPrice: number; totalPrice: number }>();
+    for (const item of rawOrderItems) {
+      const gKey = item.name + '::' + item.unitPrice;
+      const existing = groupedOrder.get(gKey);
+      if (existing) {
+        existing.quantity += item.quantity;
+        existing.totalPrice += item.totalPrice;
+      } else {
+        groupedOrder.set(gKey, { ...item });
+      }
+    }
+
+    const items: BillItem[] = Array.from(groupedOrder.values()).map((item) => ({
+      name: item.name,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice.toFixed(2),
+      totalPrice: item.totalPrice.toFixed(2),
+    }));
 
     const subtotal = orders.reduce((s, o) => s + Number(o.subtotal), 0);
     const tax = orders.reduce((s, o) => s + Number(o.tax), 0);
@@ -260,7 +393,7 @@ export const whatsappService = {
       tax: tax.toFixed(2),
       total: total.toFixed(2),
       payments: [],
-      sessionDate: new Date(orders[0].createdAt).toLocaleDateString('en-IN', {
+      sessionDate: new Date(firstOrder.createdAt).toLocaleDateString('en-IN', {
         day: '2-digit',
         month: 'short',
         year: 'numeric',
@@ -270,8 +403,153 @@ export const whatsappService = {
     };
 
     const message = buildBillMessage(billData);
-    const sent = await sendWhatsAppMessage(customerPhone, message);
+
+    // Universal 6-variable template: works for dine-in, takeaway, and QSR
+    const templateSid = config.twilio.templates.orderInvoice;
+    const orderType = firstOrder.orderType === 'QSR' ? 'QSR' : 'Takeaway';
+    const orderInfo = `${orderType} | ${billData.sessionDate}`;
+    const itemsText = items.map(i => `${i.quantity}x ${i.name} ${billData.currency}${i.totalPrice}`).join(', ');
+
+    const sent = await sendWhatsAppTemplate(
+      customerPhone,
+      templateSid,
+      {
+        '1': billData.restaurantName,
+        '2': orderInfo,
+        '3': itemsText,
+        '4': `${billData.currency}${billData.subtotal}`,
+        '5': `${billData.currency}${billData.tax}`,
+        '6': `${billData.currency}${billData.total}`,
+      },
+      message,
+    );
 
     return { sent, phone: customerPhone };
+  },
+
+  /**
+   * Send low stock alert to admin via WhatsApp
+   */
+  async sendLowStockAlert(
+    adminPhone: string,
+    restaurantName: string,
+    items: Array<{ name: string; unit: string; currentStock: number; minStock: number }>
+  ): Promise<boolean> {
+    const line = '─'.repeat(28);
+    let message = `⚠️ *LOW STOCK ALERT*\n`;
+    message += `${line}\n`;
+    message += `🏪 *${restaurantName}*\n`;
+    message += `📅 ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}\n`;
+    message += `${line}\n\n`;
+    message += `${items.length} ingredient(s) are running low:\n\n`;
+
+    for (const item of items) {
+      const pct = item.minStock > 0 ? Math.round((item.currentStock / item.minStock) * 100) : 0;
+      message += `🔴 *${item.name}*\n`;
+      message += `   Stock: ${item.currentStock} ${item.unit} (min: ${item.minStock} ${item.unit}) — ${pct}%\n\n`;
+    }
+
+    message += `Please restock soon to avoid disruptions. 🙏`;
+
+    const templateSid = config.twilio.templates.lowStock;
+    const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const itemsText = items.map(i => {
+      const pct = i.minStock > 0 ? Math.round((i.currentStock / i.minStock) * 100) : 0;
+      return `🔴 ${i.name} — Stock: ${i.currentStock} ${i.unit} (min: ${i.minStock} ${i.unit}) — ${pct}%`;
+    }).join(', ');
+
+    return sendWhatsAppTemplate(
+      adminPhone,
+      templateSid,
+      {
+        '1': restaurantName,
+        '2': dateStr,
+        '3': String(items.length),
+        '4': itemsText,
+      },
+      message,
+    );
+  },
+
+  /**
+   * Send staff late login alert to admin via WhatsApp
+   */
+  async sendStaffLateAlert(
+    adminPhone: string,
+    restaurantName: string,
+    lateStaff: Array<{ name: string; shiftName: string; shiftStart: string; minutesLate: number }>
+  ): Promise<boolean> {
+    const line = '─'.repeat(28);
+    let message = `⏰ *STAFF LATE ALERT*\n`;
+    message += `${line}\n`;
+    message += `🏪 *${restaurantName}*\n`;
+    message += `📅 ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}\n`;
+    message += `${line}\n\n`;
+    message += `${lateStaff.length} staff member(s) haven't checked in:\n\n`;
+
+    for (const staff of lateStaff) {
+      message += `🔶 *${staff.name}*\n`;
+      message += `   Shift: ${staff.shiftName} (${staff.shiftStart})\n`;
+      message += `   Late by: ${staff.minutesLate} minutes\n\n`;
+    }
+
+    message += `Please follow up with them. 🙏`;
+
+    const templateSid = config.twilio.templates.staffLate;
+    const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const staffText = lateStaff.map(s => `🔶 ${s.name} — Shift: ${s.shiftName} (${s.shiftStart}) — Late by: ${s.minutesLate} minutes`).join(', ');
+
+    return sendWhatsAppTemplate(
+      adminPhone,
+      templateSid,
+      {
+        '1': restaurantName,
+        '2': dateStr,
+        '3': String(lateStaff.length),
+        '4': staffText,
+      },
+      message,
+    );
+  },
+
+  /**
+   * Send staff early checkout alert to admin via WhatsApp
+   */
+  async sendStaffEarlyCheckoutAlert(
+    adminPhone: string,
+    restaurantName: string,
+    earlyStaff: Array<{ name: string; shiftName: string; shiftEnd: string; minutesEarly: number }>
+  ): Promise<boolean> {
+    const line = '─'.repeat(28);
+    let message = `🚪 *EARLY CHECKOUT ALERT*\n`;
+    message += `${line}\n`;
+    message += `🏪 *${restaurantName}*\n`;
+    message += `📅 ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}\n`;
+    message += `${line}\n\n`;
+    message += `${earlyStaff.length} staff member(s) checked out early:\n\n`;
+
+    for (const staff of earlyStaff) {
+      message += `🔶 *${staff.name}*\n`;
+      message += `   Shift: ${staff.shiftName} (ends ${staff.shiftEnd})\n`;
+      message += `   Left ${staff.minutesEarly} minutes early\n\n`;
+    }
+
+    message += `Please follow up with them. 🙏`;
+
+    const templateSid = config.twilio.templates.earlyCheckout;
+    const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const staffText = earlyStaff.map(s => `🔶 ${s.name} — Shift: ${s.shiftName} (ends ${s.shiftEnd}) — Left ${s.minutesEarly} minutes early`).join(', ');
+
+    return sendWhatsAppTemplate(
+      adminPhone,
+      templateSid,
+      {
+        '1': restaurantName,
+        '2': dateStr,
+        '3': String(earlyStaff.length),
+        '4': staffText,
+      },
+      message,
+    );
   },
 };

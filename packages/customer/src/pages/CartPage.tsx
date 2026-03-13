@@ -8,8 +8,6 @@ import { useRestaurant } from '../context/RestaurantContext';
 import { useCartStore } from '../state/cartStore';
 import { orderService } from '../services/orderService';
 import { featureService } from '../services/featureService';
-import { paymentService } from '../services/paymentService';
-import { useRazorpay } from '../hooks/useRazorpay';
 import { formatPrice as fmtPrice } from '../utils/formatPrice';
 import type { CartItem } from '../types';
 import { resolveImg } from '../utils/resolveImg';
@@ -174,6 +172,19 @@ export default function CartPage() {
   const [showInstructions, setShowInstructions] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
   const [showCustomerSheet, setShowCustomerSheet] = useState(false);
+
+  // Prefetch session token as soon as customer info sheet opens,
+  // so it's ready by the time the user fills in their details and the order mutation fires.
+  useEffect(() => {
+    if (showCustomerSheet && restaurant?.id && tableId) {
+      queryClient.refetchQueries({ queryKey: ['table', restaurant.id, tableId] }).then(() => {
+        const freshTable = queryClient.getQueryData<{ sessionToken?: string | null }>(['table', restaurant.id, tableId]);
+        if (freshTable?.sessionToken) {
+          sessionStorage.setItem(`sessionToken:${tableId}`, freshTable.sessionToken);
+        }
+      });
+    }
+  }, [showCustomerSheet, restaurant?.id, tableId, queryClient]);
   const [couponCode, setCouponCode] = useState('');
   const [couponResult, setCouponResult] = useState<{ valid: boolean; discount?: { discountId: string; couponId?: string; discountAmount: number; discountName: string }; error?: string } | null>(null);
   const [couponLoading, setCouponLoading] = useState(false);
@@ -191,25 +202,6 @@ export default function CartPage() {
   const { getCoords, error: geoError, position: geoPosition, refresh: refreshGeo } = useGeolocation();
   const geoFenceEnabled = !!restaurant?.geoFenceEnabled;
   const geoBlocked = geoFenceEnabled && !geoPosition;
-
-  /* ─── Online payment config (pay_before mode) ─── */
-  const { data: paymentConfig } = useQuery({
-    queryKey: ['paymentConfig', restaurant?.id],
-    queryFn: () => paymentService.getConfig(restaurant!.id),
-    enabled: !!restaurant?.id,
-    staleTime: 60_000,
-  });
-
-  const payBeforeEnabled = paymentConfig?.enabled && paymentConfig.paymentMode === 'pay_before';
-
-  const { initiatePayment } = useRazorpay({
-    config: paymentConfig ?? null,
-    restaurantId: restaurant?.id || '',
-    onSuccess: () => {
-      toast.success(t('cart.paymentSuccess'));
-    },
-    onError: (msg) => toast.error(msg),
-  });
 
   /* ─── Auto-apply discount ─── */
   const rawSubtotal = useMemo(() => items.reduce((sum, i) => sum + i.totalPrice, 0), [items]);
@@ -246,14 +238,8 @@ export default function CartPage() {
       if (!restaurant?.id || !tableId) throw new Error('Missing restaurant or table information');
       const key = idempotencyKey || generateIdempotencyKey();
       if (!idempotencyKey) setIdempotencyKey(key);
-      // Fetch the latest session token (it rotates when a previous order completes).
-      // We must sync sessionStorage *synchronously* here because the React useEffect
-      // in RestaurantContext won't fire until after this async function yields.
-      await queryClient.refetchQueries({ queryKey: ['table', restaurant.id, tableId] });
-      const freshTable = queryClient.getQueryData<{ sessionToken?: string | null }>(['table', restaurant.id, tableId]);
-      if (freshTable?.sessionToken) {
-        sessionStorage.setItem(`sessionToken:${tableId}`, freshTable.sessionToken);
-      }
+      // Session token was prefetched when the customer info sheet opened.
+      // Just use whatever is in sessionStorage — it should already be fresh.
       return orderService.create(restaurant.id, tableId, items, specialInstructions.trim() || undefined, key, restaurantSlug || restaurant.slug, customerName, customerPhone, getCoords(), couponResult?.valid ? couponCode.trim() : undefined);
     },
     onSuccess: (order: any) => {
@@ -267,21 +253,8 @@ export default function CartPage() {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
 
       // If pay_before is enabled, trigger online payment immediately after order creation
-      if (payBeforeEnabled && order?.sessionId) {
-        initiatePayment({
-          orderId: order.id,
-          sessionId: order.sessionId,
-          amount: order.total ?? total,
-          currency: restaurant?.currency || 'INR',
-          customerName: order.customerName,
-          customerPhone: order.customerPhone,
-          description: `Order #${order.orderNumber || order.id}`,
-        });
-        navigate(`/r/${restaurantSlug}/t/${tableId}/menu`);
-      } else {
-        toast.success(t('cart.orderPlaced'));
-        navigate(`/r/${restaurantSlug}/t/${tableId}/menu`);
-      }
+      toast.success(t('cart.orderPlaced'));
+      navigate(`/r/${restaurantSlug}/t/${tableId}/menu`);
     },
     onError: (error) => {
       const msg = error instanceof Error ? error.message : t('cart.failedToPlace');

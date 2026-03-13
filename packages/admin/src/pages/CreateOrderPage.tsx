@@ -1,9 +1,11 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { menuService, tableService, settingsService, orderService } from '../services';
 import { useCurrency } from '../hooks/useCurrency';
 import DietBadge from '../components/DietBadge';
+import Modal from '../components/Modal';
 import type { MenuItem, Table, Category } from '../types';
 
 /* ─── Types ── */
@@ -21,23 +23,46 @@ interface CartItem {
   selectedModifiers: SelectedModifier[];
 }
 
+interface HeldTicket {
+  id: string;
+  cart: CartItem[];
+  customerName: string;
+  customerPhone: string;
+  notes: string;
+  selectedTable: string;
+  heldAt: number;
+}
+
+/* ─── Held tickets localStorage helpers ── */
+const HELD_KEY = 'createorder_held_tickets';
+function loadHeldTickets(): HeldTicket[] {
+  try {
+    const raw = localStorage.getItem(HELD_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+function saveHeldTickets(tickets: HeldTicket[]) {
+  localStorage.setItem(HELD_KEY, JSON.stringify(tickets));
+}
+
 /* ═══════════════════ Create Order Page ═══════════════════ */
 export default function CreateOrderPage() {
   const formatCurrency = useCurrency();
+  const navigate = useNavigate();
   const qc = useQueryClient();
 
   /* ── Data fetching ── */
-  const { data: menuItems = [] } = useQuery({
+  const { data: menuItems = [], isError: menuErr, refetch: refetchMenu } = useQuery({
     queryKey: ['menu'],
     queryFn: menuService.getItems,
   });
 
-  const { data: categories = [] } = useQuery({
+  const { data: categories = [], isError: catErr, refetch: refetchCat } = useQuery({
     queryKey: ['categories'],
     queryFn: menuService.getCategories,
   });
 
-  const { data: tables = [] } = useQuery({
+  const { data: tables = [], isError: tabErr, refetch: refetchTables } = useQuery({
     queryKey: ['tables'],
     queryFn: tableService.getAll,
   });
@@ -46,6 +71,8 @@ export default function CreateOrderPage() {
     queryKey: ['settings'],
     queryFn: settingsService.get,
   });
+
+  const dataError = menuErr || catErr || tabErr;
 
   const taxRate = settings?.taxRate ?? 0;
 
@@ -58,6 +85,14 @@ export default function CreateOrderPage() {
   const [menuSearch, setMenuSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [activeCartItemId, setActiveCartItemId] = useState<string | null>(null);
+
+  // Hold & Recall state
+  const [heldTickets, setHeldTickets] = useState<HeldTicket[]>(loadHeldTickets);
+  const [showRecall, setShowRecall] = useState(false);
+
+  // Discount state
+  const [discountType, setDiscountType] = useState<'PERCENTAGE' | 'FLAT'>('PERCENTAGE');
+  const [discountValue, setDiscountValue] = useState('');
 
   /* ── Mutation ── */
   const createOrderMut = useMutation({
@@ -84,6 +119,69 @@ export default function CreateOrderPage() {
     setMenuSearch('');
     setSelectedCategory('all');
     setActiveCartItemId(null);
+  };
+
+  /* ── Hold current ticket ── */
+  const handleHold = () => {
+    if (cart.length === 0) return;
+    const ticket: HeldTicket = {
+      id: `held-${Date.now()}`,
+      cart: [...cart],
+      customerName,
+      customerPhone,
+      notes,
+      selectedTable,
+      heldAt: Date.now(),
+    };
+    const updated = [...heldTickets, ticket];
+    setHeldTickets(updated);
+    saveHeldTickets(updated);
+    toast.success('Ticket on hold');
+    setCart([]);
+    setSelectedTable('');
+    setCustomerName('');
+    setCustomerPhone('');
+    setNotes('');
+    setActiveCartItemId(null);
+  };
+
+  /* ── Recall a held ticket ── */
+  const handleRecall = (ticketId: string) => {
+    const ticket = heldTickets.find(t => t.id === ticketId);
+    if (!ticket) return;
+    if (cart.length > 0) {
+      const currentTicket: HeldTicket = {
+        id: `held-${Date.now()}`,
+        cart: [...cart],
+        customerName,
+        customerPhone,
+        notes,
+        selectedTable,
+        heldAt: Date.now(),
+      };
+      const withCurrent = [...heldTickets, currentTicket].filter(t => t.id !== ticketId);
+      setHeldTickets(withCurrent);
+      saveHeldTickets(withCurrent);
+    } else {
+      const without = heldTickets.filter(t => t.id !== ticketId);
+      setHeldTickets(without);
+      saveHeldTickets(without);
+    }
+    setCart(ticket.cart);
+    setCustomerName(ticket.customerName);
+    setCustomerPhone(ticket.customerPhone);
+    setNotes(ticket.notes);
+    setSelectedTable(ticket.selectedTable);
+    setActiveCartItemId(null);
+    setShowRecall(false);
+    toast.success('Ticket recalled');
+  };
+
+  /* ── Delete a held ticket ── */
+  const handleDeleteHeld = (ticketId: string) => {
+    const updated = heldTickets.filter(t => t.id !== ticketId);
+    setHeldTickets(updated);
+    saveHeldTickets(updated);
   };
 
   /* ── Category map for showing category names ── */
@@ -166,6 +264,19 @@ export default function CreateOrderPage() {
 
   /* ── Cart helpers ── */
   const addToCart = useCallback((item: MenuItem) => {
+    const hasCustomizations = (item.customizationGroups?.length ?? 0) > 0;
+    if (!hasCustomizations) {
+      const existing = cart.find(c => c.menuItem.id === item.id && c.selectedModifiers.length === 0);
+      if (existing) {
+        setCart(prev => prev.map(c =>
+          c.cartId === existing.cartId ? { ...c, quantity: c.quantity + 1 } : c
+        ));
+        lastAddedIdRef.current = existing.cartId;
+        setActiveCartItemId(existing.cartId);
+        return;
+      }
+    }
+
     const id = `cart-${++cartIdCounter.current}`;
     lastAddedIdRef.current = id;
     setActiveCartItemId(id);
@@ -180,6 +291,16 @@ export default function CreateOrderPage() {
       });
       return [...prev, { cartId: id, menuItem: item, quantity: 1, selectedModifiers: defaultMods }];
     });
+  }, [cart]);
+
+  const updateQuantity = useCallback((cartId: string, delta: number) => {
+    setCart(prev => prev.reduce<CartItem[]>((acc, c) => {
+      if (c.cartId !== cartId) { acc.push(c); return acc; }
+      const newQty = c.quantity + delta;
+      if (newQty <= 0) return acc;
+      acc.push({ ...c, quantity: newQty });
+      return acc;
+    }, []));
   }, []);
 
   const toggleModifier = useCallback((cartId: string, groupId: string, maxSelect: number, mod: { id: string; name: string; priceModifier: number }) => {
@@ -212,6 +333,8 @@ export default function CreateOrderPage() {
     return cart.filter(c => c.menuItem.id === menuItemId).reduce((sum, c) => sum + c.quantity, 0);
   }, [cart]);
 
+  const totalItems = useMemo(() => cart.reduce((s, c) => s + c.quantity, 0), [cart]);
+
   /* ── Totals ── */
   const subtotal = useMemo(() => {
     return cart.reduce((sum, c) => {
@@ -222,7 +345,11 @@ export default function CreateOrderPage() {
   }, [cart]);
 
   const taxAmount = subtotal * (taxRate / 100);
-  const total = subtotal + taxAmount;
+  const discountNum = parseFloat(discountValue) || 0;
+  const discountAmount = discountType === 'PERCENTAGE'
+    ? Math.min(subtotal * (discountNum / 100), subtotal)
+    : Math.min(discountNum, subtotal);
+  const total = subtotal - discountAmount + taxAmount;
 
   /* ── Submit ── */
   const handleSubmit = () => {
@@ -240,11 +367,18 @@ export default function CreateOrderPage() {
       customerName: customerName.trim() || undefined,
       customerPhone: customerPhone.trim() || undefined,
       notes: notes.trim() || undefined,
+      ...(discountAmount > 0 ? { manualDiscount: discountNum, manualDiscountType: discountType } : {}),
     });
   };
 
   return (
     <div className="-m-6 flex flex-col" style={{ height: 'calc(100vh - 4rem)' }}>
+      {dataError && (
+        <div className="bg-red-50 border-b border-red-200 px-6 py-2 flex items-center gap-3">
+          <span className="text-sm text-red-600">Failed to load some data.</span>
+          <button className="text-sm font-medium text-red-700 underline" onClick={() => { refetchMenu(); refetchCat(); refetchTables(); }}>Retry</button>
+        </div>
+      )}
       {/* ═══ Top bar ═══ */}
       <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shrink-0">
         <div>
@@ -253,6 +387,16 @@ export default function CreateOrderPage() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* View Orders */}
+          <button
+            onClick={() => navigate('/orders')}
+            className="rounded-xl text-sm px-4 py-2 border border-gray-200 bg-white hover:bg-gray-50 text-text-secondary active:scale-[0.97] flex items-center gap-2 transition-colors shadow-sm"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            View Orders
+          </button>
           {/* Table select */}
           <select
             value={selectedTable}
@@ -267,7 +411,6 @@ export default function CreateOrderPage() {
                     <option
                       key={t.id}
                       value={t.id}
-                      disabled={t.status === 'occupied'}
                     >
                       {t.name ? `${t.name} (${t.number})` : `Table ${t.number}`}
                       {t.status === 'occupied' ? ' • Occupied' : ''}
@@ -280,7 +423,6 @@ export default function CreateOrderPage() {
                 <option
                   key={t.id}
                   value={t.id}
-                  disabled={t.status === 'occupied'}
                 >
                   {t.name ? `${t.name} (${t.number})` : `Table ${t.number}`}
                   {t.status === 'occupied' ? ' • Occupied' : ''}
@@ -317,6 +459,22 @@ export default function CreateOrderPage() {
             </svg>
             New Order
           </button>
+
+          {/* Recall */}
+          <button
+            onClick={() => setShowRecall(true)}
+            className="relative rounded-xl text-sm px-4 py-2 shadow-sm active:scale-[0.97] flex items-center gap-2 border border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Recall
+            {heldTickets.length > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">
+                {heldTickets.length}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 
@@ -327,11 +485,21 @@ export default function CreateOrderPage() {
         <div className="w-[300px] xl:w-[340px] flex flex-col bg-white border-r border-gray-200 shrink-0">
           <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
             <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Current Ticket</h2>
-            {cart.length > 0 && (
-              <span className="w-6 h-6 rounded-full bg-gray-900 text-white text-xs font-bold flex items-center justify-center">
-                {cart.length}
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {cart.length > 0 && (
+                <button
+                  onClick={() => { setCart([]); setActiveCartItemId(null); }}
+                  className="text-xs text-red-500 hover:text-red-700 font-medium transition-colors"
+                >
+                  Clear All
+                </button>
+              )}
+              {totalItems > 0 && (
+                <span className="w-6 h-6 rounded-full bg-gray-900 text-white text-xs font-bold flex items-center justify-center">
+                  {totalItems}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Cart items */}
@@ -424,8 +592,27 @@ export default function CreateOrderPage() {
                         </div>
                       )}
 
-                      {/* Total row */}
-                      <div className="flex items-center justify-end mt-2.5">
+                      {/* Total row with quantity controls */}
+                      <div className="flex items-center justify-between mt-2.5">
+                        <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                          <button
+                            onClick={() => updateQuantity(c.cartId, -1)}
+                            className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 transition-colors active:scale-90"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4" />
+                            </svg>
+                          </button>
+                          <span className="w-8 text-center text-sm font-bold text-gray-900 tabular-nums">{c.quantity}</span>
+                          <button
+                            onClick={() => updateQuantity(c.cartId, 1)}
+                            className="w-7 h-7 rounded-lg bg-primary/10 hover:bg-primary/20 flex items-center justify-center text-primary transition-colors active:scale-90"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                            </svg>
+                          </button>
+                        </div>
                         <span className="text-sm font-bold text-gray-900 tabular-nums">
                           {formatCurrency(lineTotal)}
                         </span>
@@ -456,6 +643,30 @@ export default function CreateOrderPage() {
               <span>Subtotal</span>
               <span className="font-medium text-gray-900 tabular-nums">{formatCurrency(subtotal)}</span>
             </div>
+            {/* Discount */}
+            <div className="flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5 text-orange-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z" /></svg>
+              <select
+                value={discountType}
+                onChange={e => setDiscountType(e.target.value as 'PERCENTAGE' | 'FLAT')}
+                className="text-xs border border-gray-200 rounded-md px-1.5 py-1 bg-white focus:outline-none focus:border-primary"
+              >
+                <option value="PERCENTAGE">%</option>
+                <option value="FLAT">Flat</option>
+              </select>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={discountValue}
+                onChange={e => setDiscountValue(e.target.value)}
+                placeholder="0"
+                className="w-16 text-xs border border-gray-200 rounded-md px-2 py-1 text-center bg-white focus:outline-none focus:border-primary"
+              />
+              {discountAmount > 0 && (
+                <span className="ml-auto text-xs font-medium text-orange-600 tabular-nums">-{formatCurrency(discountAmount)}</span>
+              )}
+            </div>
             {taxRate > 0 && (
               <div className="flex justify-between text-sm text-gray-600">
                 <span>Tax ({taxRate}%)</span>
@@ -484,6 +695,16 @@ export default function CreateOrderPage() {
                   Place Order • {formatCurrency(total)}
                 </>
               )}
+            </button>
+            <button
+              onClick={handleHold}
+              disabled={cart.length === 0}
+              className="w-full mt-1.5 py-2.5 border-2 border-amber-400 text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-xl font-semibold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Hold Ticket
             </button>
           </div>
         </div>
@@ -558,6 +779,12 @@ export default function CreateOrderPage() {
                         qty > 0 ? 'border-primary ring-1 ring-primary/30 bg-primary/5' : 'border-border hover:border-muted'
                       }`}
                     >
+                      {qty > 0 && (
+                        <span className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center shadow-sm">
+                          {qty}
+                        </span>
+                      )}
+
                       {/* Diet badge */}
                       <div className="flex items-start justify-between gap-2 mb-1.5">
                         <DietBadge type={item.dietType} />
@@ -577,6 +804,81 @@ export default function CreateOrderPage() {
           </div>
         </div>
       </div>
+
+      {/* ═══ Recall Modal ═══ */}
+      <Modal open={showRecall} onClose={() => setShowRecall(false)} title="Held Tickets" maxWidth="max-w-lg">
+        {heldTickets.length === 0 ? (
+          <div className="text-center py-12 text-gray-400">
+            <svg className="w-16 h-16 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-sm font-medium">No held tickets</p>
+            <p className="text-xs mt-1">Hold a ticket to park it here</p>
+          </div>
+        ) : (
+          <div className="space-y-3 max-h-[60vh] overflow-y-auto">
+            {heldTickets.map(ticket => {
+              const itemCount = ticket.cart.reduce((s, c) => s + c.quantity, 0);
+              const ticketTotal = ticket.cart.reduce((sum, c) => {
+                const base = c.menuItem.discountPrice ?? c.menuItem.price;
+                const modT = c.selectedModifiers.reduce((s, m) => s + m.price, 0);
+                return sum + (base + modT) * c.quantity;
+              }, 0);
+              const mins = Math.round((Date.now() - ticket.heldAt) / 60000);
+              const timeAgo = mins < 1 ? 'Just now' : mins < 60 ? `${mins}m ago` : `${Math.floor(mins / 60)}h ${mins % 60}m ago`;
+
+              return (
+                <div
+                  key={ticket.id}
+                  className="border border-gray-200 rounded-xl p-4 hover:border-amber-300 hover:bg-amber-50/30 transition-all"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <p className="font-semibold text-gray-900 text-sm">
+                        {ticket.customerName || 'Guest'}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {itemCount} item{itemCount !== 1 ? 's' : ''} • {formatCurrency(ticketTotal)} • {timeAgo}
+                        {ticket.selectedTable && ' • Dine-in'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleDeleteHeld(ticket.id)}
+                      className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                      title="Discard ticket"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  <div className="text-xs text-gray-500 space-y-0.5 mb-3">
+                    {ticket.cart.slice(0, 4).map((c, i) => (
+                      <div key={i}>
+                        {c.quantity}x {c.menuItem.name}
+                        {c.selectedModifiers.length > 0 && (
+                          <span className="text-gray-400"> ({c.selectedModifiers.map(m => m.name).join(', ')})</span>
+                        )}
+                      </div>
+                    ))}
+                    {ticket.cart.length > 4 && (
+                      <div className="text-gray-400">+{ticket.cart.length - 4} more…</div>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => handleRecall(ticket.id)}
+                    className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-semibold text-sm transition-colors active:scale-[0.98]"
+                  >
+                    Recall Ticket
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

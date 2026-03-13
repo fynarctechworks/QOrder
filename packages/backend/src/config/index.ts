@@ -26,6 +26,12 @@ const envSchema = z.object({
   TWILIO_VERIFY_SERVICE_SID: z.string().default(''),
   TWILIO_WHATSAPP_FROM: z.string().default(''),
 
+  // Twilio WhatsApp Content Template SIDs
+  TWILIO_TPL_LOW_STOCK: z.string().default(''),
+  TWILIO_TPL_STAFF_LATE: z.string().default(''),
+  TWILIO_TPL_EARLY_CHECKOUT: z.string().default(''),
+  TWILIO_TPL_ORDER_INVOICE: z.string().default(''),
+
   // Razorpay (payment gateway)
   RAZORPAY_KEY_ID: z.string().default(''),
   RAZORPAY_KEY_SECRET: z.string().default(''),
@@ -88,6 +94,12 @@ export const config = {
     authToken: parsed.data.TWILIO_AUTH_TOKEN,
     verifyServiceSid: parsed.data.TWILIO_VERIFY_SERVICE_SID,
     whatsappFrom: parsed.data.TWILIO_WHATSAPP_FROM,
+    templates: {
+      lowStock: parsed.data.TWILIO_TPL_LOW_STOCK,
+      staffLate: parsed.data.TWILIO_TPL_STAFF_LATE,
+      earlyCheckout: parsed.data.TWILIO_TPL_EARLY_CHECKOUT,
+      orderInvoice: parsed.data.TWILIO_TPL_ORDER_INVOICE,
+    },
   },
   razorpay: {
     keyId: parsed.data.RAZORPAY_KEY_ID,

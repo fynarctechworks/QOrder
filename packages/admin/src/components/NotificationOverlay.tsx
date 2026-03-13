@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-export type NotificationType = 'newOrder' | 'payment' | 'serviceRequest' | 'kitchenReady' | 'leaveRequest';
+export type NotificationType = 'newOrder' | 'payment' | 'serviceRequest' | 'kitchenReady' | 'leaveRequest' | 'stockLow' | 'staffLate' | 'staffEarlyCheckout';
 
 export interface NotificationItem {
   id: string;
@@ -44,6 +44,24 @@ const TYPE_CONFIG: Record<NotificationType, { icon: string; accent: string; bg: 
     accent: 'text-purple-700',
     bg: 'bg-purple-50',
     border: 'border-l-purple-500',
+  },
+  stockLow: {
+    icon: '⚠️',
+    accent: 'text-red-700',
+    bg: 'bg-red-50',
+    border: 'border-l-red-500',
+  },
+  staffLate: {
+    icon: '⏰',
+    accent: 'text-amber-700',
+    bg: 'bg-amber-50',
+    border: 'border-l-amber-500',
+  },
+  staffEarlyCheckout: {
+    icon: '🚪',
+    accent: 'text-violet-700',
+    bg: 'bg-violet-50',
+    border: 'border-l-violet-500',
   },
 };
 

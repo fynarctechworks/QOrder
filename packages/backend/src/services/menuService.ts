@@ -38,7 +38,7 @@ export const menuService = {
       where: { 
         restaurantId, 
         isActive: true,
-        ...(branchId ? { branchId } : {}),
+        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
       },
       orderBy: { sortOrder: 'asc' },
       select: {
@@ -82,7 +82,7 @@ export const menuService = {
       data: {
         ...input,
         restaurantId,
-        ...(branchId ? { branchId } : {}),
+        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
       },
     });
 
@@ -144,7 +144,7 @@ export const menuService = {
     const where = {
       restaurantId,
       isActive: true,
-      ...(branchId ? { branchId } : {}),
+      ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
       ...(categoryId ? { categoryId } : {}),
       ...(search ? { name: { contains: search, mode: Prisma.QueryMode.insensitive } } : {}),
     };
@@ -211,7 +211,7 @@ export const menuService = {
       where: {
         restaurantId,
         isActive: true,
-        ...(branchId ? { branchId } : {}),
+        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
         ...(categoryId ? { categoryId } : {}),
       },
       orderBy: [
@@ -312,27 +312,68 @@ export const menuService = {
               minSelect: group.minSelections,
               maxSelect: group.maxSelections,
               restaurantId,
-              ...(branchId ? { branchId } : {}),
+              ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
             },
           });
         }
 
-        // Sync modifiers: delete all existing, then recreate
-        await tx.modifier.deleteMany({
-          where: { modifierGroupId: modifierGroup.id },
-        });
+        // Sync modifiers: upsert existing, create new, remove stale
+        const incomingOptionIds = (group.options ?? [])
+          .map((o) => o.id)
+          .filter((id): id is string => !!id);
 
+        // Find existing modifiers for this group
+        const existingModifiers = await tx.modifier.findMany({
+          where: { modifierGroupId: modifierGroup.id },
+          select: { id: true },
+        });
+        const existingIds = new Set(existingModifiers.map((m) => m.id));
+
+        // IDs to remove (exist in DB but not in incoming payload)
+        const idsToRemove = [...existingIds].filter((id) => !incomingOptionIds.includes(id));
+
+        if (idsToRemove.length > 0) {
+          // Try hard-delete first; if any are referenced by orders, soft-delete instead
+          for (const id of idsToRemove) {
+            try {
+              await tx.modifier.delete({ where: { id } });
+            } catch {
+              // Foreign key constraint (order references) — soft-delete
+              await tx.modifier.update({ where: { id }, data: { isActive: false } });
+            }
+          }
+        }
+
+        // Upsert each incoming option
         if (group.options && group.options.length > 0) {
-          await tx.modifier.createMany({
-            data: group.options.map((opt, idx) => ({
-              name: opt.name,
-              price: opt.priceModifier,
-              isDefault: opt.isDefault,
-              isActive: opt.isAvailable,
-              sortOrder: idx,
-              modifierGroupId: modifierGroup.id,
-            })),
-          });
+          for (let idx = 0; idx < group.options.length; idx++) {
+            const opt = group.options[idx]!;
+            if (opt.id && existingIds.has(opt.id)) {
+              // Update existing modifier
+              await tx.modifier.update({
+                where: { id: opt.id },
+                data: {
+                  name: opt.name,
+                  price: opt.priceModifier,
+                  isDefault: opt.isDefault,
+                  isActive: opt.isAvailable,
+                  sortOrder: idx,
+                },
+              });
+            } else {
+              // Create new modifier
+              await tx.modifier.create({
+                data: {
+                  name: opt.name,
+                  price: opt.priceModifier,
+                  isDefault: opt.isDefault,
+                  isActive: opt.isAvailable,
+                  sortOrder: idx,
+                  modifierGroupId: modifierGroup.id,
+                },
+              });
+            }
+          }
         }
 
         groupIds.push(modifierGroup.id);
@@ -364,7 +405,7 @@ export const menuService = {
       data: {
         ...itemData,
         restaurantId,
-        ...(branchId ? { branchId } : {}),
+        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
         modifierGroups: resolvedGroupIds.length > 0 ? {
           create: resolvedGroupIds.map((groupId, index) => ({
             modifierGroupId: groupId,
@@ -461,9 +502,8 @@ export const menuService = {
     const existing = await prisma.menuItem.findFirst({ where: { id: itemId, restaurantId } });
     if (!existing) throw AppError.notFound('Menu item');
 
-    await prisma.menuItem.update({
+    await prisma.menuItem.delete({
       where: { id: itemId },
-      data: { isActive: false },
     });
 
     // Invalidate cache
@@ -475,7 +515,7 @@ export const menuService = {
       where: {
         id: { in: itemIds },
         restaurantId,
-        ...(branchId ? { branchId } : {}),
+        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
       },
       data: { isAvailable },
     });
@@ -490,7 +530,7 @@ export const menuService = {
 
   async getModifierGroups(restaurantId: string, branchId?: string | null) {
     return prisma.modifierGroup.findMany({
-      where: { restaurantId, ...(branchId ? { branchId } : {}) },
+      where: { restaurantId, ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}) },
       orderBy: { name: 'asc' },
       include: {
         modifiers: {
@@ -511,7 +551,7 @@ export const menuService = {
       data: {
         ...groupData,
         restaurantId,
-        ...(branchId ? { branchId } : {}),
+        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
         modifiers: {
           create: modifiers,
         },
@@ -568,7 +608,7 @@ export const menuService = {
       where: { 
         restaurantId: restaurant.id, 
         isActive: true,
-        ...(branchId ? { branchId } : {}),
+        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
       },
       orderBy: { sortOrder: 'asc' },
       select: {
@@ -581,7 +621,7 @@ export const menuService = {
           where: { 
             isActive: true, 
             isAvailable: true,
-            ...(branchId ? { branchId } : {}),
+            ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
           },
           orderBy: { sortOrder: 'asc' },
           select: {

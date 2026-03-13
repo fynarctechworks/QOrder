@@ -12,7 +12,6 @@ export { discountController } from './discountController.js';
 export { serviceRequestController } from './serviceRequestController.js';
 export { feedbackController } from './feedbackController.js';
 export { receiptController } from './receiptController.js';
-export { paymentGatewayController } from './paymentGatewayController.js';
 export { crmController } from './crmController.js';
 export { reportController } from './reportController.js';
 export { staffManagementController } from './staffManagementController.js';

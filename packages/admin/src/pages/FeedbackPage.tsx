@@ -30,7 +30,7 @@ export default function FeedbackPage() {
     queryFn: featureService.getFeedbackStats,
   });
 
-  const { data: feedbackData, isLoading } = useQuery({
+  const { data: feedbackData, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['feedback'],
     queryFn: () => featureService.listFeedback(),
   });
@@ -83,6 +83,11 @@ export default function FeedbackPage() {
       {isLoading ? (
         <div className="flex items-center justify-center py-20">
           <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" />
+        </div>
+      ) : isError ? (
+        <div className="card p-8 text-center space-y-3">
+          <p className="text-red-500">Failed to load feedback: {error?.message}</p>
+          <button className="btn-primary text-sm" onClick={() => refetch()}>Retry</button>
         </div>
       ) : feedbacks.length === 0 ? (
         <div className="text-center py-20 text-text-muted">

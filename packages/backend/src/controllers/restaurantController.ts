@@ -30,6 +30,22 @@ export const restaurantController = {
             : '••••••••';
         }
 
+        // Mask WhatsApp Access Token
+        if (typeof settings.whatsappAccessToken === 'string' && settings.whatsappAccessToken.length > 0) {
+          const token = settings.whatsappAccessToken as string;
+          settings.whatsappAccessToken = token.length > 4
+            ? '••••' + token.slice(-4)
+            : '••••••••';
+        }
+
+        // Mask Twilio Auth Token
+        if (typeof settings.twilioAuthToken === 'string' && settings.twilioAuthToken.length > 0) {
+          const token = settings.twilioAuthToken as string;
+          settings.twilioAuthToken = token.length > 4
+            ? '••••' + token.slice(-4)
+            : '••••••••';
+        }
+
         (restaurant as Record<string, unknown>).settings = settings;
       }
 
@@ -101,7 +117,9 @@ export const restaurantController = {
   ) {
     try {
       const restaurantId = req.restaurantId!;
+      console.log('[updateSettings] raw body:', JSON.stringify(req.body));
       const { password, ...settingsPayload } = req.body as UpdateRestaurantSettingsInput & { password?: string };
+      console.log('[updateSettings] settingsPayload:', JSON.stringify(settingsPayload));
 
       // When turning off acceptsOrders, require password confirmation
       if (settingsPayload.acceptsOrders === false) {

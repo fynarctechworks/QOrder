@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import Modal from './Modal';
@@ -22,6 +22,26 @@ const PAYMENT_METHODS: Array<{ value: PaymentMethod; label: string; icon: string
 ];
 
 const METHOD_MAP = Object.fromEntries(PAYMENT_METHODS.map((m) => [m.value, m]));
+
+/* ── Group identical items (same name + same customizations) ──── */
+function groupOrderItems(items: import('../types').OrderItem[]): import('../types').OrderItem[] {
+  const map = new Map<string, import('../types').OrderItem>();
+  for (const item of items) {
+    const modKey = item.customizations
+      .flatMap((c) => c.options.map((o) => `${o.name}:${o.priceModifier}`))
+      .sort()
+      .join('|');
+    const key = `${item.menuItemName}::${modKey}`;
+    const existing = map.get(key);
+    if (existing) {
+      existing.quantity += item.quantity;
+      existing.totalPrice += item.totalPrice;
+    } else {
+      map.set(key, { ...item, customizations: item.customizations.map(c => ({ ...c, options: [...c.options] })) });
+    }
+  }
+  return Array.from(map.values());
+}
 
 interface TakeawaySettlementModalProps {
   orders: Order[];
@@ -47,10 +67,9 @@ export default function TakeawaySettlementModal({
   const [settled, setSettled] = useState(false);
   const [showSplitMode, setShowSplitMode] = useState(false);
   const [selectedQuickMethod, setSelectedQuickMethod] = useState<PaymentMethod | null>(null);
-  const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
-  const autoPrintedRef = useRef(false);
+  const [whatsappStatus, setWhatsappStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
 
-  /* ── Settings (for auto-print config) ── */
+  /* ── Settings (for print config) ── */
   const { data: restaurant } = useQuery({
     queryKey: ['settings'],
     queryFn: settingsService.get,
@@ -61,6 +80,7 @@ export default function TakeawaySettlementModal({
   const subtotal = orders.reduce((s, o) => s + o.subtotal, 0);
   const tax = orders.reduce((s, o) => s + o.tax, 0);
   const allItems = orders.flatMap(o => o.items);
+  const groupedItems = groupOrderItems(allItems);
   const splitsTotal = splits.reduce((s, e) => s + e.amount, 0);
   const unallocated = Math.max(total - splitsTotal, 0);
   const splitsReady = splits.length > 0 && unallocated <= 0.01;
@@ -72,7 +92,27 @@ export default function TakeawaySettlementModal({
 
   const settleOrders = async () => {
     for (const order of orders) {
-      await orderService.updateStatus(order.id, 'completed');
+      await orderService.updateStatus(order.id, 'completed', { skipAutoInvoice: true });
+    }
+  };
+
+  const sendWhatsAppInvoice = async () => {
+    const orderIds = orders.map(o => o.id);
+    const hasPhone = orders.some(o => o.customerPhone);
+    if (!hasPhone) return;
+    setWhatsappStatus('sending');
+    try {
+      const result = await orderService.sendWhatsAppBill(orderIds);
+      if (result.sent) {
+        setWhatsappStatus('sent');
+        toast.success('WhatsApp invoice sent!');
+      } else {
+        setWhatsappStatus('failed');
+        toast.error('WhatsApp invoice could not be delivered');
+      }
+    } catch {
+      setWhatsappStatus('failed');
+      toast.error('Failed to send WhatsApp invoice');
     }
   };
 
@@ -90,6 +130,8 @@ export default function TakeawaySettlementModal({
       setSettled(true);
       invalidateAll();
       toast.success('Takeaway order settled!');
+      // Send one combined WhatsApp invoice (fire-and-forget with feedback)
+      sendWhatsAppInvoice();
     } catch (err: any) {
       toast.error(err?.message || 'Settlement failed');
       invalidateAll();
@@ -131,6 +173,8 @@ export default function TakeawaySettlementModal({
       setSettled(true);
       invalidateAll();
       toast.success('Takeaway order settled!');
+      // Send one combined WhatsApp invoice (fire-and-forget with feedback)
+      sendWhatsAppInvoice();
     } catch (err: any) {
       toast.error(err?.message || 'Settlement failed');
       invalidateAll();
@@ -216,37 +260,7 @@ export default function TakeawaySettlementModal({
     setTimeout(() => { w.print(); }, 300);
   };
 
-  /* ── Auto-print after settlement (browser printer type) ── */
-  useEffect(() => {
-    if (!settled || autoPrintedRef.current) return;
-    const settings = (restaurant?.settings ?? {}) as Record<string, unknown>;
-    const printerEnabled = (settings.printerEnabled as boolean) ?? false;
-    const autoPrintOnComplete = (settings.autoPrintOnComplete as boolean) ?? true;
-    const connectionType = (settings.printerConnectionType as string) ?? 'network';
-    if (printerEnabled && autoPrintOnComplete && connectionType === 'browser') {
-      autoPrintedRef.current = true;
-      // Small delay to let state settle before opening print window
-      setTimeout(() => handlePrint(), 400);
-    }
-  }, [settled, restaurant]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const hasCustomerPhone = orders.some((o) => o.customerPhone);
-
-  const handleSendWhatsApp = async () => {
-    setSendingWhatsApp(true);
-    try {
-      const result = await orderService.sendWhatsAppBill(orders.map((o) => o.id));
-      if (result.sent) {
-        toast.success(`Bill sent to ${result.phone} via WhatsApp`);
-      } else {
-        toast.error('Failed to send WhatsApp bill');
-      }
-    } catch {
-      toast.error('Failed to send WhatsApp bill');
-    } finally {
-      setSendingWhatsApp(false);
-    }
-  };
+  /* ── Auto-print disabled for takeaway — user clicks "Print Bill" manually ── */
 
   return (
     <Modal open={true} onClose={onClose} title="" maxWidth="max-w-2xl">
@@ -267,7 +281,7 @@ export default function TakeawaySettlementModal({
           <div className="bg-gray-50 rounded-xl p-4 text-left max-w-sm mx-auto">
             <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">Bill Summary</p>
 
-            {allItems.map((item, i) => (
+            {groupedItems.map((item, i) => (
               <div key={i} className="flex justify-between py-1 text-sm">
                 <span className="text-text-secondary">{item.quantity}x {item.menuItemName}</span>
                 <span className="text-text-primary">{formatCurrency(item.totalPrice)}</span>
@@ -312,16 +326,25 @@ export default function TakeawaySettlementModal({
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
               Print Bill
             </button>
-            {hasCustomerPhone && (
+
+            {orders.some(o => o.customerPhone) && whatsappStatus !== 'sent' && (
               <button
-                onClick={handleSendWhatsApp}
-                disabled={sendingWhatsApp}
-                className="flex-1 px-5 py-3 bg-white border-2 border-green-500 text-green-600 hover:bg-green-500 hover:text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 text-sm disabled:opacity-60"
+                onClick={sendWhatsAppInvoice}
+                disabled={whatsappStatus === 'sending'}
+                className="flex-1 px-5 py-3 bg-white border-2 border-emerald-500 text-emerald-600 hover:bg-emerald-500 hover:text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 text-sm disabled:opacity-50"
               >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-                {sendingWhatsApp ? 'Sending...' : 'WhatsApp Bill'}
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.625.846 5.059 2.284 7.034L.789 23.492a.5.5 0 00.613.613l4.458-1.495A11.932 11.932 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-2.37 0-4.567-.7-6.42-1.9l-.164-.1-3.392 1.137 1.137-3.392-.1-.164A9.935 9.935 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
+                {whatsappStatus === 'sending' ? 'Sending...' : whatsappStatus === 'failed' ? 'Retry WhatsApp' : 'Send WhatsApp'}
               </button>
             )}
+
+            {whatsappStatus === 'sent' && (
+              <div className="flex-1 px-5 py-3 bg-emerald-50 border-2 border-emerald-200 text-emerald-600 rounded-xl font-semibold flex items-center justify-center gap-2 text-sm">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                WhatsApp Sent
+              </div>
+            )}
+
             <button
               onClick={onClose}
               className="flex-1 px-5 py-3 bg-primary hover:bg-primary-hover text-white rounded-xl font-semibold transition-colors text-sm"
@@ -378,7 +401,7 @@ export default function TakeawaySettlementModal({
                   <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Bill Summary</p>
 
                   <div className="space-y-1">
-                    {allItems.map((item, i) => (
+                    {groupedItems.map((item, i) => (
                       <div key={i} className="text-sm">
                         <div className="flex justify-between">
                           <span className="text-text-secondary">{item.quantity}x {item.menuItemName}</span>

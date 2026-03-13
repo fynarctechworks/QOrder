@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { staffManagementController } from '../controllers/staffManagementController.js';
 import { authenticate, authorize } from '../middlewares/auth.js';
 import { resolveBranch } from '../middlewares/resolveBranch.js';
+import type { Request, Response, NextFunction } from 'express';
 
 const router = Router();
 

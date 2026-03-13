@@ -1,15 +1,25 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { branchService, type Branch, type CreateBranchInput, type UpdateBranchInput } from '../services/branchService';
+import { useBranchStore } from '../state/branchStore';
 import Modal from '../components/Modal';
 
 export default function BranchesPage() {
   const queryClient = useQueryClient();
+  const { activeBranchId, activeBranchName, setActiveBranch } = useBranchStore();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
   const [deletingBranch, setDeletingBranch] = useState<Branch | null>(null);
 
-  const { data: branches = [], isLoading } = useQuery({
+  const switchBranch = useCallback(
+    (branchId: string | null, branchName: string | null) => {
+      setActiveBranch(branchId, branchName);
+      queryClient.invalidateQueries();
+    },
+    [setActiveBranch, queryClient],
+  );
+
+  const { data: branches = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['branches'],
     queryFn: branchService.getAll,
   });
@@ -55,6 +65,15 @@ export default function BranchesPage() {
     );
   }
 
+  if (isError) {
+    return (
+      <div className="card p-8 text-center space-y-3">
+        <p className="text-error">Failed to load branches: {error instanceof Error ? error.message : 'Unknown error'}</p>
+        <button className="btn-primary text-sm" onClick={() => refetch()}>Retry</button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -74,6 +93,25 @@ export default function BranchesPage() {
           </svg>
           Add Branch
         </button>
+      </div>
+
+      {/* Active branch indicator + All Branches toggle */}
+      <div className="flex items-center gap-3 p-4 bg-surface rounded-xl border border-border">
+        <svg className="w-5 h-5 text-primary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+        </svg>
+        <div className="flex-1">
+          <p className="text-xs text-text-muted">Active Branch</p>
+          <p className="text-sm font-semibold text-text-primary">{activeBranchName || 'All Branches'}</p>
+        </div>
+        {activeBranchId && (
+          <button
+            onClick={() => switchBranch(null, null)}
+            className="text-xs px-3 py-1.5 rounded-lg bg-surface-secondary hover:bg-surface-tertiary text-text-secondary transition-colors border border-border"
+          >
+            View All Branches
+          </button>
+        )}
       </div>
 
       {/* Branches grid */}
@@ -96,13 +134,20 @@ export default function BranchesPage() {
           {branches.map((branch) => (
             <div
               key={branch.id}
-              className={`bg-surface rounded-xl border border-border p-5 transition-shadow hover:shadow-md ${
-                !branch.isActive ? 'opacity-60' : ''
-              }`}
+              className={`bg-surface rounded-xl border p-5 transition-shadow hover:shadow-md ${
+                activeBranchId === branch.id
+                  ? 'border-primary ring-2 ring-primary/20'
+                  : 'border-border'
+              } ${!branch.isActive ? 'opacity-60' : ''}`}
             >
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <h3 className="font-semibold text-text-primary text-lg">{branch.name}</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-text-primary text-lg">{branch.name}</h3>
+                    {activeBranchId === branch.id && (
+                      <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-primary/10 text-primary">Active</span>
+                    )}
+                  </div>
                   <span className="text-xs font-mono text-text-muted bg-surface-secondary px-2 py-0.5 rounded">
                     {branch.code}
                   </span>
@@ -166,23 +211,40 @@ export default function BranchesPage() {
 
               {/* Toggle active */}
               <div className="mt-3 pt-3 border-t border-border flex items-center justify-between">
-                <span className="text-sm text-text-muted">
-                  {branch.isActive ? 'Active' : 'Inactive'}
-                </span>
-                <button
-                  onClick={() =>
-                    toggleActiveMutation.mutate({ id: branch.id, isActive: !branch.isActive })
-                  }
-                  className={`relative inline-flex h-5 w-9 rounded-full transition-colors ${
-                    branch.isActive ? 'bg-primary' : 'bg-gray-300'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform mt-0.5 ${
-                      branch.isActive ? 'translate-x-4 ml-0.5' : 'translate-x-0.5'
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-text-muted">
+                    {branch.isActive ? 'Active' : 'Inactive'}
+                  </span>
+                  <button
+                    onClick={() =>
+                      toggleActiveMutation.mutate({ id: branch.id, isActive: !branch.isActive })
+                    }
+                    className={`relative inline-flex h-5 w-9 rounded-full transition-colors ${
+                      branch.isActive ? 'bg-primary' : 'bg-gray-300'
                     }`}
-                  />
-                </button>
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform mt-0.5 ${
+                        branch.isActive ? 'translate-x-4 ml-0.5' : 'translate-x-0.5'
+                      }`}
+                    />
+                  </button>
+                </div>
+                {branch.isActive && (
+                  <button
+                    onClick={() => switchBranch(
+                      activeBranchId === branch.id ? null : branch.id,
+                      activeBranchId === branch.id ? null : branch.name
+                    )}
+                    className={`text-xs px-3 py-1.5 rounded-lg transition-colors font-medium ${
+                      activeBranchId === branch.id
+                        ? 'bg-primary/10 text-primary hover:bg-primary/20'
+                        : 'bg-surface-secondary hover:bg-surface-tertiary text-text-secondary'
+                    }`}
+                  >
+                    {activeBranchId === branch.id ? 'Selected' : 'Select'}
+                  </button>
+                )}
               </div>
             </div>
           ))}

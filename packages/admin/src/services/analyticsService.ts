@@ -1,5 +1,5 @@
 import { apiClient } from './apiClient';
-import type { AnalyticsSummary, AdvancedAnalytics } from '../types';
+import type { AnalyticsSummary, AdvancedAnalytics, DashboardExtras } from '../types';
 
 interface AnalyticsQuery {
   startDate?: string;
@@ -34,5 +34,9 @@ export const analyticsService = {
 
   async getHourlyData(): Promise<AnalyticsSummary['hourlyData']> {
     return apiClient.get('/orders/analytics/hourly');
+  },
+
+  async getDashboardExtras(): Promise<DashboardExtras> {
+    return apiClient.get<DashboardExtras>('/orders/analytics/dashboard-extras');
   },
 };

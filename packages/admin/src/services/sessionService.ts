@@ -2,16 +2,11 @@ import { apiClient } from './apiClient';
 
 export interface Payment {
   id: string;
-  method: 'CASH' | 'CARD' | 'UPI' | 'WALLET' | 'ONLINE';
+  method: 'CASH' | 'CARD' | 'UPI' | 'WALLET';
   amount: number;
   reference?: string;
   notes?: string;
-  gatewayProvider?: string;
-  gatewayPaymentId?: string;
   status?: string;
-  refundId?: string;
-  refundAmount?: number;
-  refundedAt?: string;
   createdAt: string;
 }
 

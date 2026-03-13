@@ -104,7 +104,7 @@ export default function InventoryPage() {
    ═══════════════════════════════════════════════════════ */
 
 function DashboardTab({ fmt }: { fmt: (v: number) => string }) {
-  const { data: overview, isLoading } = useQuery<InventoryOverview>({
+  const { data: overview, isLoading, isError, error, refetch } = useQuery<InventoryOverview>({
     queryKey: ['inventory', 'overview'],
     queryFn: inventoryService.getOverview,
   });
@@ -118,6 +118,15 @@ function DashboardTab({ fmt }: { fmt: (v: number) => string }) {
             <div className="h-6 bg-gray-200 rounded w-16" />
           </div>
         ))}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="card p-8 text-center space-y-3">
+        <p className="text-error">Failed to load overview: {error instanceof Error ? error.message : 'Unknown error'}</p>
+        <button className="btn-primary text-sm" onClick={() => refetch()}>Retry</button>
       </div>
     );
   }
@@ -227,9 +236,10 @@ function ProductsTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<t
   const [editItem, setEditItem] = useState<Ingredient | null>(null);
   const [adjustItem, setAdjustItem] = useState<Ingredient | null>(null);
 
-  const { data: ingredients = [], isLoading } = useQuery<Ingredient[]>({
+  const { data: ingredients = [], isLoading, isError, error, refetch } = useQuery<Ingredient[]>({
     queryKey: ['inventory', 'ingredients'],
-    queryFn: inventoryService.getIngredients,
+    queryFn: () => inventoryService.getIngredients(),
+    staleTime: 0,
   });
 
   const filtered = useMemo(() => {
@@ -245,6 +255,15 @@ function ProductsTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<t
 
   if (isLoading) {
     return <div className="card p-8 text-center text-text-secondary">Loading products...</div>;
+  }
+
+  if (isError) {
+    return (
+      <div className="card p-8 text-center space-y-3">
+        <p className="text-error">Failed to load products: {error instanceof Error ? error.message : 'Unknown error'}</p>
+        <button className="btn-primary text-sm" onClick={() => refetch()}>Retry</button>
+      </div>
+    );
   }
 
   return (
@@ -491,12 +510,12 @@ function StockTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<type
     { ingredientId: '', quantity: 0, notes: '' },
   ]);
 
-  const { data: ingredients = [] } = useQuery<Ingredient[]>({
+  const { data: ingredients = [], isError: ingError, error: ingErr, refetch: refetchIng } = useQuery<Ingredient[]>({
     queryKey: ['inventory', 'ingredients'],
     queryFn: inventoryService.getIngredients,
   });
 
-  const { data: historyResult } = useQuery({
+  const { data: historyResult, isError: histError, error: histErr, refetch: refetchHist } = useQuery({
     queryKey: ['inventory', 'stock-history', 1],
     queryFn: () => inventoryService.getStockHistory({ page: 1, limit: 15 }),
   });
@@ -556,6 +575,12 @@ function StockTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<type
 
   return (
     <div className="space-y-6">
+      {(ingError || histError) && (
+        <div className="card p-6 text-center space-y-3">
+          <p className="text-red-500">Failed to load stock data: {ingErr?.message || histErr?.message}</p>
+          <button className="btn-primary text-sm" onClick={() => { refetchIng(); refetchHist(); }}>Retry</button>
+        </div>
+      )}
       {/* Record Form */}
       <div className="card p-6">
         <div className="flex items-center gap-3 mb-5">
@@ -687,7 +712,7 @@ function SuppliersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   const [showForm, setShowForm] = useState(false);
   const [editSupplier, setEditSupplier] = useState<Supplier | null>(null);
 
-  const { data: suppliers = [], isLoading } = useQuery<Supplier[]>({
+  const { data: suppliers = [], isLoading, isError, error, refetch } = useQuery<Supplier[]>({
     queryKey: ['inventory', 'suppliers'],
     queryFn: inventoryService.getSuppliers,
   });
@@ -708,6 +733,15 @@ function SuppliersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   }, [suppliers, search]);
 
   if (isLoading) return <div className="card p-8 text-center text-text-secondary">Loading...</div>;
+
+  if (isError) {
+    return (
+      <div className="card p-8 text-center space-y-3">
+        <p className="text-error">Failed to load suppliers: {error instanceof Error ? error.message : 'Unknown error'}</p>
+        <button className="btn-primary text-sm" onClick={() => refetch()}>Retry</button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

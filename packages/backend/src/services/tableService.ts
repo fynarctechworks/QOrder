@@ -27,7 +27,7 @@ export const tableService = {
     return prisma.table.findMany({
       where: { 
         restaurantId,
-        ...(branchId ? { branchId } : {}),
+        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
       },
       orderBy: [{ number: 'asc' }],
       include: {
@@ -271,7 +271,7 @@ export const tableService = {
     const tables = await prisma.table.findMany({
       where: { 
         restaurantId,
-        ...(branchId ? { branchId } : {}),
+        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
       },
       select: { status: true },
     });
@@ -280,7 +280,6 @@ export const tableService = {
       total: tables.length,
       available: tables.filter(t => t.status === 'AVAILABLE').length,
       occupied: tables.filter(t => t.status === 'OCCUPIED').length,
-      reserved: tables.filter(t => t.status === 'RESERVED').length,
       inactive: tables.filter(t => t.status === 'INACTIVE').length,
     };
 
@@ -387,7 +386,7 @@ export const tableService = {
     const tablesWithOrders = await prisma.table.findMany({
       where: {
         restaurantId,
-        ...(branchId ? { branchId } : {}),
+        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
         orders: {
           some: {
             status: { in: activeOrderStatuses },

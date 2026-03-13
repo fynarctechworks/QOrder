@@ -9,6 +9,35 @@ const SESSION_MAX_DURATION_MS = 90 * 60 * 1000;
 /** Session auto-expires after 15 minutes of inactivity */
 const SESSION_INACTIVITY_MS = 15 * 60 * 1000;
 
+interface BillItem {
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  modifiers: Array<{ name: string; price: number }>;
+  notes?: string;
+}
+
+/** Group identical items (same name + same modifiers) to reduce bill clutter */
+function groupBillItems(items: BillItem[]): BillItem[] {
+  const map = new Map<string, BillItem>();
+  for (const item of items) {
+    const modKey = item.modifiers
+      .map((m) => `${m.name}:${m.price}`)
+      .sort()
+      .join('|');
+    const key = `${item.name}::${modKey}`;
+    const existing = map.get(key);
+    if (existing) {
+      existing.quantity += item.quantity;
+      existing.totalPrice += item.totalPrice;
+    } else {
+      map.set(key, { ...item, modifiers: [...item.modifiers] });
+    }
+  }
+  return Array.from(map.values());
+}
+
 export const sessionService = {
   /**
    * Get or create an ACTIVE session for a table
@@ -111,16 +140,30 @@ export const sessionService = {
       }
     }
 
-    // Adopt orphaned orders: active orders linked to this table but not in this session
+    // Adopt orphaned orders: orders linked to this table but not in this session.
+    // Include COMPLETED orders so that orders from a previously-closed session
+    // (closed when the last order was completed) are picked up for settlement.
     // Use OR to also catch orders with sessionId = null (SQL NULL != value is UNKNOWN, not TRUE)
+    const orphanSessionFilter: Array<Record<string, unknown>> = [
+      { sessionId: null },
+    ];
+    // Also adopt orders from the most recently closed session (if any) —
+    // this handles the case where the session was auto-closed when all orders completed,
+    // and the admin then opens the Settle Payment dialog.
+    const lastClosedSession = await prisma.tableSession.findFirst({
+      where: { tableId, status: 'CLOSED' },
+      orderBy: { closedAt: 'desc' },
+      select: { id: true },
+    });
+    if (lastClosedSession) {
+      orphanSessionFilter.push({ sessionId: lastClosedSession.id });
+    }
+
     const orphanedOrders = await prisma.order.findMany({
       where: {
         tableId,
-        OR: [
-          { sessionId: null },
-          { NOT: { sessionId: session.id } },
-        ],
-        status: { in: ['PENDING', 'PREPARING', 'READY', 'PAYMENT_PENDING'] },
+        OR: orphanSessionFilter,
+        status: { notIn: ['CANCELLED'] },
       },
       select: { id: true },
     });
@@ -681,7 +724,7 @@ export const sessionService = {
         ? { number: session.table.number, name: session.table.name }
         : { number: 'N/A', name: 'Unknown' },
       date: session.startedAt,
-      items: session.orders.flatMap((order) =>
+      items: groupBillItems(session.orders.flatMap((order) =>
         order.items.map((item) => ({
           name: item.menuItem?.name ?? 'Deleted Item',
           quantity: item.quantity,
@@ -693,7 +736,7 @@ export const sessionService = {
           })),
           notes: item.notes,
         }))
-      ),
+      )),
       subtotal: Number(session.subtotal),
       tax: Number(session.tax),
       total: Number(session.totalAmount),

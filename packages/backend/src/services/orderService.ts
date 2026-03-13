@@ -205,13 +205,13 @@ export const orderService = {
     return order;
   },
 
-  async createOrder(restaurantId: string, input: CreateOrderInput, restaurantData?: { taxRate: unknown; settings: unknown }, initialStatus?: 'PENDING' | 'PREPARING', fallbackBranchId?: string | null) {
+  async createOrder(restaurantId: string, input: CreateOrderInput, restaurantData?: { taxRate: unknown; settings: unknown }, initialStatus?: 'PENDING' | 'PREPARING' | 'COMPLETED', fallbackBranchId?: string | null, orderType?: string) {
     const { items, tableId, sessionToken, ...orderData } = input;
 
     // Parallel fetch: restaurant (if not pre-loaded), table validation, and menu items
     const menuItemIds = [...new Set(items.map(i => i.menuItemId))];
 
-    const [restaurant, table, menuItems] = await Promise.all([
+    const [restaurant, table, menuItems, activeSession] = await Promise.all([
       // 1. Restaurant tax rate + settings (skip DB if already resolved by middleware)
       restaurantData
         ? Promise.resolve(restaurantData as { taxRate: unknown; settings: unknown })
@@ -243,6 +243,13 @@ export const orderService = {
           },
         },
       }),
+      // 4. Active session for this table (moved here to parallelize)
+      tableId
+        ? prisma.tableSession.findFirst({
+            where: { tableId, status: 'ACTIVE' },
+            select: { id: true, expiresAt: true, lastActivityAt: true, createdAt: true, status: true },
+          })
+        : Promise.resolve(null),
     ]);
 
     if (!restaurant) {
@@ -273,21 +280,14 @@ export const orderService = {
       }
     }
 
-    // Look up active session for this table (to link order → session)
+    // Check session expiry
     let sessionId: string | undefined;
-    if (tableId) {
-      const activeSession = await prisma.tableSession.findFirst({
-        where: { tableId, status: 'ACTIVE' },
-        select: { id: true, expiresAt: true, lastActivityAt: true, createdAt: true, status: true },
-      });
-      if (activeSession) {
-        // Check session expiry (only for customer orders, not cashier)
-        if (!initialStatus && sessionService.isSessionExpired(activeSession)) {
-          await sessionService.expireSession(activeSession.id);
-          throw AppError.unauthorized('Session expired. Please scan the QR code at your table.');
-        }
-        sessionId = activeSession.id;
+    if (activeSession) {
+      if (!initialStatus && sessionService.isSessionExpired(activeSession)) {
+        await sessionService.expireSession(activeSession.id);
+        throw AppError.unauthorized('Session expired. Please scan the QR code at your table.');
       }
+      sessionId = activeSession.id;
     }
 
     if (menuItems.length !== menuItemIds.length) {
@@ -377,8 +377,20 @@ export const orderService = {
     let discountAmount = new Decimal(0);
     let appliedDiscount: { discountId: string; couponId?: string; discountAmount: Decimal; discountName: string } | null = null;
 
+    const manualDiscount = (input as Record<string, unknown>).manualDiscount as number | undefined;
+    const manualDiscountType = (input as Record<string, unknown>).manualDiscountType as string | undefined;
     const couponCode = (input as Record<string, unknown>).couponCode as string | undefined;
-    if (couponCode) {
+
+    if (manualDiscount && manualDiscount > 0) {
+      // Manual discount from cashier
+      if (manualDiscountType === 'PERCENTAGE') {
+        discountAmount = subtotal.times(manualDiscount).dividedBy(100).toDecimalPlaces(2);
+      } else {
+        discountAmount = new Decimal(manualDiscount).toDecimalPlaces(2);
+      }
+      // Cap discount at subtotal
+      if (discountAmount.greaterThan(subtotal)) discountAmount = subtotal;
+    } else if (couponCode) {
       const result = await discountService.validateCoupon(
         restaurantId,
         couponCode,
@@ -425,6 +437,8 @@ export const orderService = {
               sessionId,
               branchId: table?.branchId ?? fallbackBranchId ?? null,
               status: initialStatus || 'PENDING',
+              orderType: orderType || (tableId ? 'DINE_IN' : 'TAKEAWAY'),
+              ...(initialStatus === 'COMPLETED' ? { completedAt: new Date() } : {}),
               subtotal,
               tax,
               total,
@@ -450,22 +464,29 @@ export const orderService = {
                 })),
               },
             },
-            include: {
-              table: { select: { id: true, number: true, name: true, section: { select: { id: true, name: true } } } },
-              items: {
-                include: {
-                  menuItem: { select: { id: true, name: true, price: true, image: true } },
-                  modifiers: {
-                    include: {
-                      modifier: {
-                        include: {
-                          modifierGroup: { select: { id: true, name: true } },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
+            // Minimal select inside transaction — avoid heavy includes that add
+            // multiple roundtrips to remote DB. Full data fetched after commit.
+            select: {
+              id: true,
+              orderNumber: true,
+              restaurantId: true,
+              tableId: true,
+              sessionId: true,
+              branchId: true,
+              status: true,
+              orderType: true,
+              subtotal: true,
+              tax: true,
+              total: true,
+              discount: true,
+              notes: true,
+              customerName: true,
+              customerPhone: true,
+              estimatedTime: true,
+              preparedAt: true,
+              completedAt: true,
+              createdAt: true,
+              updatedAt: true,
             },
           });
         }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
@@ -522,15 +543,9 @@ export const orderService = {
       );
     }
 
-    const settled = await Promise.allSettled(postOps);
-    for (const result of settled) {
-      if (result.status === 'rejected') {
-        logger.error({ err: result.reason }, 'Post-create operation failed');
-      }
-    }
-
     // Rotate session token after customer order creation so old token can't be reused.
     // Only for customer orders (no initialStatus) — cashier orders skip this.
+    // This must be awaited because the new token is returned to the client.
     if (tableId && !initialStatus) {
       try {
         const newSessionToken = await tableService.rotateSessionToken(tableId, restaurantId);
@@ -540,6 +555,16 @@ export const orderService = {
         logger.error({ err, tableId }, 'Failed to rotate session token after order creation');
       }
     }
+
+    // Fire-and-forget: post-create ops don't block the response to the customer.
+    // Errors are logged but the order is already committed.
+    Promise.allSettled(postOps).then((settled) => {
+      for (const result of settled) {
+        if (result.status === 'rejected') {
+          logger.error({ err: result.reason }, 'Post-create operation failed');
+        }
+      }
+    });
 
     // Touch session to extend expiry after successful order
     if (sessionId) {
@@ -774,24 +799,38 @@ export const orderService = {
           },
         });
         if (activeCount === 0) {
-          // Close the active session so a new customer gets a fresh session
-          await prisma.tableSession.updateMany({
-            where: { tableId: tId, status: 'ACTIVE' },
-            data: { status: 'CLOSED', closedAt: new Date() },
+          // All orders are either COMPLETED or CANCELLED.
+          // Only close the session and free the table when ALL orders are CANCELLED
+          // (i.e. there are zero completed orders awaiting payment settlement).
+          // When completed orders exist, keep the session ACTIVE so the
+          // Settle Payment flow can find and settle them.
+          const completedCount = await prisma.order.count({
+            where: {
+              tableId: tId,
+              status: 'COMPLETED',
+            },
           });
 
-          await prisma.table.update({
-            where: { id: tId },
-            data: { status: 'AVAILABLE' },
-          });
-          // Rotate session token so old QR screenshots can't order
-          const newSessionToken = await tableService.rotateSessionToken(tId, restaurantId).catch((err) => {
-            logger.error({ err, tableId: tId }, 'Failed to rotate session token');
-            return null;
-          });
-          await cache.del(cache.keys.tables(restaurantId)).catch(() => {});
-          tableFreed = true;
-          (order as Record<string, unknown>)._newSessionToken = newSessionToken;
+          if (completedCount === 0) {
+            // All orders cancelled — no payment needed, close session & free table
+            await prisma.tableSession.updateMany({
+              where: { tableId: tId, status: 'ACTIVE' },
+              data: { status: 'CLOSED', closedAt: new Date() },
+            });
+
+            await prisma.table.update({
+              where: { id: tId },
+              data: { status: 'AVAILABLE' },
+            });
+            // Rotate session token so old QR screenshots can't order
+            const newSessionToken = await tableService.rotateSessionToken(tId, restaurantId).catch((err) => {
+              logger.error({ err, tableId: tId }, 'Failed to rotate session token');
+              return null;
+            });
+            await cache.del(cache.keys.tables(restaurantId)).catch(() => {});
+            tableFreed = true;
+            (order as Record<string, unknown>)._newSessionToken = newSessionToken;
+          }
         }
       } catch (err) {
         logger.error({ err, tableId: tId }, 'Failed to free table after order completion');
@@ -837,7 +876,7 @@ export const orderService = {
   async getOrderStats(restaurantId: string, dateFrom?: Date, dateTo?: Date, branchId?: string | null) {
     const where = {
       restaurantId,
-      ...(branchId ? { branchId } : {}),
+      ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
       createdAt: {
         gte: dateFrom || new Date(new Date().setHours(0, 0, 0, 0)),
         lte: dateTo || new Date(),
@@ -890,7 +929,7 @@ export const orderService = {
         startDate.setHours(0, 0, 0, 0);
     }
 
-    const branchFilter = branchId ? { branchId } : {};
+    const branchFilter = branchId ? { OR: [{ branchId }, { branchId: null }] } : {};
 
     const completedWhere = {
       restaurantId,
@@ -921,7 +960,7 @@ export const orderService = {
         WHERE "restaurantId" = ${restaurantId}
           AND "createdAt" >= ${startDate}
           AND "status" IN ('COMPLETED')
-          ${branchId ? Prisma.sql`AND "branchId" = ${branchId}` : Prisma.empty}
+          ${branchId ? Prisma.sql`AND ("branchId" = ${branchId} OR "branchId" IS NULL)` : Prisma.empty}
         GROUP BY DATE("createdAt")
         ORDER BY date ASC
       `,
@@ -941,16 +980,16 @@ export const orderService = {
       }),
       prisma.$queryRaw<Array<{ hour: number; orders: bigint; revenue: number }>>`
         SELECT
-          EXTRACT(HOUR FROM "createdAt")::int AS hour,
+          EXTRACT(HOUR FROM "createdAt" AT TIME ZONE 'Asia/Kolkata')::int AS hour,
           COUNT(*)::bigint AS orders,
           COALESCE(SUM("total"), 0)::float AS revenue
         FROM "Order"
         WHERE "restaurantId" = ${restaurantId}
           AND "createdAt" >= ${startDate}
           AND "createdAt" <= ${now}
-          AND "status" IN ('COMPLETED')
-          ${branchId ? Prisma.sql`AND "branchId" = ${branchId}` : Prisma.empty}
-        GROUP BY EXTRACT(HOUR FROM "createdAt")
+          AND "status" NOT IN ('CANCELLED')
+          ${branchId ? Prisma.sql`AND ("branchId" = ${branchId} OR "branchId" IS NULL)` : Prisma.empty}
+        GROUP BY EXTRACT(HOUR FROM "createdAt" AT TIME ZONE 'Asia/Kolkata')
         ORDER BY hour ASC
       `,
     ]);
@@ -1002,7 +1041,7 @@ export const orderService = {
     startDate.setDate(startDate.getDate() - days);
     startDate.setHours(0, 0, 0, 0);
 
-    const branchFilter = branchId ? { branchId } : {};
+    const branchFilter = branchId ? { OR: [{ branchId }, { branchId: null }] } : {};
 
     // Daily revenue — use $queryRaw to group by DATE (not exact timestamp)
     const dailyRevenue = await prisma.$queryRaw<
@@ -1016,7 +1055,7 @@ export const orderService = {
       WHERE "restaurantId" = ${restaurantId}
         AND "createdAt" >= ${startDate}
         AND "status" IN ('COMPLETED')
-        ${branchId ? Prisma.sql`AND "branchId" = ${branchId}` : Prisma.empty}
+        ${branchId ? Prisma.sql`AND ("branchId" = ${branchId} OR "branchId" IS NULL)` : Prisma.empty}
       GROUP BY DATE("createdAt")
       ORDER BY date ASC
     `;
@@ -1066,7 +1105,7 @@ export const orderService = {
   async exportOrdersCsv(restaurantId: string, dateFrom?: string, dateTo?: string, branchId?: string | null): Promise<string> {
     const where: Record<string, unknown> = { restaurantId };
     if (branchId) {
-      where.branchId = branchId;
+      where.OR = [{ branchId }, { branchId: null }];
     }
     if (dateFrom || dateTo) {
       where.createdAt = {
@@ -1157,7 +1196,7 @@ export const orderService = {
 
   /** Enhanced analytics: category breakdown, payment methods, staff performance */
   async getAdvancedAnalytics(restaurantId: string, startDate: Date, endDate: Date, branchId?: string | null) {
-    const branchFilter = branchId ? { branchId } : {};
+    const branchFilter = branchId ? { OR: [{ branchId }, { branchId: null }] } : {};
 
     const completedWhere = {
       restaurantId,
@@ -1183,7 +1222,7 @@ export const orderService = {
           AND o."createdAt" >= ${startDate}
           AND o."createdAt" <= ${endDate}
           AND o."status" IN ('COMPLETED')
-          ${branchId ? Prisma.sql`AND o."branchId" = ${branchId}` : Prisma.empty}
+          ${branchId ? Prisma.sql`AND (o."branchId" = ${branchId} OR o."branchId" IS NULL)` : Prisma.empty}
         GROUP BY c."id", c."name"
         ORDER BY revenue DESC
       `,
@@ -1200,7 +1239,7 @@ export const orderService = {
           AND p."createdAt" >= ${startDate}
           AND p."createdAt" <= ${endDate}
           AND p."status" = 'COMPLETED'
-          ${branchId ? Prisma.sql`AND ts."branchId" = ${branchId}` : Prisma.empty}
+          ${branchId ? Prisma.sql`AND (ts."branchId" = ${branchId} OR ts."branchId" IS NULL)` : Prisma.empty}
         GROUP BY p."method"
         ORDER BY total DESC
       `,
@@ -1216,7 +1255,7 @@ export const orderService = {
           AND "createdAt" >= ${startDate}
           AND "createdAt" <= ${endDate}
           AND "status" IN ('COMPLETED')
-          ${branchId ? Prisma.sql`AND "branchId" = ${branchId}` : Prisma.empty}
+          ${branchId ? Prisma.sql`AND ("branchId" = ${branchId} OR "branchId" IS NULL)` : Prisma.empty}
         GROUP BY EXTRACT(DOW FROM "createdAt")
         ORDER BY weekday ASC
       `,
@@ -1234,23 +1273,25 @@ export const orderService = {
       }),
     ]);
 
+    const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
     return {
       categoryRevenue: categoryRevenue.map(c => ({
         categoryId: c.categoryId,
         categoryName: c.categoryName,
-        revenue: Number(c.revenue),
-        quantity: Number(c.quantity),
-        itemCount: Number(c.itemCount),
+        totalRevenue: Number(c.revenue),
+        totalQuantity: Number(c.quantity),
       })),
       paymentMethods: paymentMethodBreakdown.map(p => ({
         method: p.method,
         count: Number(p.count),
-        total: Number(p.total),
+        totalAmount: Number(p.total),
       })),
       weekdayBreakdown: weekdayBreakdown.map(w => ({
-        weekday: w.weekday,
-        orderCount: Number(w.orderCount),
-        revenue: Number(w.revenue),
+        dayOfWeek: w.weekday,
+        dayName: DAY_NAMES[w.weekday] || `Day ${w.weekday}`,
+        totalOrders: Number(w.orderCount),
+        totalRevenue: Number(w.revenue),
       })),
       orderStatusBreakdown: orderStatusCounts.map(s => ({
         status: s.status,
@@ -1258,5 +1299,42 @@ export const orderService = {
         revenue: Number(s._sum.total || 0),
       })),
     };
+  },
+
+  /**
+   * Auto-cancel orders stuck in PENDING for longer than the given minutes.
+   * Returns the number of orders cancelled.
+   */
+  async cancelStalePendingOrders(minutesThreshold = 30): Promise<number> {
+    const cutoff = new Date(Date.now() - minutesThreshold * 60 * 1000);
+
+    const staleOrders = await prisma.order.findMany({
+      where: {
+        status: 'PENDING',
+        createdAt: { lt: cutoff },
+      },
+      select: { id: true, restaurantId: true, tableId: true },
+    });
+
+    if (staleOrders.length === 0) return 0;
+
+    await prisma.order.updateMany({
+      where: {
+        id: { in: staleOrders.map(o => o.id) },
+        status: 'PENDING',
+      },
+      data: {
+        status: 'CANCELLED',
+        completedAt: new Date(),
+      },
+    });
+
+    // Invalidate caches for affected restaurants
+    const restaurantIds = [...new Set(staleOrders.map(o => o.restaurantId))];
+    for (const rid of restaurantIds) {
+      await cache.del(`activeOrders:${rid}`);
+    }
+
+    return staleOrders.length;
   },
 };

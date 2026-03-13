@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   AreaChart,
@@ -18,7 +19,7 @@ import { useSocket } from '../context/SocketContext';
 import { useCurrency } from '../hooks/useCurrency';
 import { timeAgo } from '../utils/timeAgo';
 
-import type { Order, OrderStatus, AnalyticsSummary } from '../types';
+import type { Order, OrderStatus, AnalyticsSummary, DashboardExtras } from '../types';
 import toast from 'react-hot-toast';
 
 /* ═══════════════════════════ Constants ════════════════════════ */
@@ -68,6 +69,7 @@ function fmtHour(h: number): string {
 export default function DashboardPage() {
   const qc = useQueryClient();
   const formatCurrency = useCurrency();
+  const navigate = useNavigate();
   const { onNewOrder, onOrderStatusUpdate } = useSocket();
 
   /* ── Queries ── */
@@ -81,6 +83,12 @@ export default function DashboardPage() {
     queryKey: ['analytics', 'summary'],
     queryFn: () => analyticsService.getSummary({ period: 'day' }),
     staleTime: 0,
+  });
+
+  const { data: extras, isError: _extrasError } = useQuery({
+    queryKey: ['analytics', 'dashboard-extras'],
+    queryFn: () => analyticsService.getDashboardExtras(),
+    staleTime: 30_000,
   });
 
   /* ── Real-time ── */
@@ -262,6 +270,68 @@ export default function DashboardPage() {
             iconColor="text-white"
             delay={0.15}
             highlight={pendingOrders.length > 0}
+          />
+        </div>
+      )}
+
+      {/* ═══════════════════ Secondary KPIs ═══════════════════ */}
+      {extras && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard
+            icon={
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <path d="M7 7h4v4H7zM7 13h4v4H7zM13 7h4v4h-4z" />
+              </svg>
+            }
+            label="QR Scans"
+            value={String(extras.qrScansToday)}
+            sub={`${extras.customersToday} unique customers`}
+            iconBg="bg-teal-500"
+            iconColor="text-white"
+            delay={0}
+          />
+          <StatCard
+            icon={
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="14" rx="2" />
+                <path d="M3 10h18" />
+              </svg>
+            }
+            label="Active Tables"
+            value={`${extras.tableStatus.occupied}/${extras.tableStatus.total}`}
+            sub={'All tables'}
+            iconBg="bg-indigo-500"
+            iconColor="text-white"
+            delay={0.05}
+          />
+          <StatCard
+            icon={
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+              </svg>
+            }
+            label="Customers"
+            value={String(extras.customersToday)}
+            sub={extras.qrScansToday > 0 ? `${Math.round((analytics?.totalOrders ?? 0) / Math.max(extras.qrScansToday, 1) * 100)}% conversion` : 'No QR scans'}
+            iconBg="bg-rose-500"
+            iconColor="text-white"
+            delay={0.1}
+          />
+          <StatCard
+            icon={
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              </svg>
+            }
+            label="Taxes Collected"
+            value={formatCurrency(extras.financials.totalTax)}
+            sub={extras.financials.totalDiscount > 0 ? `${formatCurrency(extras.financials.totalDiscount)} discounts` : 'No discounts today'}
+            iconBg="bg-emerald-500"
+            iconColor="text-white"
+            delay={0.15}
           />
         </div>
       )}
@@ -472,6 +542,121 @@ export default function DashboardPage() {
           </motion.div>
         </div>
       )}
+
+      {/* ═══════════════════ Table Status + Payments + Financial ═══════════════════ */}
+      {extras && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+          {/* Table Status Overview */}
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-[15px] font-semibold text-text-primary">Table Status</h3>
+              <span className="text-[11px] text-text-muted">{extras.tableStatus.total} total</span>
+            </div>
+            <TableStatusGrid tableStatus={extras.tableStatus} />
+          </motion.div>
+
+          {/* Payments Summary */}
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-[15px] font-semibold text-text-primary">Payments</h3>
+              <span className="text-[11px] text-text-muted">Today</span>
+            </div>
+            <PaymentsSummary payments={extras.paymentSummary} formatCurrency={formatCurrency} />
+          </motion.div>
+
+          {/* Financial Snapshot */}
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-[15px] font-semibold text-text-primary">Financial Snapshot</h3>
+              <span className="text-[11px] text-text-muted">Today</span>
+            </div>
+            <FinancialSnapshot financials={extras.financials} totalRevenue={analytics?.totalRevenue ?? 0} formatCurrency={formatCurrency} />
+          </motion.div>
+        </div>
+      )}
+
+      {/* ═══════════════════ Alerts + Low Performers ═══════════════════ */}
+      {extras && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+          {/* Notifications & Alerts */}
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
+          >
+            <div className="px-5 pt-5 pb-3 flex items-center justify-between">
+              <h3 className="text-[15px] font-semibold text-text-primary">Alerts</h3>
+              {(extras.lowStockItems.length + extras.pendingServiceRequests + extras.pendingPayments) > 0 && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-red-50 text-red-600 text-[11px] font-bold">
+                  {extras.lowStockItems.length + extras.pendingServiceRequests + extras.pendingPayments}
+                </span>
+              )}
+            </div>
+            <div className="px-5 pb-5">
+              <AlertsPanel extras={extras} />
+            </div>
+          </motion.div>
+
+          {/* Low Performing Items */}
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
+          >
+            <div className="px-5 pt-5 pb-3 flex items-center justify-between">
+              <h3 className="text-[15px] font-semibold text-text-primary">Low Performing Items</h3>
+              <span className="text-[11px] text-text-muted">Today</span>
+            </div>
+            <div className="px-5 pb-5">
+              <LowPerformersPanel items={extras.lowPerformingItems} formatCurrency={formatCurrency} />
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* ═══════════════════ Quick Actions ═══════════════════ */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { label: 'Add Menu Item', icon: 'M12 4v16m8-8H4', path: '/menu', bg: 'bg-primary/10', color: 'text-primary' },
+          { label: 'Manage Tables', icon: 'M4 6h16M4 10h16M4 14h10', path: '/tables', bg: 'bg-sky-50', color: 'text-sky-600' },
+          { label: 'View Orders', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2', path: '/orders', bg: 'bg-violet-50', color: 'text-violet-600' },
+          { label: 'View Reports', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z', path: '/reports', bg: 'bg-amber-50', color: 'text-amber-600' },
+        ].map((action) => (
+          <motion.button
+            key={action.label}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => navigate(action.path)}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-100 bg-white shadow-sm hover:shadow-md transition-all group`}
+          >
+            <div className={`w-9 h-9 rounded-lg ${action.bg} flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform`}>
+              <svg className={`w-4.5 h-4.5 ${action.color}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d={action.icon} />
+              </svg>
+            </div>
+            <span className="text-sm font-medium text-text-primary">{action.label}</span>
+          </motion.button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -779,9 +964,14 @@ function HourlyChart({
   const BAR_AREA_H = 148;
 
   const hours = useMemo(() => {
+    if (!data.length) return [];
     const map = new Map(data.map(d => [d.hour, d]));
+    const minH = Math.min(...data.map(d => d.hour));
+    const maxH = Math.max(...data.map(d => d.hour));
+    const startH = Math.min(minH, 8);
+    const endH = Math.max(maxH, 22);
     const result = [];
-    for (let h = 11; h <= 21; h++) {
+    for (let h = startH; h <= endH; h++) {
       result.push(map.get(h) ?? { hour: h, orders: 0, revenue: 0 });
     }
     return result;
@@ -855,9 +1045,15 @@ function DailySummaryPanel({
   const avgPerHour = totalRevInHours > 0 ? analytics.totalRevenue / totalRevInHours : 0;
 
   const revenueHours = useMemo(() => {
-    const map = new Map(analytics.hourlyData.map(d => [d.hour, d]));
+    const data = analytics.hourlyData;
+    if (!data.length) return [];
+    const map = new Map(data.map(d => [d.hour, d]));
+    const minH = Math.min(...data.map(d => d.hour));
+    const maxH = Math.max(...data.map(d => d.hour));
+    const startH = Math.min(minH, 8);
+    const endH = Math.max(maxH, 22);
     const result = [];
-    for (let h = 11; h <= 21; h++) {
+    for (let h = startH; h <= endH; h++) {
       result.push(map.get(h) ?? { hour: h, orders: 0, revenue: 0 });
     }
     return result;
@@ -939,6 +1135,272 @@ function StatCardsSkeleton() {
           <div className="h-3 bg-gray-100 rounded w-16 mb-2" />
           <div className="h-7 bg-gray-200 rounded w-24 mb-2" />
           <div className="h-2.5 bg-gray-100 rounded w-32" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ─── Table Status Grid ─────────────────────────────────── */
+
+function TableStatusGrid({ tableStatus }: { tableStatus: DashboardExtras['tableStatus'] }) {
+  const segments = [
+    { label: 'Available', count: tableStatus.available, color: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50' },
+    { label: 'Occupied', count: tableStatus.occupied, color: 'bg-primary', text: 'text-primary', bg: 'bg-primary/10' },
+    { label: 'Reserved', count: tableStatus.reserved, color: 'bg-amber-500', text: 'text-amber-700', bg: 'bg-amber-50' },
+    { label: 'Inactive', count: tableStatus.inactive, color: 'bg-gray-400', text: 'text-gray-600', bg: 'bg-gray-100' },
+  ];
+  const total = tableStatus.total || 1;
+
+  return (
+    <div className="space-y-3">
+      {/* Status bar */}
+      <div className="flex h-3 rounded-full overflow-hidden bg-gray-100">
+        {segments.filter(s => s.count > 0).map((s) => (
+          <div key={s.label} className={`${s.color} transition-all`} style={{ width: `${(s.count / total) * 100}%` }} />
+        ))}
+      </div>
+      {/* Legend */}
+      <div className="grid grid-cols-2 gap-2">
+        {segments.map((s) => (
+          <div key={s.label} className={`flex items-center gap-2 px-3 py-2 rounded-lg ${s.bg}`}>
+            <span className={`w-2.5 h-2.5 rounded-full ${s.color}`} />
+            <div className="flex-1 min-w-0">
+              <span className="text-[11px] text-text-muted">{s.label}</span>
+            </div>
+            <span className={`text-sm font-bold ${s.text} tabular-nums`}>{s.count}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Payments Summary ───────────────────────────────────── */
+
+const PAYMENT_ICONS: Record<string, { icon: string; color: string; bg: string }> = {
+  CASH:   { icon: 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z', color: 'text-emerald-600', bg: 'bg-emerald-50' },
+  CARD:   { icon: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z', color: 'text-sky-600', bg: 'bg-sky-50' },
+  UPI:    { icon: 'M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z', color: 'text-violet-600', bg: 'bg-violet-50' },
+  WALLET: { icon: 'M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z', color: 'text-amber-600', bg: 'bg-amber-50' },
+  ONLINE: { icon: 'M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9', color: 'text-primary', bg: 'bg-primary/10' },
+  CREDIT: { icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z', color: 'text-rose-600', bg: 'bg-rose-50' },
+};
+
+function PaymentsSummary({
+  payments,
+  formatCurrency,
+}: {
+  payments: DashboardExtras['paymentSummary'];
+  formatCurrency: (v: number) => string;
+}) {
+  const totalPayments = payments.reduce((s, p) => s + p.total, 0);
+
+  if (payments.length === 0) {
+    return <p className="text-sm text-text-muted text-center py-6">No payments today</p>;
+  }
+
+  return (
+    <div className="space-y-2.5">
+      {payments.map((p) => {
+        const meta = PAYMENT_ICONS[p.method] ?? PAYMENT_ICONS.CASH!;
+        const pct = totalPayments > 0 ? Math.round((p.total / totalPayments) * 100) : 0;
+        return (
+          <div key={p.method} className="flex items-center gap-3">
+            <div className={`w-8 h-8 rounded-lg ${meta.bg} flex items-center justify-center shrink-0`}>
+              <svg className={`w-4 h-4 ${meta.color}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d={meta.icon} />
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-medium text-text-primary capitalize">{p.method.toLowerCase()}</span>
+                <span className="text-xs font-bold text-text-primary tabular-nums">{formatCurrency(p.total)}</span>
+              </div>
+              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${pct}%` }}
+                  transition={{ duration: 0.5 }}
+                  className={`h-full rounded-full ${meta.color.replace('text-', 'bg-')}`}
+                />
+              </div>
+            </div>
+            <span className="text-[11px] text-text-muted tabular-nums w-8 text-right">{pct}%</span>
+          </div>
+        );
+      })}
+      <div className="pt-2 mt-1 border-t border-gray-50 flex items-center justify-between">
+        <span className="text-xs text-text-muted">{payments.reduce((s, p) => s + p.count, 0)} transactions</span>
+        <span className="text-sm font-bold text-text-primary tabular-nums">{formatCurrency(totalPayments)}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Financial Snapshot ─────────────────────────────────── */
+
+function FinancialSnapshot({
+  financials,
+  totalRevenue,
+  formatCurrency,
+}: {
+  financials: DashboardExtras['financials'];
+  totalRevenue: number;
+  formatCurrency: (v: number) => string;
+}) {
+  const rows = [
+    { label: 'Subtotal', value: financials.totalSubtotal, icon: 'M9 7h6m-6 4h6m-6 4h4', color: 'text-text-primary' },
+    { label: 'Discounts Given', value: -financials.totalDiscount, icon: 'M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z', color: 'text-red-500' },
+    { label: 'Taxes Collected', value: financials.totalTax, icon: 'M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z', color: 'text-emerald-600' },
+  ];
+
+  return (
+    <div className="space-y-3">
+      {rows.map((row) => (
+        <div key={row.label} className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center shrink-0">
+            <svg className={`w-4 h-4 ${row.color}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d={row.icon} />
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <span className="text-xs text-text-muted">{row.label}</span>
+          </div>
+          <span className={`text-sm font-semibold tabular-nums ${row.value < 0 ? 'text-red-500' : 'text-text-primary'}`}>
+            {row.value < 0 ? `−${formatCurrency(Math.abs(row.value))}` : formatCurrency(row.value)}
+          </span>
+        </div>
+      ))}
+      <div className="pt-3 mt-1 border-t border-gray-100">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold text-text-primary">Net Revenue</span>
+          <span className="text-lg font-bold text-primary tabular-nums">{formatCurrency(totalRevenue)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Alerts Panel ───────────────────────────────────────── */
+
+function AlertsPanel({ extras }: { extras: DashboardExtras }) {
+  const alerts: { type: 'warning' | 'error' | 'info'; title: string; detail: string; icon: string }[] = [];
+
+  if (extras.lowStockItems.length > 0) {
+    for (const item of extras.lowStockItems.slice(0, 3)) {
+      alerts.push({
+        type: 'warning',
+        title: `Low Stock: ${item.name}`,
+        detail: `${item.currentStock} ${item.unit} left (min: ${item.minStock})`,
+        icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z',
+      });
+    }
+    if (extras.lowStockItems.length > 3) {
+      alerts.push({
+        type: 'warning',
+        title: `+${extras.lowStockItems.length - 3} more low stock items`,
+        detail: 'Check inventory for details',
+        icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z',
+      });
+    }
+  }
+
+  if (extras.pendingServiceRequests > 0) {
+    alerts.push({
+      type: 'error',
+      title: `${extras.pendingServiceRequests} Service Request${extras.pendingServiceRequests > 1 ? 's' : ''}`,
+      detail: 'Customers waiting for assistance',
+      icon: 'M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9',
+    });
+  }
+
+  if (extras.pendingPayments > 0) {
+    alerts.push({
+      type: 'info',
+      title: `${extras.pendingPayments} Pending Payment${extras.pendingPayments > 1 ? 's' : ''}`,
+      detail: 'Awaiting confirmation',
+      icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+    });
+  }
+
+  if (alerts.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-6 text-center">
+        <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center mb-2">
+          <svg className="w-5 h-5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+        <p className="text-sm font-medium text-text-primary">All Clear</p>
+        <p className="text-xs text-text-muted mt-0.5">No alerts at the moment</p>
+      </div>
+    );
+  }
+
+  const typeStyle = {
+    warning: { bg: 'bg-amber-50', border: 'border-amber-200', iconColor: 'text-amber-500' },
+    error:   { bg: 'bg-red-50', border: 'border-red-200', iconColor: 'text-red-500' },
+    info:    { bg: 'bg-sky-50', border: 'border-sky-200', iconColor: 'text-sky-500' },
+  };
+
+  return (
+    <div className="space-y-2.5 max-h-64 overflow-y-auto scrollbar-thin">
+      {alerts.map((alert, idx) => {
+        const style = typeStyle[alert.type];
+        return (
+          <div key={idx} className={`flex items-start gap-3 p-3 rounded-xl border ${style.bg} ${style.border}`}>
+            <div className="shrink-0 mt-0.5">
+              <svg className={`w-4.5 h-4.5 ${style.iconColor}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d={alert.icon} />
+              </svg>
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-text-primary leading-tight">{alert.title}</p>
+              <p className="text-[11px] text-text-muted mt-0.5">{alert.detail}</p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ─── Low Performers Panel ───────────────────────────────── */
+
+function LowPerformersPanel({
+  items,
+  formatCurrency,
+}: {
+  items: DashboardExtras['lowPerformingItems'];
+  formatCurrency: (v: number) => string;
+}) {
+  if (items.length === 0) {
+    return <p className="text-sm text-text-muted text-center py-6">No sales data available today</p>;
+  }
+
+  const maxQty = Math.max(...items.map(i => i.quantity), 1);
+
+  return (
+    <div className="space-y-2.5">
+      {items.map((item, idx) => (
+        <div key={idx} className="flex items-center gap-3">
+          <span className="w-5 h-5 rounded-md bg-gray-100 flex items-center justify-center text-[10px] font-bold text-text-muted shrink-0">
+            {idx + 1}
+          </span>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-medium text-text-primary truncate">{item.itemName}</span>
+              <span className="text-[11px] text-text-muted tabular-nums shrink-0 ml-2">{item.quantity} sold</span>
+            </div>
+            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full bg-red-300"
+                style={{ width: `${(item.quantity / maxQty) * 100}%` }}
+              />
+            </div>
+          </div>
+          <span className="text-xs font-semibold text-text-primary tabular-nums shrink-0">{formatCurrency(item.revenue)}</span>
         </div>
       ))}
     </div>

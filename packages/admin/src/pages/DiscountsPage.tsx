@@ -150,12 +150,12 @@ export default function DiscountsPage() {
   const [showCouponModal, setShowCouponModal] = useState(false);
   const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
 
-  const { data: discounts = [], isLoading: loadingDiscounts } = useQuery({
+  const { data: discounts = [], isLoading: loadingDiscounts, isError: disErr, error: disError, refetch: refetchDis } = useQuery({
     queryKey: ['discounts'],
     queryFn: discountService.list,
   });
 
-  const { data: coupons = [], isLoading: loadingCoupons } = useQuery({
+  const { data: coupons = [], isLoading: loadingCoupons, isError: couErr, error: couError, refetch: refetchCou } = useQuery({
     queryKey: ['coupons'],
     queryFn: discountService.listCoupons,
     enabled: tab === 'coupons',
@@ -194,6 +194,9 @@ export default function DiscountsPage() {
   });
 
   const isLoading = tab === 'discounts' ? loadingDiscounts : loadingCoupons;
+  const isError = tab === 'discounts' ? disErr : couErr;
+  const error = tab === 'discounts' ? disError : couError;
+  const refetch = tab === 'discounts' ? refetchDis : refetchCou;
 
   return (
     <div className="space-y-6">
@@ -221,6 +224,11 @@ export default function DiscountsPage() {
       {isLoading ? (
         <div className="flex items-center justify-center py-20">
           <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" />
+        </div>
+      ) : isError ? (
+        <div className="card p-8 text-center space-y-3">
+          <p className="text-red-500">Failed to load {tab}: {error?.message}</p>
+          <button className="btn-primary text-sm" onClick={() => refetch()}>Retry</button>
         </div>
       ) : tab === 'discounts' ? (
         /* ─── Discounts List ─── */

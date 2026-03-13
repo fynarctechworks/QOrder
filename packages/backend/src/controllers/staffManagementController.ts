@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { staffManagementService } from '../services/staffManagementService.js';
 import { AppError } from '../lib/errors.js';
 import { getIO } from '../socket/index.js';
+import { alertService } from '../services/alertService.js';
 import type { AttendanceStatus, LeaveType, LeaveStatus, ShiftType } from '@prisma/client';
 
 export const staffManagementController = {
@@ -106,6 +107,8 @@ export const staffManagementController = {
       const effectiveUserId = isAdmin ? userId : req.user!.id;
       const attendance = await staffManagementService.checkOut(effectiveUserId, new Date(date), req.user!.restaurantId);
       if (!attendance) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'No check-in record found' } });
+      // Fire-and-forget early checkout alert
+      alertService.checkAndAlertEarlyCheckout(effectiveUserId, req.user!.restaurantId).catch(() => {});
       res.json({ success: true, data: attendance });
     } catch (err) { next(err); }
   },

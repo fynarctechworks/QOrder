@@ -17,6 +17,7 @@ const PayBillPage = lazy(() => import('./pages/PayBillPage'));
 const OrderStatusPage = lazy(() => import('./pages/OrderStatusPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 const QueueDisplayPage = lazy(() => import('./pages/QueueDisplayPage'));
+const TVMenuPage = lazy(() => import('./pages/TVMenuPage'));
 
 // Group order pages
 const JoinGroupPage = lazy(() => import('./pages/JoinGroupPage'));
@@ -79,6 +80,16 @@ function App() {
             <Route
               path="/queue/:restaurantId"
               element={<AnimatedPage><QueueDisplayPage /></AnimatedPage>}
+            />
+
+            {/* TV menu display for restaurant screens */}
+            <Route
+              path="/tv-menu/:restaurantId"
+              element={<AnimatedPage><TVMenuPage /></AnimatedPage>}
+            />
+            <Route
+              path="/tv-menu/:restaurantId/:branchId"
+              element={<AnimatedPage><TVMenuPage /></AnimatedPage>}
             />
 
           {/* Root redirect */}

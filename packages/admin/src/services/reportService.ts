@@ -57,4 +57,78 @@ export const reportService = {
 
   avgPrepTime: (q: DateRangeQuery = {}) =>
     apiClient.get<{ success: boolean; data: { avg_prep_minutes: number; total_orders: number } }>(`/reports/avg-prep-time?${buildParams(q as Record<string, string | undefined>)}`),
+
+  // ─── Inventory vs Sales Reports ───
+
+  cogsReport: (q: DateRangeQuery = {}) =>
+    apiClient.get<{ menuItemId: string; itemName: string; categoryName: string; qty_sold: number; revenue: number; ingredient_cost: number; profit: number; margin_pct: number }[]>(`/reports/cogs?${buildParams(q as Record<string, string | undefined>)}`),
+
+  inventoryVsRevenue: (q: DateRangeQuery = {}) =>
+    apiClient.get<{ date: string; revenue: number; cost: number; profit: number; orders: number }[]>(`/reports/inventory-vs-revenue?${buildParams(q as Record<string, string | undefined>)}`),
+
+  stockForecast: (q: DateRangeQuery = {}) =>
+    apiClient.get<{ ingredientId: string; ingredientName: string; unit: string; current_stock: number; min_stock: number; daily_usage: number; days_remaining: number; status: string }[]>(`/reports/stock-forecast?${buildParams(q as Record<string, string | undefined>)}`),
+
+  wastageVariance: (q: DateRangeQuery = {}) =>
+    apiClient.get<{ ingredientId: string; ingredientName: string; unit: string; expected: number; actual: number; waste: number; variance: number; variance_pct: number; variance_cost: number }[]>(`/reports/wastage-variance?${buildParams(q as Record<string, string | undefined>)}`),
+
+  topProfitableItems: (q: DateRangeQuery & { limit?: string } = {}) =>
+    apiClient.get<{ menuItemId: string; itemName: string; categoryName: string; qty_sold: number; selling_price: number; cost_price: number; profit_per_unit: number; total_profit: number; margin_pct: number }[]>(`/reports/top-profitable-items?${buildParams(q as Record<string, string | undefined>)}`),
+
+  // ─── New Reports ───
+
+  salesSummary: (q: DateRangeQuery = {}) =>
+    apiClient.get<any>(`/reports/sales-summary?${buildParams(q as Record<string, string | undefined>)}`),
+
+  ordersReport: (q: DateRangeQuery = {}) =>
+    apiClient.get<any[]>(`/reports/orders-report?${buildParams(q as Record<string, string | undefined>)}`),
+
+  cancelledOrders: (q: DateRangeQuery = {}) =>
+    apiClient.get<any[]>(`/reports/cancelled-orders?${buildParams(q as Record<string, string | undefined>)}`),
+
+  topSellingItems: (q: DateRangeQuery & { limit?: string } = {}) =>
+    apiClient.get<any[]>(`/reports/top-selling-items?${buildParams(q as Record<string, string | undefined>)}`),
+
+  lowPerformingItems: (q: DateRangeQuery & { limit?: string } = {}) =>
+    apiClient.get<any[]>(`/reports/low-performing-items?${buildParams(q as Record<string, string | undefined>)}`),
+
+  tableActivity: (q: DateRangeQuery = {}) =>
+    apiClient.get<any[]>(`/reports/table-activity?${buildParams(q as Record<string, string | undefined>)}`),
+
+  taxReport: (q: DateRangeQuery = {}) =>
+    apiClient.get<any[]>(`/reports/tax-report?${buildParams(q as Record<string, string | undefined>)}`),
+
+  customerReport: (q: DateRangeQuery = {}) =>
+    apiClient.get<any[]>(`/reports/customer-report?${buildParams(q as Record<string, string | undefined>)}`),
+
+  repeatCustomers: (q: DateRangeQuery = {}) =>
+    apiClient.get<any[]>(`/reports/repeat-customers?${buildParams(q as Record<string, string | undefined>)}`),
+
+  qrScanReport: (q: DateRangeQuery = {}) =>
+    apiClient.get<any[]>(`/reports/qr-scan-report?${buildParams(q as Record<string, string | undefined>)}`),
+
+  qrConversion: (q: DateRangeQuery = {}) =>
+    apiClient.get<any>(`/reports/qr-conversion?${buildParams(q as Record<string, string | undefined>)}`),
+
+  tableQrPerformance: (q: DateRangeQuery = {}) =>
+    apiClient.get<any[]>(`/reports/table-qr-performance?${buildParams(q as Record<string, string | undefined>)}`),
+
+  peakHoursReport: (q: DateRangeQuery = {}) =>
+    apiClient.get<any[]>(`/reports/peak-hours?${buildParams(q as Record<string, string | undefined>)}`),
+
+  menuPerformance: (q: DateRangeQuery = {}) =>
+    apiClient.get<any[]>(`/reports/menu-performance?${buildParams(q as Record<string, string | undefined>)}`),
+
+  // Order analysis reports
+  ordersSummary: (q: DateRangeQuery = {}) =>
+    apiClient.get<any>(`/reports/orders-summary?${buildParams(q as Record<string, string | undefined>)}`),
+
+  orderTypeBreakdown: (q: DateRangeQuery = {}) =>
+    apiClient.get<any[]>(`/reports/order-type-breakdown?${buildParams(q as Record<string, string | undefined>)}`),
+
+  orderCompletionRate: (q: DateRangeQuery = {}) =>
+    apiClient.get<any[]>(`/reports/order-completion-rate?${buildParams(q as Record<string, string | undefined>)}`),
+
+  avgOrderValueTrend: (q: DateRangeQuery = {}) =>
+    apiClient.get<any[]>(`/reports/avg-order-value-trend?${buildParams(q as Record<string, string | undefined>)}`),
 };

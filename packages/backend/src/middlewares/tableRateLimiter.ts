@@ -10,7 +10,7 @@ import { logger } from '../lib/logger.js';
  * Defaults: max 10 orders per table per hour.
  */
 const TABLE_RATE_LIMIT_WINDOW_S = 60 * 60; // 1 hour
-const TABLE_RATE_LIMIT_MAX = 10;
+const TABLE_RATE_LIMIT_MAX = 50;
 
 /**
  * Middleware factory for table-based rate limiting.

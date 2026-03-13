@@ -5,6 +5,9 @@ import { prisma, redis, logger } from './lib/index.js';
 import { initializeSocket } from './socket/index.js';
 import { authService } from './services/authService.js';
 import { sessionService } from './services/sessionService.js';
+import { orderService } from './services/orderService.js';
+import { alertService } from './services/alertService.js';
+import { startFingerprintBridge, stopFingerprintBridge } from './fingerprint-bridge/index.js';
 
 async function bootstrap() {
   try {
@@ -36,6 +39,9 @@ async function bootstrap() {
     // Initialize Socket.io
     initializeSocket(httpServer);
 
+    // Start fingerprint scanner bridge (WebSocket on port 9200)
+    await startFingerprintBridge();
+
     // Clean up expired refresh tokens on startup
     try {
       const cleaned = await authService.cleanupExpiredTokens();
@@ -63,6 +69,28 @@ async function bootstrap() {
       }
     }, 5 * 60 * 1000);
 
+    // Auto-cancel PENDING orders older than 30 minutes — every 5 minutes
+    setInterval(async () => {
+      try {
+        const cancelled = await orderService.cancelStalePendingOrders(30);
+        if (cancelled > 0) logger.info({ count: cancelled }, 'Auto-cancelled stale pending orders');
+      } catch (err) {
+        logger.warn({ err }, 'Periodic stale order cleanup failed');
+      }
+    }, 5 * 60 * 1000);
+
+    // Staff late check — run once on startup then every 5 minutes
+    alertService.checkAndAlertLateStaff().catch(err =>
+      logger.warn({ err }, 'Initial staff late alert check failed')
+    );
+    setInterval(async () => {
+      try {
+        await alertService.checkAndAlertLateStaff();
+      } catch (err) {
+        logger.warn({ err }, 'Periodic staff late alert check failed');
+      }
+    }, 5 * 60 * 1000);
+
     // Start server
     httpServer.listen(config.port, () => {
       logger.info(
@@ -75,6 +103,8 @@ async function bootstrap() {
     const shutdown = async (signal: string) => {
       logger.info({ signal }, 'Shutdown signal received');
       
+      stopFingerprintBridge();
+
       httpServer.close(async () => {
         logger.info('HTTP server closed');
         

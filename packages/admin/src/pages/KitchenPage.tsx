@@ -49,6 +49,7 @@ function formatTimer(seconds: number): string {
 interface KitchenItem extends OrderItem {
   orderId: string;
   orderNumber: string;
+  tableId: string;
   tableName: string;
   sectionName: string | null;
   orderCreatedAt: string;
@@ -94,7 +95,6 @@ const COLUMNS: {
 
 const ItemTicket = memo(function ItemTicket({
   item,
-  accentColor,
   onMarkReady,
   isUpdating,
 }: {
@@ -116,86 +116,58 @@ const ItemTicket = memo(function ItemTicket({
   const timerColor =
     elapsed > 900 ? 'text-red-400' : elapsed > 600 ? 'text-amber-300' : 'text-emerald-400';
 
-  const accent = accentColor === 'blue' ? 'border-l-blue-400' : 'border-l-emerald-400';
+  const hasExtras = item.customizations.length > 0 || item.specialInstructions || item.orderSpecialInstructions;
 
   return (
-    <div className={`bg-gray-800/80 rounded-lg border-l-4 ${accent} overflow-hidden`}>
-      {/* Ticket header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700/50">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-extrabold text-white tracking-wide">
-            #{item.orderNumber}
-          </span>
-          {item.tableName && item.tableName !== 'Unknown' && (
-            <span className="text-[11px] font-semibold text-gray-400 bg-gray-700/80 px-1.5 py-0.5 rounded">
-              {item.tableName}
-            </span>
-          )}
-          {item.sectionName && (
-            <span className="text-[10px] text-gray-500 font-medium">
-              {item.sectionName}
-            </span>
-          )}
-        </div>
-        <span className={`text-xs font-mono font-bold tabular-nums ${timerColor}`}>
-          {formatTimer(elapsed)}
+    <div className="bg-gray-800/70 rounded-lg overflow-hidden border-l-4 border-l-blue-400">
+      {/* Main row — always visible */}
+      <div className="flex items-center gap-2 px-3 py-2">
+        {/* Quantity badge */}
+        <span className="shrink-0 w-7 h-7 rounded bg-gray-700 flex items-center justify-center text-sm font-bold text-white">
+          {item.quantity}
         </span>
-      </div>
-
-      {/* Item detail */}
-      <div className="px-4 py-3">
-        <div className="flex items-start gap-2.5">
-          <span className="shrink-0 w-8 h-8 rounded-md bg-gray-700 flex items-center justify-center text-base font-bold text-white">
-            {item.quantity}
-          </span>
-          <div className="flex-1 min-w-0">
-            <p className="text-base font-bold text-gray-100 leading-snug">
-              {item.menuItemName}
-            </p>
-            {item.customizations.length > 0 &&
-              item.customizations.map((c) => (
-                <p key={c.groupId} className="text-xs text-gray-400 mt-0.5">
-                  {c.groupName}: {c.options.map((o) => o.name).join(', ')}
-                </p>
-              ))}
-            {item.specialInstructions && (
-              <p className="text-xs text-amber-400 mt-1 font-medium">
-                ⚠ {item.specialInstructions}
-              </p>
+        {/* Item name + meta */}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-gray-100 leading-tight truncate">{item.menuItemName}</p>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <span className="text-[10px] font-mono text-gray-500">#{item.orderNumber}</span>
+            {item.tableName && item.tableName !== 'Unknown' && (
+              <span className="text-[10px] text-gray-400 bg-gray-700/80 px-1 rounded">{item.tableName}</span>
+            )}
+            {item.customerName && (
+              <span className="text-[10px] text-gray-500">{item.customerName}</span>
             )}
           </div>
         </div>
-      </div>
-
-      {/* Order-level special instructions */}
-      {item.orderSpecialInstructions && (
-        <div className="mx-3 mb-2 px-3 py-1.5 bg-amber-500/10 border border-amber-500/25 rounded-md">
-          <p className="text-[11px] font-semibold text-amber-400">
-            📝 {item.orderSpecialInstructions}
-          </p>
-        </div>
-      )}
-
-      {/* Customer name */}
-      {item.customerName && (
-        <div className="px-4 pb-2 border-t border-gray-700/30 pt-1.5">
-          <p className="text-[11px] text-gray-500 font-medium">{item.customerName}</p>
-        </div>
-      )}
-
-      {/* Ready button — only for preparing items */}
-      {onMarkReady && (
-        <div className="px-3 pb-3 pt-1">
+        {/* Timer */}
+        <span className={`text-[11px] font-mono font-bold tabular-nums shrink-0 ${timerColor}`}>
+          {formatTimer(elapsed)}
+        </span>
+        {/* Ready button */}
+        {onMarkReady && (
           <button
             onClick={onMarkReady}
             disabled={isUpdating}
-            className="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-sm tracking-wide transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="shrink-0 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs tracking-wide transition-colors disabled:opacity-50"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-            {isUpdating ? 'UPDATING…' : 'READY'}
+            {isUpdating ? '...' : '✓ READY'}
           </button>
+        )}
+      </div>
+      {/* Extras row — only if customizations or notes */}
+      {hasExtras && (
+        <div className="px-3 pb-2 pt-0 pl-12 space-y-0.5">
+          {item.customizations.map((c) => (
+            <p key={c.groupId} className="text-[11px] text-gray-400">
+              {c.options.map((o) => o.name).join(', ')}
+            </p>
+          ))}
+          {item.specialInstructions && (
+            <p className="text-[11px] text-amber-400 font-medium">⚠ {item.specialInstructions}</p>
+          )}
+          {item.orderSpecialInstructions && (
+            <p className="text-[11px] text-amber-400 font-medium">📝 {item.orderSpecialInstructions}</p>
+          )}
         </div>
       )}
     </div>
@@ -238,17 +210,18 @@ export default function KitchenPage() {
     const PAGE_TO_PATH: Record<PageKey, string> = {
       dashboard: '/dashboard',
       'create-order': '/create-order',
+      qsr: '/qsr',
       orders: '/orders',
       menu: '/menu',
       tables: '/tables',
       analytics: '/analytics',
       inventory: '/inventory',
       kitchen: '/kitchen',
-      captain: '/captain',
       crm: '/crm',
       credit: '/credit',
       reports: '/reports',
       'staff-management': '/staff-management',
+      'tv-menu': '/tv-menu',
     };
     return PAGE_TO_PATH[firstNonKitchen] || '/dashboard';
   }, [user, lockSettings]);
@@ -267,7 +240,7 @@ export default function KitchenPage() {
   }, []);
 
   /* ─── Fetch active orders ─── */
-  const { data: orders = [], isLoading } = useQuery({
+  const { data: orders = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['kitchen-orders'],
     queryFn: async () => {
       const all = await orderService.getActive();
@@ -352,6 +325,7 @@ export default function KitchenPage() {
           ...item,
           orderId: order.id,
           orderNumber: order.orderNumber,
+          tableId: order.tableId,
           tableName: order.tableName,
           sectionName: order.sectionName ?? null,
           orderCreatedAt: order.createdAt,
@@ -366,14 +340,32 @@ export default function KitchenPage() {
       }
     }
 
-    // Sort by order creation time (oldest first)
+    // Sort preparing items alphabetically by item name
+    cooking.sort((a, b) => a.menuItemName.localeCompare(b.menuItemName));
+    // Sort ready items by order creation time (oldest first)
     const sortFn = (a: KitchenItem, b: KitchenItem) =>
       new Date(a.orderCreatedAt).getTime() - new Date(b.orderCreatedAt).getTime();
-    cooking.sort(sortFn);
     ready.sort(sortFn);
 
     return { cooking, ready };
   }, [orders]);
+
+  /* ─── Group ready items by table ─── */
+  const readyByTable = useMemo(() => {
+    const groups: { key: string; tableName: string; sectionName: string | null; items: KitchenItem[] }[] = [];
+    const map = new Map<string, typeof groups[number]>();
+    for (const item of columnData.ready) {
+      const key = item.tableId || `takeaway-${item.orderId}`;
+      let group = map.get(key);
+      if (!group) {
+        group = { key, tableName: item.tableName, sectionName: item.sectionName, items: [] };
+        map.set(key, group);
+        groups.push(group);
+      }
+      group.items.push(item);
+    }
+    return groups;
+  }, [columnData.ready]);
 
   /* ─── Mark Item Ready mutation ─── */
   const readyMutation = useMutation({
@@ -481,14 +473,22 @@ export default function KitchenPage() {
               <p className="text-gray-500 text-sm">Loading orders…</p>
             </div>
           </div>
+        ) : isError ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center space-y-3">
+              <p className="text-red-400">Failed to load kitchen orders</p>
+              <button className="px-4 py-2 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600" onClick={() => refetch()}>Retry</button>
+            </div>
+          </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 h-full">
+          <div className="flex gap-3 h-full">
             {COLUMNS.map((col) => {
               const items = columnData[col.key];
+              const isReady = col.key === 'ready';
               return (
-                <div key={col.key} className="flex flex-col h-full min-h-0">
+                <div key={col.key} className={`flex flex-col h-full min-h-0 ${isReady ? 'w-[320px] shrink-0' : 'flex-1 min-w-0'}`}>
                   {/* Column header */}
-                  <div className={`flex items-center justify-between px-4 py-2.5 rounded-t-xl ${col.headerBg} border ${col.borderColor} border-b-0`}>
+                  <div className={`flex items-center justify-between px-4 py-2 rounded-t-xl ${col.headerBg} border ${col.borderColor} border-b-0`}>
                     <div className="flex items-center gap-2">
                       <span className={`w-2.5 h-2.5 rounded-full ${col.dot}`} />
                       <span className={`text-sm font-bold uppercase tracking-wider ${col.headerText}`}>
@@ -501,11 +501,36 @@ export default function KitchenPage() {
                   </div>
 
                   {/* Column body — scrollable */}
-                  <div className={`flex-1 overflow-y-auto rounded-b-xl border ${col.borderColor} border-t-0 bg-gray-900/40 p-2.5 space-y-2.5`}>
+                  <div className={`flex-1 overflow-y-auto rounded-b-xl border ${col.borderColor} border-t-0 bg-gray-900/40 p-2 ${col.key === 'cooking' ? 'grid grid-cols-3 gap-1.5 auto-rows-min content-start' : 'space-y-1.5'}`}>
                     {items.length === 0 ? (
-                      <div className="flex items-center justify-center h-full">
+                      <div className={`flex items-center justify-center h-full ${col.key === 'cooking' ? 'col-span-3' : ''}`}>
                         <p className="text-sm text-gray-600">{col.emptyMsg}</p>
                       </div>
+                    ) : isReady ? (
+                      readyByTable.map((group) => (
+                        <div key={group.key} className="bg-gray-800/60 rounded-lg overflow-hidden border-l-3 border-l-emerald-400">
+                          {/* Table header */}
+                          <div className="flex items-center justify-between px-3 py-1.5 bg-emerald-500/10">
+                            <span className="text-xs font-bold text-emerald-400 tracking-wide">
+                              {group.tableName && group.tableName !== 'Unknown' ? group.tableName : 'Takeaway'}
+                            </span>
+                            <span className="text-[10px] font-bold text-emerald-400/60 tabular-nums">
+                              {group.items.length}
+                            </span>
+                          </div>
+                          {/* Compact items */}
+                          <div className="divide-y divide-gray-700/20">
+                            {group.items.map((kitchenItem) => (
+                              <div key={kitchenItem.id} className="flex items-center gap-2 px-3 py-1.5">
+                                <span className="shrink-0 w-5 h-5 rounded bg-gray-700 flex items-center justify-center text-[11px] font-bold text-white">
+                                  {kitchenItem.quantity}
+                                </span>
+                                <p className="flex-1 text-xs font-semibold text-gray-200 truncate">{kitchenItem.menuItemName}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))
                     ) : (
                       items.map((kitchenItem) => (
                         <ItemTicket

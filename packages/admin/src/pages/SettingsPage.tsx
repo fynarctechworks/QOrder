@@ -41,11 +41,24 @@ interface FormState {
   geoLongitude: string;
   geoFenceRadius: string;
   geoFenceEnabled: boolean;
-  // Payment gateway
-  paymentGatewayEnabled: boolean;
-  paymentMode: 'pay_before' | 'pay_after';
-  razorpayKeyId: string;
-  razorpayKeySecret: string;
+  // WhatsApp billing (Meta Business API)
+  whatsappBillEnabled: boolean;
+  whatsappPhoneNumberId: string;
+  whatsappBusinessAccountId: string;
+  whatsappAccessToken: string;
+  // Twilio
+  twilioEnabled: boolean;
+  twilioAccountSid: string;
+  twilioAuthToken: string;
+  twilioPhoneNumber: string;
+  // WhatsApp Alerts
+  adminWhatsAppPhone: string;
+  whatsappAlertLowStock: boolean;
+  whatsappAlertStaffLate: boolean;
+  whatsappAlertEarlyCheckout: boolean;
+  whatsappAlertAutoInvoice: boolean;
+  staffLateThresholdMinutes: string;
+  earlyCheckoutThresholdMinutes: string;
   // Print layout
   printLogoUrl: string;
   printHeaderText: string;
@@ -81,10 +94,21 @@ const DEFAULTS: FormState = {
   geoLongitude: '',
   geoFenceRadius: '50',
   geoFenceEnabled: false,
-  paymentGatewayEnabled: false,
-  paymentMode: 'pay_after',
-  razorpayKeyId: '',
-  razorpayKeySecret: '',
+  whatsappBillEnabled: false,
+  whatsappPhoneNumberId: '',
+  whatsappBusinessAccountId: '',
+  whatsappAccessToken: '',
+  twilioEnabled: false,
+  twilioAccountSid: '',
+  twilioAuthToken: '',
+  twilioPhoneNumber: '',
+  adminWhatsAppPhone: '',
+  whatsappAlertLowStock: false,
+  whatsappAlertStaffLate: false,
+  whatsappAlertEarlyCheckout: false,
+  whatsappAlertAutoInvoice: false,
+  staffLateThresholdMinutes: '15',
+  earlyCheckoutThresholdMinutes: '30',
   printLogoUrl: '',
   printHeaderText: '',
   printFooterText: 'Thank you!',
@@ -124,7 +148,7 @@ function getCurrencySymbol(currencyCode: string): string {
   }
 }
 
-type SectionTab = 'profile' | 'restaurant' | 'orders' | 'payments' | 'printer' | 'security' | 'staff' | 'permissions' | 'sections';
+type SectionTab = 'profile' | 'restaurant' | 'orders' | 'printer' | 'security' | 'staff' | 'permissions' | 'sections';
 
 const TABS: { key: SectionTab; label: string; icon: string }[] = [
   {
@@ -141,11 +165,6 @@ const TABS: { key: SectionTab; label: string; icon: string }[] = [
     key: 'orders',
     label: 'Orders',
     icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01',
-  },
-  {
-    key: 'payments',
-    label: 'Payments',
-    icon: 'M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z',
   },
   {
     key: 'printer',
@@ -429,10 +448,21 @@ export default function SettingsPage() {
       geoLongitude: restaurant.longitude != null ? String(restaurant.longitude) : '',
       geoFenceRadius: String(restaurant.geoFenceRadius ?? 50),
       geoFenceEnabled: restaurant.latitude != null && restaurant.longitude != null,
-      paymentGatewayEnabled: (s.paymentGatewayEnabled as boolean) ?? false,
-      paymentMode: (s.paymentMode as 'pay_before' | 'pay_after') ?? 'pay_after',
-      razorpayKeyId: (s.razorpayKeyId as string) ?? '',
-      razorpayKeySecret: '',
+      whatsappBillEnabled: (s.whatsappBillEnabled as boolean) ?? false,
+      whatsappPhoneNumberId: (s.whatsappPhoneNumberId as string) ?? '',
+      whatsappBusinessAccountId: (s.whatsappBusinessAccountId as string) ?? '',
+      whatsappAccessToken: '',
+      twilioEnabled: (s.twilioEnabled as boolean) ?? false,
+      twilioAccountSid: (s.twilioAccountSid as string) ?? '',
+      twilioAuthToken: '',
+      twilioPhoneNumber: (s.twilioPhoneNumber as string) ?? '',
+      adminWhatsAppPhone: (s.adminWhatsAppPhone as string) ?? '',
+      whatsappAlertLowStock: (s.whatsappAlertLowStock as boolean) ?? false,
+      whatsappAlertStaffLate: (s.whatsappAlertStaffLate as boolean) ?? false,
+      whatsappAlertEarlyCheckout: (s.whatsappAlertEarlyCheckout as boolean) ?? false,
+      whatsappAlertAutoInvoice: (s.whatsappAlertAutoInvoice as boolean) ?? false,
+      staffLateThresholdMinutes: String(s.staffLateThresholdMinutes ?? 15),
+      earlyCheckoutThresholdMinutes: String(s.earlyCheckoutThresholdMinutes ?? 30),
       printLogoUrl: (s.printLogoUrl as string) ?? '',
       printHeaderText: (s.printHeaderText as string) ?? '',
       printFooterText: (s.printFooterText as string) ?? 'Thank you!',
@@ -472,10 +502,21 @@ export default function SettingsPage() {
       geoLongitude: restaurant.longitude != null ? String(restaurant.longitude) : '',
       geoFenceRadius: String(restaurant.geoFenceRadius ?? 50),
       geoFenceEnabled: restaurant.latitude != null && restaurant.longitude != null,
-      paymentGatewayEnabled: (s.paymentGatewayEnabled as boolean) ?? false,
-      paymentMode: (s.paymentMode as 'pay_before' | 'pay_after') ?? 'pay_after',
-      razorpayKeyId: (s.razorpayKeyId as string) ?? '',
-      razorpayKeySecret: '',
+      whatsappBillEnabled: (s.whatsappBillEnabled as boolean) ?? false,
+      whatsappPhoneNumberId: (s.whatsappPhoneNumberId as string) ?? '',
+      whatsappBusinessAccountId: (s.whatsappBusinessAccountId as string) ?? '',
+      whatsappAccessToken: '',
+      twilioEnabled: (s.twilioEnabled as boolean) ?? false,
+      twilioAccountSid: (s.twilioAccountSid as string) ?? '',
+      twilioAuthToken: '',
+      twilioPhoneNumber: (s.twilioPhoneNumber as string) ?? '',
+      adminWhatsAppPhone: (s.adminWhatsAppPhone as string) ?? '',
+      whatsappAlertLowStock: (s.whatsappAlertLowStock as boolean) ?? false,
+      whatsappAlertStaffLate: (s.whatsappAlertStaffLate as boolean) ?? false,
+      whatsappAlertEarlyCheckout: (s.whatsappAlertEarlyCheckout as boolean) ?? false,
+      whatsappAlertAutoInvoice: (s.whatsappAlertAutoInvoice as boolean) ?? false,
+      staffLateThresholdMinutes: String(s.staffLateThresholdMinutes ?? 15),
+      earlyCheckoutThresholdMinutes: String(s.earlyCheckoutThresholdMinutes ?? 30),
       printLogoUrl: (s.printLogoUrl as string) ?? '',
       printHeaderText: (s.printHeaderText as string) ?? '',
       printFooterText: (s.printFooterText as string) ?? 'Thank you!',
@@ -538,11 +579,24 @@ export default function SettingsPage() {
         lockPin: form.lockPin || undefined,
         // Customer verification
         requirePhoneVerification: form.requirePhoneVerification,
-        // Payment gateway
-        paymentGatewayEnabled: form.paymentGatewayEnabled,
-        paymentMode: form.paymentMode,
-        razorpayKeyId: form.razorpayKeyId.trim(),
-        ...(form.razorpayKeySecret.trim() ? { razorpayKeySecret: form.razorpayKeySecret.trim() } : {}),
+        // WhatsApp billing
+        whatsappBillEnabled: form.whatsappBillEnabled,
+        whatsappPhoneNumberId: form.whatsappPhoneNumberId.trim(),
+        whatsappBusinessAccountId: form.whatsappBusinessAccountId.trim(),
+        ...(form.whatsappAccessToken.trim() ? { whatsappAccessToken: form.whatsappAccessToken.trim() } : {}),
+        // Twilio
+        twilioEnabled: form.twilioEnabled,
+        twilioAccountSid: form.twilioAccountSid.trim(),
+        ...(form.twilioAuthToken.trim() ? { twilioAuthToken: form.twilioAuthToken.trim() } : {}),
+        twilioPhoneNumber: form.twilioPhoneNumber.trim(),
+        // WhatsApp Alerts
+        adminWhatsAppPhone: form.adminWhatsAppPhone.trim(),
+        whatsappAlertLowStock: form.whatsappAlertLowStock,
+        whatsappAlertStaffLate: form.whatsappAlertStaffLate,
+        whatsappAlertEarlyCheckout: form.whatsappAlertEarlyCheckout,
+        whatsappAlertAutoInvoice: form.whatsappAlertAutoInvoice,
+        staffLateThresholdMinutes: parseInt(form.staffLateThresholdMinutes, 10) || 15,
+        earlyCheckoutThresholdMinutes: parseInt(form.earlyCheckoutThresholdMinutes, 10) || 30,
         // Print layout
         printLogoUrl: form.printLogoUrl,
         printHeaderText: form.printHeaderText,
@@ -1176,6 +1230,167 @@ export default function SettingsPage() {
                   )}
                 </div>
               )}
+            </SectionCard>
+
+            {/* WhatsApp Alerts */}
+            <SectionCard
+              icon="M8.625 9.75a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375m-13.5 3.01c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 01.778-.332 48.294 48.294 0 005.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z"
+              title="WhatsApp Alerts"
+              subtitle="Get notifications on WhatsApp for important events"
+            >
+              <Field label="Admin WhatsApp Number" hint="Phone number to receive alerts (with country code, e.g. +91...)">
+                <input
+                  type="text"
+                  value={form.adminWhatsAppPhone}
+                  onChange={(e) => update('adminWhatsAppPhone', e.target.value)}
+                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                  placeholder="+919876543210"
+                />
+              </Field>
+
+              <div className="space-y-3">
+                {/* Low Stock Alert */}
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                      form.whatsappAlertLowStock ? 'bg-red-100' : 'bg-gray-200'
+                    }`}>
+                      <span className="text-lg">{form.whatsappAlertLowStock ? '⚠️' : '📦'}</span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-text-primary">Low Stock Alerts</p>
+                      <p className="text-xs text-text-muted">
+                        {form.whatsappAlertLowStock
+                          ? 'You will be alerted when ingredients run low'
+                          : 'Enable to get notified when stock is below minimum'}
+                      </p>
+                    </div>
+                  </div>
+                  <Toggle
+                    checked={form.whatsappAlertLowStock}
+                    onChange={() => update('whatsappAlertLowStock', !form.whatsappAlertLowStock)}
+                    size="md"
+                  />
+                </div>
+
+                {/* Staff Late Alert */}
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                      form.whatsappAlertStaffLate ? 'bg-amber-100' : 'bg-gray-200'
+                    }`}>
+                      <span className="text-lg">{form.whatsappAlertStaffLate ? '⏰' : '👥'}</span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-text-primary">Staff Late Alerts</p>
+                      <p className="text-xs text-text-muted">
+                        {form.whatsappAlertStaffLate
+                          ? 'You will be alerted when staff miss their shift check-in'
+                          : 'Enable to get notified when staff are late'}
+                      </p>
+                    </div>
+                  </div>
+                  <Toggle
+                    checked={form.whatsappAlertStaffLate}
+                    onChange={() => update('whatsappAlertStaffLate', !form.whatsappAlertStaffLate)}
+                    size="md"
+                  />
+                </div>
+
+                {form.whatsappAlertStaffLate && (
+                  <div className="ml-14">
+                    <Field label="Late Threshold (minutes)" hint="Alert after this many minutes past shift start">
+                      <input
+                        type="number"
+                        value={form.staffLateThresholdMinutes}
+                        onChange={(e) => update('staffLateThresholdMinutes', e.target.value)}
+                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                        min="5"
+                        max="120"
+                        step="5"
+                      />
+                    </Field>
+                  </div>
+                )}
+
+                {/* Early Checkout Alert */}
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                      form.whatsappAlertEarlyCheckout ? 'bg-violet-100' : 'bg-gray-200'
+                    }`}>
+                      <span className="text-lg">{form.whatsappAlertEarlyCheckout ? '🚪' : '🕐'}</span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-text-primary">Early Checkout Alerts</p>
+                      <p className="text-xs text-text-muted">
+                        {form.whatsappAlertEarlyCheckout
+                          ? 'You will be alerted when staff check out before shift ends'
+                          : 'Enable to get notified when staff leave early'}
+                      </p>
+                    </div>
+                  </div>
+                  <Toggle
+                    checked={form.whatsappAlertEarlyCheckout}
+                    onChange={() => update('whatsappAlertEarlyCheckout', !form.whatsappAlertEarlyCheckout)}
+                    size="md"
+                  />
+                </div>
+
+                {form.whatsappAlertEarlyCheckout && (
+                  <div className="ml-14">
+                    <Field label="Early Checkout Threshold (minutes)" hint="Alert if staff checks out this many minutes before shift end">
+                      <input
+                        type="number"
+                        value={form.earlyCheckoutThresholdMinutes}
+                        onChange={(e) => update('earlyCheckoutThresholdMinutes', e.target.value)}
+                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                        min="5"
+                        max="120"
+                        step="5"
+                      />
+                    </Field>
+                  </div>
+                )}
+
+                {/* Auto Invoice */}
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                      form.whatsappAlertAutoInvoice ? 'bg-green-100' : 'bg-gray-200'
+                    }`}>
+                      <span className="text-lg">{form.whatsappAlertAutoInvoice ? '🧾' : '📄'}</span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-text-primary">Auto-send Invoice</p>
+                      <p className="text-xs text-text-muted">
+                        {form.whatsappAlertAutoInvoice
+                          ? 'Customers receive invoice on WhatsApp after payment'
+                          : 'Enable to auto-send invoices to customers on order completion'}
+                      </p>
+                    </div>
+                  </div>
+                  <Toggle
+                    checked={form.whatsappAlertAutoInvoice}
+                    onChange={() => update('whatsappAlertAutoInvoice', !form.whatsappAlertAutoInvoice)}
+                    size="md"
+                  />
+                </div>
+              </div>
+
+              {!form.adminWhatsAppPhone && (form.whatsappAlertLowStock || form.whatsappAlertStaffLate || form.whatsappAlertEarlyCheckout) && (
+                <div className="p-3 bg-amber-50 rounded-xl">
+                  <p className="text-xs text-amber-700 leading-relaxed">
+                    ⚠️ Please enter an admin WhatsApp number above to receive low stock, staff late, and early checkout alerts.
+                  </p>
+                </div>
+              )}
+
+              <div className="p-3 bg-blue-50 rounded-xl">
+                <p className="text-xs text-blue-700 leading-relaxed">
+                  📱 WhatsApp alerts use Twilio. Ensure your Twilio credentials are configured in the server environment. Auto-invoice requires customers to have a phone number on their order.
+                </p>
+              </div>
             </SectionCard>
           </motion.div>
         )}
@@ -1853,105 +2068,6 @@ export default function SettingsPage() {
                 </div>
               </SectionCard>
             )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-      <AnimatePresence mode="wait">
-        {activeTab === 'payments' && (
-          <motion.div
-            key="payments"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            className="space-y-5"
-          >
-            <SectionCard
-              icon="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z"
-              title="Online Payment Gateway"
-              subtitle="Accept payments via Razorpay (UPI, cards, wallets, netbanking)"
-            >
-              {/* Enable toggle */}
-              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                    form.paymentGatewayEnabled ? 'bg-green-100' : 'bg-gray-200'
-                  }`}>
-                    <svg className={`w-5 h-5 ${form.paymentGatewayEnabled ? 'text-green-600' : 'text-gray-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-text-primary">Enable Online Payments</p>
-                    <p className="text-xs text-text-muted">
-                      {form.paymentGatewayEnabled ? 'Customers can pay online via Razorpay' : 'Online payments are disabled'}
-                    </p>
-                  </div>
-                </div>
-                <Toggle
-                  checked={form.paymentGatewayEnabled}
-                  onChange={() => update('paymentGatewayEnabled', !form.paymentGatewayEnabled)}
-                  size="md"
-                />
-              </div>
-
-              {form.paymentGatewayEnabled && (
-                <>
-                  {/* Payment Mode */}
-                  <Field label="Payment Mode" hint="When should the customer pay?">
-                    <select
-                      value={form.paymentMode}
-                      onChange={(e) => update('paymentMode', e.target.value as 'pay_before' | 'pay_after')}
-                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
-                    >
-                      <option value="pay_after">Pay After Meal (dine-in default)</option>
-                      <option value="pay_before">Pay Before Order (QSR / takeaway)</option>
-                    </select>
-                  </Field>
-
-                  {/* Razorpay credentials */}
-                  <div className="grid grid-cols-1 gap-4">
-                    <Field label="Razorpay Key ID" hint="From Razorpay Dashboard → Settings → API Keys">
-                      <input
-                        type="text"
-                        value={form.razorpayKeyId}
-                        onChange={(e) => update('razorpayKeyId', e.target.value)}
-                        placeholder="rzp_live_xxxxxxxxxx"
-                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all font-mono"
-                      />
-                    </Field>
-
-                    <Field label="Razorpay Key Secret" hint="Leave blank to keep current secret">
-                      <input
-                        type="password"
-                        value={form.razorpayKeySecret}
-                        onChange={(e) => update('razorpayKeySecret', e.target.value)}
-                        placeholder="Enter new secret to change"
-                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all font-mono"
-                      />
-                    </Field>
-                  </div>
-
-                  {/* Info box */}
-                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                    <p className="text-xs text-blue-700 font-medium mb-1">How it works</p>
-                    <ul className="text-xs text-blue-600 space-y-1 list-disc list-inside">
-                      {form.paymentMode === 'pay_before' ? (
-                        <>
-                          <li>Customer places order → pays online → order sent to kitchen</li>
-                          <li>Best for QSR, cafes, and takeaway</li>
-                        </>
-                      ) : (
-                        <>
-                          <li>Customer orders freely → requests bill → pays online or cash</li>
-                          <li>Best for dine-in restaurants</li>
-                        </>
-                      )}
-                      <li>Supports UPI, cards, wallets, and netbanking via Razorpay</li>
-                    </ul>
-                  </div>
-                </>
-              )}
-            </SectionCard>
           </motion.div>
         )}
       </AnimatePresence>

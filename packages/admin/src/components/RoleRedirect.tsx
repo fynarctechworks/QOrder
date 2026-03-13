@@ -8,17 +8,18 @@ import { DEFAULT_PERMISSIONS, type PageKey, type RolePermissions } from './Permi
 const PAGE_TO_PATH: Record<PageKey, string> = {
   dashboard: '/dashboard',
   'create-order': '/create-order',
+  qsr: '/qsr',
   orders: '/orders',
   menu: '/menu',
   tables: '/tables',
   analytics: '/analytics',
   inventory: '/inventory',
   kitchen: '/kitchen',
-  captain: '/captain',
   crm: '/crm',
   credit: '/credit',
   reports: '/reports',
   'staff-management': '/staff-management',
+  'tv-menu': '/tv-menu',
 };
 
 /**

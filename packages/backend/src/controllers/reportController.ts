@@ -147,4 +147,195 @@ export const reportController = {
       res.json({ success: true, data: { ...result, total_orders: Number(result.total_orders) } });
     } catch (err) { next(err); }
   },
+
+  /* ═══ Inventory vs Sales Reports ═══ */
+
+  async cogsReport(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate, branchId } = parseDateRange(req.query);
+      const data = await reportService.cogsReport(req.user!.restaurantId, startDate, endDate, branchId);
+      res.json({ success: true, data: data.map((d: any) => ({ ...d, qty_sold: Number(d.qty_sold) })) });
+    } catch (err) { next(err); }
+  },
+
+  async inventoryVsRevenue(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate, branchId } = parseDateRange(req.query);
+      const data = await reportService.inventoryVsRevenue(req.user!.restaurantId, startDate, endDate, branchId);
+      res.json({ success: true, data });
+    } catch (err) { next(err); }
+  },
+
+  async stockForecast(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate } = parseDateRange(req.query);
+      const data = await reportService.stockForecast(req.user!.restaurantId, startDate, endDate);
+      res.json({ success: true, data });
+    } catch (err) { next(err); }
+  },
+
+  async wastageVariance(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate, branchId } = parseDateRange(req.query);
+      const data = await reportService.wastageVariance(req.user!.restaurantId, startDate, endDate, branchId);
+      res.json({ success: true, data });
+    } catch (err) { next(err); }
+  },
+
+  async topProfitableItems(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate, branchId } = parseDateRange(req.query);
+      const limit = Math.min(req.query.limit ? Number(req.query.limit) : 30, 200);
+      const data = await reportService.topProfitableItems(req.user!.restaurantId, startDate, endDate, limit, branchId);
+      res.json({ success: true, data: data.map((d: any) => ({ ...d, qty_sold: Number(d.qty_sold) })) });
+    } catch (err) { next(err); }
+  },
+
+  /* ═══ NEW REPORT HANDLERS ═══ */
+
+  async salesSummary(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate, branchId } = parseDateRange(req.query);
+      const data = await reportService.salesSummary(req.user!.restaurantId, startDate, endDate, branchId);
+      res.json({ success: true, data: { ...data, total_orders: Number(data.total_orders), total_items_sold: Number(data.total_items_sold) } });
+    } catch (err) { next(err); }
+  },
+
+  async ordersReport(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate, branchId } = parseDateRange(req.query);
+      const data = await reportService.ordersReport(req.user!.restaurantId, startDate, endDate, branchId);
+      res.json({ success: true, data: data.map((d: any) => ({ ...d, items: Number(d.items) })) });
+    } catch (err) { next(err); }
+  },
+
+  async cancelledOrders(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate, branchId } = parseDateRange(req.query);
+      const data = await reportService.cancelledOrders(req.user!.restaurantId, startDate, endDate, branchId);
+      res.json({ success: true, data: data.map((d: any) => ({ ...d, items: Number(d.items) })) });
+    } catch (err) { next(err); }
+  },
+
+  async topSellingItems(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate, branchId } = parseDateRange(req.query);
+      const limit = Math.min(req.query.limit ? Number(req.query.limit) : 50, 200);
+      const data = await reportService.topSellingItems(req.user!.restaurantId, startDate, endDate, limit, branchId);
+      res.json({ success: true, data: data.map((d: any) => ({ ...d, quantity: Number(d.quantity), order_count: Number(d.order_count) })) });
+    } catch (err) { next(err); }
+  },
+
+  async lowPerformingItems(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate, branchId } = parseDateRange(req.query);
+      const limit = Math.min(req.query.limit ? Number(req.query.limit) : 50, 200);
+      const data = await reportService.lowPerformingItems(req.user!.restaurantId, startDate, endDate, limit, branchId);
+      res.json({ success: true, data: data.map((d: any) => ({ ...d, quantity: Number(d.quantity), order_count: Number(d.order_count) })) });
+    } catch (err) { next(err); }
+  },
+
+  async tableActivity(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate, branchId } = parseDateRange(req.query);
+      const data = await reportService.tableActivity(req.user!.restaurantId, startDate, endDate, branchId);
+      res.json({ success: true, data: data.map((d: any) => ({ ...d, sessions: Number(d.sessions), orders: Number(d.orders) })) });
+    } catch (err) { next(err); }
+  },
+
+  async taxReport(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate, branchId } = parseDateRange(req.query);
+      const data = await reportService.taxReport(req.user!.restaurantId, startDate, endDate, branchId);
+      res.json({ success: true, data: data.map((d: any) => ({ ...d, orders: Number(d.orders) })) });
+    } catch (err) { next(err); }
+  },
+
+  async customerReport(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate } = parseDateRange(req.query);
+      const data = await reportService.customerReport(req.user!.restaurantId, startDate, endDate);
+      res.json({ success: true, data });
+    } catch (err) { next(err); }
+  },
+
+  async repeatCustomers(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate } = parseDateRange(req.query);
+      const data = await reportService.repeatCustomers(req.user!.restaurantId, startDate, endDate);
+      res.json({ success: true, data });
+    } catch (err) { next(err); }
+  },
+
+  async qrScanReport(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate, branchId } = parseDateRange(req.query);
+      const data = await reportService.qrScanReport(req.user!.restaurantId, startDate, endDate, branchId);
+      res.json({ success: true, data: data.map((d: any) => ({ ...d, scans: Number(d.scans), unique_tables: Number(d.unique_tables), sessions_with_orders: Number(d.sessions_with_orders) })) });
+    } catch (err) { next(err); }
+  },
+
+  async qrConversion(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate, branchId } = parseDateRange(req.query);
+      const data = await reportService.qrConversion(req.user!.restaurantId, startDate, endDate, branchId);
+      res.json({ success: true, data: { ...data, total_scans: Number(data.total_scans), scans_with_orders: Number(data.scans_with_orders), total_orders: Number(data.total_orders) } });
+    } catch (err) { next(err); }
+  },
+
+  async tableQrPerformance(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate, branchId } = parseDateRange(req.query);
+      const data = await reportService.tableQrPerformance(req.user!.restaurantId, startDate, endDate, branchId);
+      res.json({ success: true, data: data.map((d: any) => ({ ...d, scans: Number(d.scans), orders: Number(d.orders) })) });
+    } catch (err) { next(err); }
+  },
+
+  async peakHoursReport(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate, branchId } = parseDateRange(req.query);
+      const data = await reportService.peakHoursReport(req.user!.restaurantId, startDate, endDate, branchId);
+      res.json({ success: true, data: data.map((d: any) => ({ ...d, total_orders: Number(d.total_orders) })) });
+    } catch (err) { next(err); }
+  },
+
+  async menuPerformance(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate, branchId } = parseDateRange(req.query);
+      const data = await reportService.menuPerformance(req.user!.restaurantId, startDate, endDate, branchId);
+      res.json({ success: true, data: data.map((d: any) => ({ ...d, total_items: Number(d.total_items), available_items: Number(d.available_items), items_sold: Number(d.items_sold) })) });
+    } catch (err) { next(err); }
+  },
+
+  async ordersSummary(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate, branchId } = parseDateRange(req.query);
+      const data = await reportService.ordersSummary(req.user!.restaurantId, startDate, endDate, branchId);
+      res.json({ success: true, data });
+    } catch (err) { next(err); }
+  },
+
+  async orderTypeBreakdown(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate, branchId } = parseDateRange(req.query);
+      const data = await reportService.orderTypeBreakdown(req.user!.restaurantId, startDate, endDate, branchId);
+      res.json({ success: true, data: data.map((d: any) => ({ ...d, count: Number(d.count) })) });
+    } catch (err) { next(err); }
+  },
+
+  async orderCompletionRate(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate, branchId } = parseDateRange(req.query);
+      const data = await reportService.orderCompletionRate(req.user!.restaurantId, startDate, endDate, branchId);
+      res.json({ success: true, data });
+    } catch (err) { next(err); }
+  },
+
+  async avgOrderValueTrend(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate, branchId } = parseDateRange(req.query);
+      const data = await reportService.avgOrderValueTrend(req.user!.restaurantId, startDate, endDate, branchId);
+      res.json({ success: true, data: data.map((d: any) => ({ ...d, orders: Number(d.orders) })) });
+    } catch (err) { next(err); }
+  },
 };

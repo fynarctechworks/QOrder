@@ -24,11 +24,12 @@ const InventoryPage = lazy(() => import('./pages/InventoryPage'));
 const KitchenPage = lazy(() => import('./pages/KitchenPage'));
 const DiscountsPage = lazy(() => import('./pages/DiscountsPage'));
 const FeedbackPage = lazy(() => import('./pages/FeedbackPage'));
-const CaptainPage = lazy(() => import('./pages/CaptainPage'));
 const CrmPage = lazy(() => import('./pages/CrmPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const StaffManagementPage = lazy(() => import('./pages/StaffManagementPage'));
 const CreditPage = lazy(() => import('./pages/CreditPage'));
+const QSRPage = lazy(() => import('./pages/QSRPage'));
+const TVMenuPage = lazy(() => import('./pages/TVMenuPage'));
 
 function App() {
   return (
@@ -60,6 +61,11 @@ function App() {
               <Route path="create-order" element={
                 <ProtectedRoute pageKey="create-order">
                   <CreateOrderPage />
+                </ProtectedRoute>
+              } />
+              <Route path="qsr" element={
+                <ProtectedRoute pageKey="qsr">
+                  <QSRPage />
                 </ProtectedRoute>
               } />
               <Route path="orders" element={
@@ -97,11 +103,6 @@ function App() {
                   <FeedbackPage />
                 </ProtectedRoute>
               } />
-              <Route path="captain" element={
-                <ProtectedRoute pageKey="captain">
-                  <CaptainPage />
-                </ProtectedRoute>
-              } />
               <Route path="crm" element={
                 <ProtectedRoute pageKey="crm">
                   <CrmPage />
@@ -120,6 +121,11 @@ function App() {
               <Route path="staff-management" element={
                 <ProtectedRoute pageKey="staff-management">
                   <StaffManagementPage />
+                </ProtectedRoute>
+              } />
+              <Route path="tv-menu" element={
+                <ProtectedRoute pageKey="tv-menu">
+                  <TVMenuPage />
                 </ProtectedRoute>
               } />
               <Route path="branches" element={

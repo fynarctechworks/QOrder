@@ -49,6 +49,7 @@ export const errorHandler: ErrorRequestHandler = (
 
   // Handle Prisma errors
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    logger.error({ prismaCode: err.code, prismaMeta: err.meta, prismaMessage: err.message, method: req.method, url: req.originalUrl }, 'Prisma DB error');
     switch (err.code) {
       case 'P2002': // Unique constraint violation
         res.status(409).json({

@@ -13,7 +13,7 @@ export { discountService } from './discountService.js';
 export { serviceRequestService } from './serviceRequestService.js';
 export { feedbackService } from './feedbackService.js';
 export { receiptService } from './receiptService.js';
-export { paymentGatewayService } from './paymentGatewayService.js';
 export { crmService } from './crmService.js';
 export { reportService } from './reportService.js';
 export { staffManagementService } from './staffManagementService.js';
+export { dashboardService } from './dashboardService.js';

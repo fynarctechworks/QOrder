@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { tableService, settingsService, sectionService } from '../services';
 import { useSocket } from '../context/SocketContext';
-import { usePaymentRequests } from '../context/PaymentRequestContext';
 import { useCurrency } from '../hooks/useCurrency';
 import { useBranchStore } from '../state/branchStore';
 import Modal from '../components/Modal';
@@ -52,7 +51,7 @@ const SM: Record<TableStatus, {
     bg: 'bg-amber-50',
     text: 'text-amber-700',
     ring: 'ring-amber-200',
-    icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z',
+    icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z',
     accent: 'bg-amber-500',
   },
   cleaning: {
@@ -202,11 +201,9 @@ export default function TablesPage() {
   const openViewOrder = useCallback((tableId: string) => setViewOrderTableId(tableId), []);
   const closeViewOrder = useCallback(() => setViewOrderTableId(null), []);
   const openSettlement = useCallback((tableId: string) => setSettlementTableId(tableId), []);
-  const { clearPaymentRequest } = usePaymentRequests();
   const closeSettlement = useCallback(() => {
-    if (settlementTableId) clearPaymentRequest(settlementTableId);
     setSettlementTableId(null);
-  }, [settlementTableId, clearPaymentRequest]);
+  }, []);
   const openPrint = useCallback((sessionId: string) => setPrintSessionId(sessionId), []);
   const closePrint = useCallback(() => setPrintSessionId(null), []);
 
@@ -224,13 +221,13 @@ export default function TablesPage() {
   });
 
   // Fetch all sections from settings (so every section appears in dropdown)
-  const { data: allSections = [] } = useQuery({
+  const { data: allSections = [], isError: _sectionsError } = useQuery({
     queryKey: ['sections'],
     queryFn: sectionService.getAll,
   });
 
   // Fetch running tables with live billing
-  const { data: runningTables = [] } = useQuery({
+  const { data: runningTables = [], isError: _rtError } = useQuery({
     queryKey: ['runningTables'],
     queryFn: tableService.getRunningTables,
     staleTime: 0,
@@ -363,7 +360,7 @@ export default function TablesPage() {
   }, [tables, selectedSectionId]);
 
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: sectionFiltered.length, available: 0, occupied: 0, reserved: 0, cleaning: 0 };
+    const c: Record<string, number> = { all: sectionFiltered.length, available: 0, occupied: 0, cleaning: 0 };
     sectionFiltered.forEach((t) => { c[t.status] = (c[t.status] || 0) + 1; });
     return c;
   }, [sectionFiltered]);
@@ -514,7 +511,7 @@ export default function TablesPage() {
       {/* ── Filter Tabs ─────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
         <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none">
-          {([FILTER_ALL, 'available', 'occupied', 'reserved', 'cleaning'] as FilterKey[]).map((key) => {
+          {([FILTER_ALL, 'available', 'occupied', 'cleaning'] as FilterKey[]).map((key) => {
             const isAll = key === FILTER_ALL;
             const active = filter === key;
             const s = isAll ? null : SM[key as TableStatus];
@@ -659,7 +656,6 @@ export default function TablesPage() {
           onClose={closeSettlement}
           onPrint={(sessionId) => {
             openPrint(sessionId);
-            closeSettlement();
           }}
         />
       )}

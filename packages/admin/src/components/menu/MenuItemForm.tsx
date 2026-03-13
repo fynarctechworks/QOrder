@@ -299,7 +299,9 @@ export default function MenuItemForm({
       required: false,
       minSelections: 0,
       maxSelections: 1,
-      options: [],
+      options: [
+        { id: tmpId(), name: '', priceModifier: 0, isDefault: false, isAvailable: true },
+      ],
     };
     set('customizationGroups', [...form.customizationGroups, group]);
   };
@@ -334,11 +336,14 @@ export default function MenuItemForm({
   const updateOption = (groupId: string, optId: string, patch: Partial<CustomizationOption>) => {
     set(
       'customizationGroups',
-      form.customizationGroups.map((g) =>
-        g.id === groupId
-          ? { ...g, options: g.options.map((o) => (o.id === optId ? { ...o, ...patch } : o)) }
-          : g
-      )
+      form.customizationGroups.map((g) => {
+        if (g.id !== groupId) return g;
+        // If setting isDefault to true, uncheck all other options' isDefault
+        if (patch.isDefault) {
+          return { ...g, options: g.options.map((o) => o.id === optId ? { ...o, ...patch } : { ...o, isDefault: false }) };
+        }
+        return { ...g, options: g.options.map((o) => (o.id === optId ? { ...o, ...patch } : o)) };
+      })
     );
   };
 

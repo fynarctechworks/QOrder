@@ -7,7 +7,7 @@ import Toggle from './Toggle';
 
 /* ═══════════════════════ Types ══════════════════════════ */
 
-export type PageKey = 'dashboard' | 'create-order' | 'orders' | 'menu' | 'tables' | 'analytics' | 'inventory' | 'kitchen' | 'captain' | 'crm' | 'credit' | 'reports' | 'staff-management';
+export type PageKey = 'dashboard' | 'create-order' | 'qsr' | 'orders' | 'menu' | 'tables' | 'analytics' | 'inventory' | 'kitchen' | 'crm' | 'credit' | 'reports' | 'staff-management' | 'tv-menu';
 
 /** Base roles always present + optional custom roleTitle keys */
 export interface RolePermissions {
@@ -29,6 +29,12 @@ export const ALL_PAGES: { key: PageKey; label: string; description: string; icon
     label: 'Create Order',
     description: 'Create new orders from the POS',
     icon: 'M12 4v16m8-8H4',
+  },
+  {
+    key: 'qsr',
+    label: 'QSR',
+    description: 'Quick service restaurant cashier order entry',
+    icon: 'M13 10V3L4 14h7v7l9-11h-7z',
   },
   {
     key: 'orders',
@@ -67,12 +73,6 @@ export const ALL_PAGES: { key: PageKey; label: string; description: string; icon
     icon: 'M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z',
   },
   {
-    key: 'captain',
-    label: 'Captain View',
-    description: 'Mobile-optimized table-based order taking for waiters/captains',
-    icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z',
-  },
-  {
     key: 'crm',
     label: 'CRM',
     description: 'Customer relationship management and insights',
@@ -96,13 +96,19 @@ export const ALL_PAGES: { key: PageKey; label: string; description: string; icon
     description: 'Manage shifts, attendance, leave, and payroll',
     icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z',
   },
+  {
+    key: 'tv-menu',
+    label: 'TV Menu',
+    description: 'Full-screen digital menu display for restaurant TVs',
+    icon: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
+  },
 ];
 
 /** Default permissions for each role */
 export const DEFAULT_PERMISSIONS: RolePermissions = {
-  ADMIN: ['dashboard', 'create-order', 'orders', 'menu', 'tables', 'analytics', 'inventory', 'kitchen', 'crm', 'credit', 'reports', 'staff-management'],
-  MANAGER: ['dashboard', 'create-order', 'orders', 'menu', 'tables', 'analytics', 'inventory', 'kitchen', 'crm', 'credit', 'reports'],
-  STAFF: ['create-order', 'orders', 'tables', 'kitchen', 'captain'],
+  ADMIN: ['dashboard', 'create-order', 'qsr', 'orders', 'menu', 'tables', 'analytics', 'inventory', 'kitchen', 'crm', 'credit', 'reports', 'staff-management', 'tv-menu'],
+  MANAGER: ['dashboard', 'create-order', 'qsr', 'orders', 'menu', 'tables', 'analytics', 'inventory', 'kitchen', 'crm', 'credit', 'reports', 'tv-menu'],
+  STAFF: ['create-order', 'qsr', 'orders', 'tables', 'kitchen'],
 };
 
 const ROLE_LABELS: Record<string, string> = {
@@ -141,12 +147,11 @@ export default function PermissionsTab() {
   const [isAddingRole, setIsAddingRole] = useState(false);
   const [newRoleName, setNewRoleName] = useState('');
 
-  /** All role keys: base roles first, then custom ones */
+  /** Only custom role keys (exclude base roles) */
   const allRoleKeys = useMemo(() => {
-    const custom = Object.keys(permissions).filter(
+    return Object.keys(permissions).filter(
       (k) => !BASE_ROLES.includes(k as any)
     );
-    return [...BASE_ROLES, ...custom];
   }, [permissions]);
 
   // Sync from server settings
@@ -389,9 +394,19 @@ export default function PermissionsTab() {
       <div>
         <h2 className="text-[15px] font-semibold text-text-primary">Role Permissions</h2>
         <p className="text-xs text-text-muted mt-0.5">
-          Control which pages each role can access. Settings & Staff are always owner-only.
+          Create custom roles and control which pages each role can access.
         </p>
       </div>
+
+      {allRoleKeys.length === 0 && !isAddingRole && (
+        <div className="text-center py-10 bg-white rounded-2xl border border-dashed border-gray-300">
+          <svg className="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
+          </svg>
+          <h3 className="text-sm font-semibold text-text-primary mb-1">No custom roles yet</h3>
+          <p className="text-xs text-text-muted mb-4">Add a role to start assigning page permissions</p>
+        </div>
+      )}
 
       {allRoleKeys.map((key) => renderRoleSection(key))}
 

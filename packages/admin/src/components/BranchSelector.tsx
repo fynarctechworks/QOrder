@@ -26,6 +26,16 @@ export default function BranchSelector() {
     staleTime: 60_000,
   });
 
+  // If the persisted branch no longer exists in the fetched list, reset to "All Branches"
+  useEffect(() => {
+    if (!isLoading && activeBranchId) {
+      const stillExists = branches.some((b) => b.id === activeBranchId);
+      if (!stillExists) {
+        switchBranch(null, null);
+      }
+    }
+  }, [isLoading, branches, activeBranchId, switchBranch]);
+
   // Close dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -37,8 +47,9 @@ export default function BranchSelector() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Don't render while loading; always show once data is available
+  // Don't render while loading or if there are no branches
   if (isLoading) return null;
+  if (branches.length === 0) return null;
 
   const displayName = activeBranchName || 'All Branches';
 

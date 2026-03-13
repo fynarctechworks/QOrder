@@ -29,7 +29,7 @@ export default function CrmPage() {
   const [customTagInput, setCustomTagInput] = useState('');
   const [customTagError, setCustomTagError] = useState('');
 
-  const { data: result, isLoading } = useQuery({
+  const { data: result, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['crm', 'customers', page, search, filterTag],
     queryFn: () => crmService.getCustomers({ page, limit: 25, search: search || undefined, tags: filterTag || undefined }),
   });
@@ -147,6 +147,8 @@ export default function CrmPage() {
                     ))}
                   </tr>
                 ))
+              ) : isError ? (
+                <tr><td colSpan={7} className="px-4 py-12 text-center"><span className="text-red-500">Failed to load customers: {error?.message}</span><br/><button className="btn-primary text-sm mt-2" onClick={() => refetch()}>Retry</button></td></tr>
               ) : customers.length === 0 ? (
                 <tr><td colSpan={7} className="px-4 py-12 text-center text-text-muted">No customers found</td></tr>
               ) : (

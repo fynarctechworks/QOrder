@@ -58,8 +58,6 @@ export interface ServerToClientEvents {
   'table:updated': (data: { tableId: string; status?: string; sessionToken?: string | null }) => void;
   'session:updated': (data: { sessionId: string; isFullyPaid?: boolean }) => void;
   'menu:update': (data: MenuUpdatePayload) => void;
-  'payment:request': (data: PaymentRequestPayload) => void;
-  'payment:acknowledged': (data: { tableId: string }) => void;
   'sync:refresh': () => void;
   'group:joined': (data: GroupParticipantPayload) => void;
   'group:cartUpdated': (data: GroupCartUpdatePayload) => void;
@@ -72,6 +70,9 @@ export interface ServerToClientEvents {
   'service:acknowledged': (data: { id: string; type: string }) => void;
   'queue:updated': (data: unknown) => void;
   'kds:status': (data: { count: number; users: { id: string; name: string; role: string; roleTitle?: string }[] }) => void;
+  'notification:stockLow': (data: { count: number; items: Array<{ id: string; name: string; unit: string; currentStock: number; minStock: number }> }) => void;
+  'notification:staffLate': (data: { count: number; staff: Array<{ name: string; shiftName: string; shiftStart: string; minutesLate: number }> }) => void;
+  'notification:staffEarlyCheckout': (data: { count: number; staff: Array<{ name: string; shiftName: string; shiftEnd: string; minutesEarly: number }> }) => void;
   error: (message: string) => void;
 }
 
@@ -82,8 +83,6 @@ export interface ClientToServerEvents {
   'order:leave': (data: { orderId: string }) => void;
   'leave:restaurant': (restaurantId: string) => void;
   'leave:table': (tableId: string) => void;
-  'payment:request': (data: PaymentRequestPayload) => void;
-  'payment:acknowledge': (data: { tableId: string }) => void;
   'sync:trigger': () => void;
   'join:group': (code: string) => void;
   'leave:group': (code: string) => void;
@@ -100,6 +99,7 @@ export interface SocketData {
   restaurantId?: string;
   tableId?: string;
   isKds?: boolean;
+  isAuthenticated?: boolean;
   userName?: string;
   userRole?: string;
   userRoleTitle?: string;
@@ -163,15 +163,6 @@ export interface GroupCartUpdatePayload {
     totalPrice: number;
     notes?: string;
   };
-}
-
-export interface PaymentRequestPayload {
-  restaurantId: string;
-  tableId: string;
-  tableNumber: string;
-  total: number;
-  orderCount: number;
-  requestedAt: string;
 }
 
 export {};

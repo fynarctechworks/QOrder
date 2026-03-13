@@ -168,6 +168,16 @@ export const restaurantService = {
       delete settings.razorpayKeySecret;
     }
 
+    // Same for WhatsApp Access Token
+    if (typeof settings.whatsappAccessToken === 'string' && settings.whatsappAccessToken.startsWith('••••')) {
+      delete settings.whatsappAccessToken;
+    }
+
+    // Same for Twilio Auth Token
+    if (typeof settings.twilioAuthToken === 'string' && settings.twilioAuthToken.startsWith('••••')) {
+      delete settings.twilioAuthToken;
+    }
+
     const mergedSettings = {
       ...((existing.settings as Record<string, unknown>) || {}),
       ...settings,
@@ -227,7 +237,7 @@ export const restaurantService = {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const branchFilter = branchId ? { branchId } : {};
+    const branchFilter = branchId ? { OR: [{ branchId }, { branchId: null }] } : {};
 
     const [
       todayOrders,

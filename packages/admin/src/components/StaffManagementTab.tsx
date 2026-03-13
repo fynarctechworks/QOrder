@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { staffService, type StaffMember, type CreateStaffInput } from '../services/staffService';
 import { branchService } from '../services/branchService';
 import { settingsService } from '../services/settingsService';
+import { staffManagementService, type StaffShift } from '../services/staffManagementService';
+import { biometricService } from '../services/biometricService';
+import { biometricBridge, type BridgeStatus } from '../lib/biometricBridge';
 
 /* ═══════════════════════ Helpers ═══════════════════════════ */
 
@@ -54,6 +57,9 @@ function CreateStaffModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const qc = useQueryClient();
+  const [step, setStep] = useState<'details' | 'fingerprint'>('details');
+  const [createdStaff, setCreatedStaff] = useState<StaffMember | null>(null);
   const [form, setForm] = useState<CreateStaffInput>({
     email: '',
     username: '',
@@ -65,6 +71,35 @@ function CreateStaffModal({
   });
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+
+  // Fingerprint bridge state
+  const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>('disconnected');
+  const [enrolling, setEnrolling] = useState(false);
+  const [enrolled, setEnrolled] = useState(false);
+  const [enrollQuality, setEnrollQuality] = useState<number | null>(null);
+
+  useEffect(() => {
+    const unsub = biometricBridge.onStatus(setBridgeStatus);
+    setBridgeStatus(biometricBridge.getStatus());
+    return unsub;
+  }, []);
+
+  const connectBridge = useCallback(() => { biometricBridge.connect(); }, []);
+
+  const resetAll = () => {
+    setForm({ email: '', username: '', password: '', name: '', role: '' as any, roleTitle: '', branchIds: [] });
+    setConfirmPassword('');
+    setStep('details');
+    setCreatedStaff(null);
+    setEnrolled(false);
+    setEnrollQuality(null);
+    setEnrolling(false);
+  };
+
+  const handleClose = () => {
+    resetAll();
+    onClose();
+  };
 
   const { data: branches = [] } = useQuery({
     queryKey: ['branches'],
@@ -78,6 +113,12 @@ function CreateStaffModal({
     staleTime: 30_000,
   });
 
+  const { data: shifts = [] } = useQuery<StaffShift[]>({
+    queryKey: ['shifts'],
+    queryFn: () => staffManagementService.getShifts(),
+    staleTime: 30_000,
+  });
+
   const customRoles = (() => {
     const s = (restaurant?.settings ?? {}) as Record<string, unknown>;
     const rp = s.rolePermissions as Record<string, unknown> | undefined;
@@ -86,24 +127,48 @@ function CreateStaffModal({
   })();
 
   const mutation = useMutation({
-    mutationFn: () => staffService.create({
-      ...form,
-      roleTitle: form.roleTitle?.trim() || undefined,
-    }),
-    onSuccess: () => {
-      toast.success('Staff member created');
+    mutationFn: async () => {
+      const staff = await staffService.create({
+        ...form,
+        roleTitle: form.roleTitle?.trim() || undefined,
+      });
+      return staff;
+    },
+    onSuccess: (staff) => {
+      toast.success('Staff member created — now register fingerprint');
       onCreated();
-      onClose();
-      setForm({ email: '', username: '', password: '', name: '', role: '' as any, roleTitle: '', branchIds: [] });
-      setConfirmPassword('');
+      setCreatedStaff(staff);
+      setStep('fingerprint');
     },
     onError: (err: Error) => toast.error(err.message || 'Failed to create staff'),
   });
 
+  const handleEnroll = async () => {
+    if (!createdStaff) return;
+    setEnrolling(true);
+    try {
+      toast('Place finger on the scanner...', { icon: '👆' });
+      const capture = await biometricBridge.capture();
+      const result = await biometricService.enrollFingerprint({
+        userId: createdStaff.id,
+        templateData: capture.templateData,
+        quality: capture.quality,
+        deviceType: capture.deviceType,
+      });
+      setEnrolled(true);
+      setEnrollQuality(result.quality);
+      toast.success(`Fingerprint enrolled! Quality: ${result.quality ?? 'N/A'}`);
+      qc.invalidateQueries({ queryKey: ['biometric-enrollment-status'] });
+    } catch (err: any) {
+      toast.error(err.message || 'Enrollment failed');
+    } finally {
+      setEnrolling(false);
+    }
+  };
+
   const handleRoleSelect = (role: string) => {
     const baseRoles = ['ADMIN', 'MANAGER', 'STAFF'];
     const isBase = baseRoles.includes(role);
-    const currentSelection = isBase ? form.role : form.roleTitle;
     const isSame = isBase ? (form.role === role && !form.roleTitle) : form.roleTitle === role;
 
     if (isSame) {
@@ -116,8 +181,6 @@ function CreateStaffModal({
       setForm({ ...form, role: 'STAFF', roleTitle: role });
     }
   };
-
-  const selectedRole = form.roleTitle || form.role;
 
   const toggleBranch = (id: string) => {
     setForm((prev) => ({
@@ -143,13 +206,16 @@ function CreateStaffModal({
 
   if (!isOpen) return null;
 
+  const bridgeConnected = bridgeStatus === 'connected';
+
   return (
+    <>
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
-      onClick={onClose}
+      onClick={step === 'details' ? handleClose : undefined}
     >
       <motion.div
         initial={{ scale: 0.95, opacity: 0, y: 10 }}
@@ -158,9 +224,30 @@ function CreateStaffModal({
         onClick={(e) => e.stopPropagation()}
         className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden"
       >
+        {/* Step indicator */}
+        <div className="px-6 pt-5 pb-2 flex items-center gap-2 shrink-0">
+          <div className={`flex items-center gap-1.5 ${step === 'details' ? 'text-primary' : 'text-green-600'}`}>
+            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+              step === 'details' ? 'bg-primary text-white' : 'bg-green-100 text-green-700'
+            }`}>
+              {step === 'details' ? '1' : '\u2713'}
+            </div>
+            <span className="text-xs font-medium">Details</span>
+          </div>
+          <div className="flex-1 h-px bg-gray-200" />
+          <div className={`flex items-center gap-1.5 ${step === 'fingerprint' ? 'text-primary' : 'text-text-muted'}`}>
+            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+              step === 'fingerprint' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-400'
+            }`}>2</div>
+            <span className="text-xs font-medium">Fingerprint</span>
+          </div>
+        </div>
+
+        {/* ─── Step 1: Staff Details ─── */}
+        {step === 'details' && (
         <form onSubmit={handleSubmit} className="flex flex-col overflow-hidden">
           {/* Header */}
-          <div className="px-6 pt-6 pb-4 flex items-center gap-3 border-b border-gray-100 shrink-0">
+          <div className="px-6 pt-3 pb-4 flex items-center gap-3 border-b border-gray-100 shrink-0">
             <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
               <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
@@ -255,20 +342,6 @@ function CreateStaffModal({
             <div>
               <label className="block text-sm font-medium text-text-primary mb-1.5">Role <span className="text-red-400">*</span></label>
               <div className="flex flex-wrap gap-2">
-                {(['ADMIN', 'MANAGER', 'STAFF'] as const).map((role) => (
-                  <button
-                    key={role}
-                    type="button"
-                    onClick={() => handleRoleSelect(role)}
-                    className={`px-3 py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${
-                      form.role === role && !form.roleTitle
-                        ? 'border-primary bg-primary/5 text-primary'
-                        : 'border-gray-200 bg-gray-50 text-text-secondary hover:border-gray-300'
-                    }`}
-                  >
-                    {ROLE_LABELS[role]}
-                  </button>
-                ))}
                 {customRoles.map((cr) => (
                   <button
                     key={cr}
@@ -287,13 +360,28 @@ function CreateStaffModal({
               {!hasRole && (
                 <p className="text-xs text-amber-600 mt-2">Please select a role for this staff member</p>
               )}
-              {form.role === 'ADMIN' && !form.roleTitle && <p className="text-xs text-text-muted mt-2">Full access to all features except staff management</p>}
-              {form.role === 'MANAGER' && !form.roleTitle && <p className="text-xs text-text-muted mt-2">Access to operations: orders, menu, tables, analytics</p>}
-              {form.role === 'STAFF' && !form.roleTitle && <p className="text-xs text-text-muted mt-2">Basic access: create orders, orders, tables</p>}
               {form.roleTitle && <p className="text-xs text-text-muted mt-2">Custom role — permissions managed in the Permissions tab</p>}
               {customRoles.length === 0 && (
-                <p className="text-xs text-text-muted mt-1.5">Create custom roles in Settings → Permissions</p>
+                <p className="text-xs text-amber-600 mt-1.5">No roles found. Create roles in Settings &rarr; Permissions first.</p>
               )}
+            </div>
+
+            {/* Default Shift */}
+            <div>
+              <label className="block text-sm font-medium text-text-primary mb-1.5">
+                Default Shift <span className="text-text-muted font-normal">(for attendance tracking)</span>
+              </label>
+              <select
+                value={form.defaultShiftId || ''}
+                onChange={(e) => setForm({ ...form, defaultShiftId: e.target.value || null })}
+                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+              >
+                <option value="">No shift assigned</option>
+                {shifts.filter(s => s.isActive).map((s) => (
+                  <option key={s.id} value={s.id}>{s.name} ({s.startTime} – {s.endTime})</option>
+                ))}
+              </select>
+              <p className="text-xs text-text-muted mt-1">Used for late check-in and early checkout alerts</p>
             </div>
 
             {/* Branch assignment */}
@@ -322,7 +410,7 @@ function CreateStaffModal({
                   })}
                 </div>
                 {!form.branchIds?.length && (
-                  <p className="text-xs text-amber-600 mt-1.5">No branch selected — staff won't appear in branch-filtered views</p>
+                  <p className="text-xs text-amber-600 mt-1.5">No branch selected &mdash; staff won't appear in branch-filtered views</p>
                 )}
               </div>
             )}
@@ -332,7 +420,7 @@ function CreateStaffModal({
           <div className="px-6 py-4 flex items-center gap-2 border-t border-gray-100 shrink-0">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="flex-1 px-4 py-2.5 bg-gray-100 text-text-secondary rounded-xl text-sm font-medium hover:bg-gray-200 transition-all"
             >
               Cancel
@@ -342,12 +430,133 @@ function CreateStaffModal({
               disabled={mutation.isPending || !hasRole || !form.branchIds?.length}
               className="flex-1 px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary-hover transition-all active:scale-[0.97] disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {mutation.isPending ? 'Creating...' : 'Create'}
+              {mutation.isPending ? 'Creating...' : 'Create & Next'}
             </button>
           </div>
         </form>
+        )}
+
+        {/* ─── Step 2: Fingerprint Enrollment ─── */}
+        {step === 'fingerprint' && createdStaff && (
+          <div className="flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="px-6 pt-3 pb-4 flex items-center gap-3 border-b border-gray-100 shrink-0">
+              <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-[15px] font-semibold text-text-primary">Register Fingerprint</h3>
+                <p className="text-xs text-text-muted mt-0.5">
+                  Enroll fingerprint for <strong>{createdStaff.name}</strong>
+                </p>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-6 space-y-5">
+              {/* Created staff confirmation */}
+              <div className="flex items-center gap-3 p-3 bg-green-50 rounded-xl border border-green-100">
+                <svg className="w-5 h-5 text-green-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <p className="text-sm font-medium text-green-800">Staff account created</p>
+                  <p className="text-xs text-green-600">{createdStaff.name} &middot; {createdStaff.roleTitle || createdStaff.role} &middot; @{createdStaff.username}</p>
+                </div>
+              </div>
+
+              {/* Bridge connection */}
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-200">
+                <div className="flex items-center gap-2.5">
+                  <div className={`w-2.5 h-2.5 rounded-full ${bridgeConnected ? 'bg-green-500' : bridgeStatus === 'connecting' ? 'bg-amber-400 animate-pulse' : 'bg-gray-300'}`} />
+                  <div>
+                    <p className="text-sm font-medium text-text-primary">Scanner Bridge</p>
+                    <p className="text-xs text-text-muted">
+                      {bridgeConnected ? 'Connected \u2014 Ready' : bridgeStatus === 'connecting' ? 'Connecting...' : 'Not connected'}
+                    </p>
+                  </div>
+                </div>
+                {!bridgeConnected && (
+                  <button onClick={connectBridge}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary-hover transition-colors">
+                    Connect
+                  </button>
+                )}
+              </div>
+
+              {/* Enrollment action */}
+              {!enrolled ? (
+                <div className="text-center space-y-4">
+                  <div className="w-20 h-20 mx-auto rounded-full bg-gray-100 flex items-center justify-center">
+                    <svg className="w-10 h-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4" />
+                    </svg>
+                  </div>
+                  <p className="text-sm text-text-secondary">
+                    {bridgeConnected
+                      ? 'Click below and place the staff member\u2019s finger on the scanner'
+                      : 'Connect the scanner bridge first, then enroll the fingerprint'}
+                  </p>
+                  <button
+                    onClick={handleEnroll}
+                    disabled={!bridgeConnected || enrolling}
+                    className="px-6 py-3 text-sm font-semibold rounded-xl bg-primary text-white hover:bg-primary-hover transition-all active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {enrolling ? (
+                      <span className="flex items-center gap-2">
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Capturing...
+                      </span>
+                    ) : 'Enroll Fingerprint'}
+                  </button>
+                </div>
+              ) : (
+                <div className="text-center space-y-3">
+                  <div className="w-20 h-20 mx-auto rounded-full bg-green-100 flex items-center justify-center">
+                    <svg className="w-10 h-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-green-700">Fingerprint Enrolled Successfully</p>
+                    {enrollQuality != null && (
+                      <p className="text-xs text-text-muted mt-1">Quality score: {enrollQuality}/100</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="px-6 py-4 flex items-center gap-2 border-t border-gray-100 shrink-0">
+              {!enrolled ? (
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="flex-1 px-4 py-2.5 bg-gray-100 text-text-secondary rounded-xl text-sm font-medium hover:bg-gray-200 transition-all"
+                >
+                  Skip for Now
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="flex-1 px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary-hover transition-all active:scale-[0.97]"
+                >
+                  Done
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </motion.div>
     </motion.div>
+    </>
   );
 }
 
@@ -453,6 +662,36 @@ function EditStaffModal({
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState<'ADMIN' | 'MANAGER' | 'STAFF'>(staff.role as any);
   const [roleTitle, setRoleTitle] = useState(staff.roleTitle || '');
+  const [defaultShiftId, setDefaultShiftId] = useState(staff.defaultShiftId || '');
+
+  const { data: restaurant } = useQuery({
+    queryKey: ['settings'],
+    queryFn: settingsService.get,
+    staleTime: 30_000,
+  });
+
+  const { data: shifts = [] } = useQuery<StaffShift[]>({
+    queryKey: ['shifts'],
+    queryFn: () => staffManagementService.getShifts(),
+    staleTime: 30_000,
+  });
+
+  const customRoles = (() => {
+    const s = (restaurant?.settings ?? {}) as Record<string, unknown>;
+    const rp = s.rolePermissions as Record<string, unknown> | undefined;
+    if (!rp) return [];
+    return Object.keys(rp).filter((k) => !['ADMIN', 'MANAGER', 'STAFF', 'OWNER'].includes(k));
+  })();
+
+  const handleEditRoleSelect = (roleName: string) => {
+    if (roleTitle === roleName) {
+      setRole('' as any);
+      setRoleTitle('');
+    } else {
+      setRole('STAFF');
+      setRoleTitle(roleName);
+    }
+  };
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -463,6 +702,7 @@ function EditStaffModal({
         ...(password ? { password } : {}),
         role,
         roleTitle: roleTitle.trim() || null,
+        defaultShiftId: defaultShiftId || null,
       }),
     onSuccess: () => {
       toast.success('Staff member updated');
@@ -482,6 +722,7 @@ function EditStaffModal({
   };
 
   return (
+    <>
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -593,42 +834,44 @@ function EditStaffModal({
 
             <div>
               <label className="block text-sm font-medium text-text-primary mb-1.5">Role</label>
-              <div className="grid grid-cols-3 gap-2">
-                {(['ADMIN', 'MANAGER', 'STAFF'] as const).map((r) => (
+              <div className="flex flex-wrap gap-2">
+                {customRoles.map((cr) => (
                   <button
-                    key={r}
+                    key={cr}
                     type="button"
-                    onClick={() => setRole(r)}
+                    onClick={() => handleEditRoleSelect(cr)}
                     className={`px-3 py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${
-                      role === r
+                      roleTitle === cr
                         ? 'border-primary bg-primary/5 text-primary'
                         : 'border-gray-200 bg-gray-50 text-text-secondary hover:border-gray-300'
                     }`}
                   >
-                    {ROLE_LABELS[r]}
+                    {cr}
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-text-muted mt-2">
-                {role === 'ADMIN' && 'Full access to all features except staff management'}
-                {role === 'MANAGER' && 'Access to operations: orders, menu, tables, analytics'}
-                {role === 'STAFF' && 'Basic access: create orders, orders, tables'}
-              </p>
+              {roleTitle && <p className="text-xs text-text-muted mt-2">Custom role — permissions managed in the Permissions tab</p>}
+              {customRoles.length === 0 && (
+                <p className="text-xs text-amber-600 mt-1.5">No roles found. Create roles in Settings &rarr; Permissions first.</p>
+              )}
             </div>
 
+            {/* Default Shift */}
             <div>
               <label className="block text-sm font-medium text-text-primary mb-1.5">
-                Custom Role Title <span className="text-text-muted font-normal">(optional)</span>
+                Default Shift <span className="text-text-muted font-normal">(for attendance tracking)</span>
               </label>
-              <input
-                type="text"
-                value={roleTitle}
-                onChange={(e) => setRoleTitle(e.target.value)}
-                placeholder="e.g. Head Chef, Bartender, Floor Manager"
-                maxLength={50}
+              <select
+                value={defaultShiftId}
+                onChange={(e) => setDefaultShiftId(e.target.value)}
                 className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
-              />
-              <p className="text-xs text-text-muted mt-1">Displayed instead of the default role name</p>
+              >
+                <option value="">No shift assigned</option>
+                {shifts.filter(s => s.isActive).map((s) => (
+                  <option key={s.id} value={s.id}>{s.name} ({s.startTime} – {s.endTime})</option>
+                ))}
+              </select>
+              <p className="text-xs text-text-muted mt-1">Used for late check-in and early checkout alerts</p>
             </div>
           </div>
 
@@ -652,6 +895,7 @@ function EditStaffModal({
         </form>
       </motion.div>
     </motion.div>
+    </>
   );
 }
 
@@ -762,16 +1006,6 @@ export default function StaffManagementTab() {
       queryClient.invalidateQueries({ queryKey: ['staff'] });
       setDeleteConfirm(null);
       toast.success('Staff member removed');
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
-
-  const changeRoleMutation = useMutation({
-    mutationFn: ({ id, role }: { id: string; role: 'ADMIN' | 'MANAGER' | 'STAFF' }) =>
-      staffService.update(id, { role }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['staff'] });
-      toast.success('Role updated');
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -916,6 +1150,13 @@ export default function StaffManagementTab() {
                     </div>
                   ) : (
                     <p className="text-[10px] text-amber-600 mt-1">No branch assigned</p>
+                  )}
+                  {/* Shift badge */}
+                  {member.defaultShift && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-600 border border-indigo-100 mt-1">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                      {member.defaultShift.name} ({member.defaultShift.startTime}–{member.defaultShift.endTime})
+                    </span>
                   )}
                 </div>
 

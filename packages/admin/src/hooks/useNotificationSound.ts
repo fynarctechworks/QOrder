@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react';
 
-type SoundType = 'newOrder' | 'payment' | 'serviceRequest' | 'kitchenReady' | 'leaveRequest';
+type SoundType = 'newOrder' | 'payment' | 'serviceRequest' | 'kitchenReady' | 'leaveRequest' | 'stockLow' | 'staffLate' | 'staffEarlyCheckout';
 
 /**
  * Synthesized notification sounds using Web Audio API — no sound files needed.
@@ -17,6 +17,12 @@ const SOUND_CONFIG: Record<SoundType, { freqs: number[]; durations: number[]; ty
   kitchenReady: { freqs: [1200], durations: [0.25], type: 'sine' },
   // Gentle two-tone chime — staff request
   leaveRequest: { freqs: [520, 780], durations: [0.2, 0.3], type: 'sine' },
+  // Urgent low descending alarm — stock warning
+  stockLow: { freqs: [880, 660, 440], durations: [0.15, 0.15, 0.3], type: 'triangle' },
+  // Two-tone alert — staff late
+  staffLate: { freqs: [600, 900], durations: [0.2, 0.3], type: 'triangle' },
+  // Descending two-tone — early checkout
+  staffEarlyCheckout: { freqs: [900, 500], durations: [0.2, 0.3], type: 'triangle' },
 };
 
 function playSound(soundType: SoundType) {

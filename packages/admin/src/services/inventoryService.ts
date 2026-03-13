@@ -124,6 +124,7 @@ export const inventoryService = {
   // Ingredients
   async getIngredients(): Promise<Ingredient[]> {
     const raw = await apiClient.get<any[]>('/inventory/ingredients');
+    if (!Array.isArray(raw)) return [];
     return raw.map(mapIngredient);
   },
 

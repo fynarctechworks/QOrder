@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -8,6 +8,8 @@ import type { StaffMember } from '../services/staffService';
 import type { StaffShift, AttendanceRecord, LeaveRequest, PayrollRun, PayrollConfig } from '../services/staffManagementService';
 import { useCurrency } from '../hooks/useCurrency';
 import { useAuth } from '../context/AuthContext';
+import { biometricService } from '../services/biometricService';
+import { biometricBridge, type BridgeStatus } from '../lib/biometricBridge';
 
 const ALL_TABS = [
   { key: 'overview', label: 'Overview' },
@@ -43,7 +45,7 @@ export default function StaffManagementPage() {
   const defaultTab: TabKey = isAdmin ? 'overview' : 'attendance';
   const [tab, setTab] = useState<TabKey>(defaultTab);
 
-  const { data: staffList = [], isLoading: staffLoading } = useQuery({
+  const { data: staffList = [], isLoading: staffLoading, isError: staffError, error: staffErr, refetch: staffRefetch } = useQuery({
     queryKey: ['staff'],
     queryFn: () => staffService.list(),
     enabled: isAdmin,
@@ -80,12 +82,21 @@ export default function StaffManagementPage() {
         </div>
       )}
 
-      {tab === 'overview' && isAdmin && <OverviewTab staff={staffList.filter(s => s.role !== 'OWNER')} loading={staffLoading} onNavigate={setTab} />}
-      {tab === 'shifts' && isAdmin && <ShiftsTab />}
-      {tab === 'attendance' && isAdmin && <AttendanceTab staff={activeStaff} />}
-      {tab === 'attendance' && !isAdmin && <MyAttendanceTab />}
-      {tab === 'leave' && <LeaveTab staff={activeStaff} isAdmin={isAdmin} currentUserId={user?.id ?? ''} />}
-      {tab === 'payroll' && isAdmin && <PayrollTab staff={activeStaff} />}
+      {staffError ? (
+        <div className="card p-8 text-center space-y-3">
+          <p className="text-red-500">Failed to load staff: {staffErr?.message}</p>
+          <button className="btn-primary text-sm" onClick={() => staffRefetch()}>Retry</button>
+        </div>
+      ) : (
+        <>
+          {tab === 'overview' && isAdmin && <OverviewTab staff={staffList.filter(s => s.role !== 'OWNER')} loading={staffLoading} onNavigate={setTab} />}
+          {tab === 'shifts' && isAdmin && <ShiftsTab />}
+          {tab === 'attendance' && isAdmin && <AttendanceTab staff={activeStaff} />}
+          {tab === 'attendance' && !isAdmin && <MyAttendanceTab />}
+          {tab === 'leave' && <LeaveTab staff={activeStaff} isAdmin={isAdmin} currentUserId={user?.id ?? ''} />}
+          {tab === 'payroll' && isAdmin && <PayrollTab staff={activeStaff} />}
+        </>
+      )}
     </div>
   );
 }
@@ -282,7 +293,7 @@ function ShiftsTab() {
   const [editShift, setEditShift] = useState<StaffShift | null>(null);
   const [form, setForm] = useState({ name: '', shiftType: 'MORNING', startTime: '09:00', endTime: '17:00', breakMinutes: 30 });
 
-  const { data: res, isLoading } = useQuery({
+  const { data: res, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['shifts'],
     queryFn: () => staffManagementService.getShifts(),
   });
@@ -382,6 +393,8 @@ function ShiftsTab() {
                   {Array.from({ length: 5 }).map((_, j) => <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-20" /></td>)}
                 </tr>
               ))
+            ) : isError ? (
+              <tr><td colSpan={5} className="px-4 py-12 text-center"><span className="text-red-500">Failed to load shifts: {error?.message}</span><br/><button className="btn-primary text-sm mt-2" onClick={() => refetch()}>Retry</button></td></tr>
             ) : shifts.length === 0 ? (
               <tr><td colSpan={5} className="px-4 py-12 text-center text-text-muted">No shifts defined yet</td></tr>
             ) : shifts.map(s => (
@@ -410,7 +423,7 @@ function AttendanceTab({ staff }: { staff: StaffMember[] }) {
   const [filterDate, setFilterDate] = useState(todayStr);
   const [markForm, setMarkForm] = useState({ userId: '', date: todayStr, status: 'PRESENT', checkIn: '' });
 
-  const { data: res, isLoading } = useQuery({
+  const { data: res, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['attendance', filterDate],
     queryFn: () => staffManagementService.getAttendance({ startDate: filterDate, endDate: filterDate }),
   });
@@ -449,7 +462,9 @@ function AttendanceTab({ staff }: { staff: StaffMember[] }) {
 
       {/* Quick Mark */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-        <h3 className="text-sm font-semibold text-text-primary mb-3">Mark Attendance</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-text-primary">Mark Attendance</h3>
+        </div>
         <div className="flex flex-wrap gap-3 items-end">
           <StaffPicker staff={staff} value={markForm.userId} onChange={id => setMarkForm(f => ({ ...f, userId: id }))} />
           <div>
@@ -491,6 +506,8 @@ function AttendanceTab({ staff }: { staff: StaffMember[] }) {
                   {Array.from({ length: 6 }).map((_, j) => <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-16" /></td>)}
                 </tr>
               ))
+            ) : isError ? (
+              <tr><td colSpan={6} className="px-4 py-12 text-center"><span className="text-red-500">Failed to load attendance: {error?.message}</span><br/><button className="btn-primary text-sm mt-2" onClick={() => refetch()}>Retry</button></td></tr>
             ) : records.length === 0 ? (
               <tr><td colSpan={6} className="px-4 py-12 text-center text-text-muted">No attendance records</td></tr>
             ) : records.map(r => (
@@ -511,38 +528,76 @@ function AttendanceTab({ staff }: { staff: StaffMember[] }) {
           </tbody>
         </table>
       </div>
+
     </div>
   );
 }
 
-/* ─── My Attendance (Staff self-view) ───────────────── */
+/* ─── My Attendance (Staff self-view with Fingerprint Verification) ───────────────── */
 function MyAttendanceTab() {
-  const { user } = useAuth();
   const qc = useQueryClient();
   const todayStr = new Date().toISOString().slice(0, 10);
   const [filterDate, setFilterDate] = useState(todayStr);
-  const [checkIn, setCheckIn] = useState('');
+
+  // Bridge state
+  const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>('disconnected');
+  const [scanning, setScanning] = useState(false);
+
+  useEffect(() => {
+    const unsub = biometricBridge.onStatus(setBridgeStatus);
+    setBridgeStatus(biometricBridge.getStatus());
+    return unsub;
+  }, []);
+
+  const connectBridge = useCallback(() => { biometricBridge.connect(); }, []);
+
+  // Check if staff has enrolled fingerprint (self-service endpoint)
+  const { data: selfEnrollment } = useQuery({
+    queryKey: ['biometric-self-enrollment-status'],
+    queryFn: biometricService.getSelfEnrollmentStatus,
+  });
+
+  const isEnrolled = selfEnrollment?.enrolled ?? false;
+  const bridgeConnected = bridgeStatus === 'connected';
 
   const { data: res, isLoading } = useQuery({
     queryKey: ['attendance', 'my', filterDate],
     queryFn: () => staffManagementService.getAttendance({ startDate: filterDate, endDate: filterDate }),
   });
 
-  const markMut = useMutation({
-    mutationFn: (d: { userId: string; date: string; status: string; checkIn: string }) => staffManagementService.markAttendance(d),
-    onSuccess: () => { toast.success('Attendance marked'); qc.invalidateQueries({ queryKey: ['attendance'] }); setCheckIn(''); },
-    onError: (err: Error) => toast.error(err.message || 'Failed to mark attendance'),
-  });
-
-  const checkOutMut = useMutation({
-    mutationFn: (d: { userId: string; date: string; checkOut: string }) => staffManagementService.checkOut(d),
-    onSuccess: () => { toast.success('Checked out'); qc.invalidateQueries({ queryKey: ['attendance'] }); },
-    onError: (err: Error) => toast.error(err.message || 'Failed to check out'),
-  });
-
   const records: AttendanceRecord[] = (res as AttendanceRecord[] | undefined) ?? [];
   const hasRecordToday = filterDate === todayStr && records.length > 0;
   const todayRecord = filterDate === todayStr ? records[0] : null;
+  const canCheckOut = todayRecord && !todayRecord.checkOut && todayRecord.status === 'PRESENT';
+
+  // Biometric verify + mark attendance
+  const verifyMut = useMutation({
+    mutationFn: async (action: 'CHECKIN' | 'CHECKOUT') => {
+      toast('Place your finger on the scanner...', { icon: '\ud83d\udc46' });
+      const storedTpl = await biometricService.getSelfTemplate();
+      const capture = await biometricBridge.capture();
+      const matchResult = await biometricBridge.match(capture.templateData, storedTpl.templateData);
+      return biometricService.selfVerifyAttendance({
+        action,
+        matchScore: matchResult.matchScore,
+        verified: matchResult.verified,
+      });
+    },
+    onSuccess: (data) => {
+      toast.success(`${data.action === 'CHECKIN' ? 'Checked in' : 'Checked out'} successfully! (Score: ${data.matchScore})`);
+      qc.invalidateQueries({ queryKey: ['attendance'] });
+      setScanning(false);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Verification failed');
+      setScanning(false);
+    },
+  });
+
+  const handleScan = (action: 'CHECKIN' | 'CHECKOUT') => {
+    setScanning(true);
+    verifyMut.mutate(action);
+  };
 
   const STATUS_COLORS: Record<string, string> = {
     PRESENT: 'bg-green-100 text-green-700',
@@ -562,44 +617,134 @@ function MyAttendanceTab() {
         </div>
       </div>
 
-      {/* Mark Attendance (only for today, if not already marked) */}
-      {filterDate === todayStr && !hasRecordToday && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h3 className="text-sm font-semibold text-text-primary mb-3">Mark Attendance</h3>
-          <div className="flex flex-wrap gap-3 items-end">
-            <div>
-              <label className="text-xs font-medium text-text-muted block mb-1">Check In</label>
-              <input type="time" value={checkIn} onChange={e => setCheckIn(e.target.value)}
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20" />
+      {/* Fingerprint Attendance Section (for today only) */}
+      {filterDate === todayStr && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          {/* Header */}
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-text-primary">Fingerprint Attendance</h3>
+                <p className="text-xs text-text-muted mt-0.5">
+                  {!isEnrolled
+                    ? 'Fingerprint not registered \u2014 ask admin to enroll your fingerprint'
+                    : todayRecord && !canCheckOut
+                      ? `Done for today \u2014 ${todayRecord.hoursWorked ? Number(todayRecord.hoursWorked).toFixed(1) + 'h worked' : 'Checked out'}`
+                      : canCheckOut
+                        ? 'You are checked in \u2014 scan fingerprint to check out'
+                        : 'Scan your fingerprint to check in'}
+                </p>
+              </div>
             </div>
-            <button
-              onClick={() => markMut.mutate({ userId: user!.id, date: todayStr, status: 'PRESENT', checkIn })}
-              disabled={markMut.isPending}
-              className="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary-hover transition-colors disabled:opacity-50">
-              Check In
-            </button>
+            {/* Bridge status */}
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${bridgeConnected ? 'bg-green-500' : bridgeStatus === 'connecting' ? 'bg-amber-400 animate-pulse' : 'bg-gray-300'}`} />
+              <span className="text-xs text-text-muted">{bridgeConnected ? 'Scanner ready' : 'Scanner offline'}</span>
+              {!bridgeConnected && (
+                <button onClick={connectBridge}
+                  className="px-2.5 py-1 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary-hover transition-colors">
+                  Connect
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Action area */}
+          <div className="px-5 py-6">
+            {!isEnrolled ? (
+              /* Not enrolled */
+              <div className="text-center py-4">
+                <div className="w-16 h-16 mx-auto rounded-full bg-amber-50 flex items-center justify-center mb-3">
+                  <svg className="w-8 h-8 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                </div>
+                <p className="text-sm font-medium text-text-primary">Fingerprint Not Registered</p>
+                <p className="text-xs text-text-muted mt-1">Please ask your admin to register your fingerprint in the Biometrics section</p>
+              </div>
+            ) : !hasRecordToday ? (
+              /* Check In */
+              <div className="text-center">
+                <div className="w-20 h-20 mx-auto rounded-full bg-green-50 flex items-center justify-center mb-4">
+                  <svg className="w-10 h-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4" />
+                  </svg>
+                </div>
+                <p className="text-sm text-text-secondary mb-4">
+                  {bridgeConnected ? 'Place your finger on the scanner and click Check In' : 'Connect the scanner first to check in'}
+                </p>
+                <button
+                  onClick={() => handleScan('CHECKIN')}
+                  disabled={!bridgeConnected || scanning}
+                  className="px-8 py-3 text-sm font-semibold rounded-xl bg-green-600 text-white hover:bg-green-700 transition-all active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {scanning && verifyMut.variables === 'CHECKIN' ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Scanning...
+                    </span>
+                  ) : 'Scan & Check In'}
+                </button>
+              </div>
+            ) : canCheckOut ? (
+              /* Check Out */
+              <div className="text-center">
+                <div className="flex items-center justify-center gap-2 mb-4">
+                  <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse" />
+                  <span className="text-sm font-medium text-green-700">Checked in at {todayRecord?.checkIn ? new Date(todayRecord.checkIn).toLocaleTimeString() : '\u2014'}</span>
+                </div>
+                <div className="w-20 h-20 mx-auto rounded-full bg-red-50 flex items-center justify-center mb-4">
+                  <svg className="w-10 h-10 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4" />
+                  </svg>
+                </div>
+                <p className="text-sm text-text-secondary mb-4">
+                  {bridgeConnected ? 'Place your finger on the scanner and click Check Out' : 'Connect the scanner first to check out'}
+                </p>
+                <button
+                  onClick={() => handleScan('CHECKOUT')}
+                  disabled={!bridgeConnected || scanning}
+                  className="px-8 py-3 text-sm font-semibold rounded-xl bg-red-500 text-white hover:bg-red-600 transition-all active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {scanning && verifyMut.variables === 'CHECKOUT' ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Scanning...
+                    </span>
+                  ) : 'Scan & Check Out'}
+                </button>
+              </div>
+            ) : (
+              /* Done for today */
+              <div className="text-center py-4">
+                <div className="w-16 h-16 mx-auto rounded-full bg-green-100 flex items-center justify-center mb-3">
+                  <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <p className="text-sm font-medium text-green-700">Attendance Complete</p>
+                <p className="text-xs text-text-muted mt-1">
+                  {todayRecord?.checkIn ? new Date(todayRecord.checkIn).toLocaleTimeString() : '\u2014'} &mdash; {todayRecord?.checkOut ? new Date(todayRecord.checkOut).toLocaleTimeString() : '\u2014'}
+                  {todayRecord?.hoursWorked != null && ` \u00b7 ${Number(todayRecord.hoursWorked).toFixed(1)}h`}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Check Out (if checked in today but not checked out) */}
-      {todayRecord && !todayRecord.checkOut && todayRecord.status === 'PRESENT' && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-text-primary">You're checked in</h3>
-              <p className="text-xs text-text-muted mt-0.5">Checked in at {todayRecord.checkIn ? new Date(todayRecord.checkIn).toLocaleTimeString() : '—'}</p>
-            </div>
-            <button
-              onClick={() => checkOutMut.mutate({ userId: user!.id, date: todayStr, checkOut: new Date().toTimeString().slice(0, 5) })}
-              disabled={checkOutMut.isPending}
-              className="px-4 py-2 text-sm font-medium rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50">
-              Check Out
-            </button>
-          </div>
-        </div>
-      )}
-
+      {/* Attendance history table */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-gray-100">
@@ -622,9 +767,9 @@ function MyAttendanceTab() {
             ) : records.map(r => (
               <tr key={r.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3"><span className={`px-2 py-0.5 text-xs rounded-full font-medium ${STATUS_COLORS[r.status] || ''}`}>{r.status}</span></td>
-                <td className="px-4 py-3 tabular-nums">{r.checkIn ? new Date(r.checkIn).toLocaleTimeString() : '—'}</td>
-                <td className="px-4 py-3 tabular-nums">{r.checkOut ? new Date(r.checkOut).toLocaleTimeString() : '—'}</td>
-                <td className="px-4 py-3 text-right tabular-nums">{r.hoursWorked != null ? Number(r.hoursWorked).toFixed(1) : '—'}</td>
+                <td className="px-4 py-3 tabular-nums">{r.checkIn ? new Date(r.checkIn).toLocaleTimeString() : '\u2014'}</td>
+                <td className="px-4 py-3 tabular-nums">{r.checkOut ? new Date(r.checkOut).toLocaleTimeString() : '\u2014'}</td>
+                <td className="px-4 py-3 text-right tabular-nums">{r.hoursWorked != null ? Number(r.hoursWorked).toFixed(1) : '\u2014'}</td>
               </tr>
             ))}
           </tbody>
@@ -640,7 +785,7 @@ function LeaveTab({ staff, isAdmin, currentUserId }: { staff: StaffMember[]; isA
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ userId: isAdmin ? '' : currentUserId, leaveType: 'CASUAL', startDate: '', endDate: '', reason: '' });
 
-  const { data: res, isLoading } = useQuery({
+  const { data: res, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['leaves', isAdmin ? 'all' : currentUserId],
     queryFn: () => staffManagementService.getLeaves(isAdmin ? {} : { userId: currentUserId }),
   });
@@ -733,6 +878,8 @@ function LeaveTab({ staff, isAdmin, currentUserId }: { staff: StaffMember[]; isA
                   {Array.from({ length: 6 }).map((_, j) => <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-16" /></td>)}
                 </tr>
               ))
+            ) : isError ? (
+              <tr><td colSpan={6} className="px-4 py-12 text-center"><span className="text-red-500">Failed to load leaves: {error?.message}</span><br/><button className="btn-primary text-sm mt-2" onClick={() => refetch()}>Retry</button></td></tr>
             ) : leaves.length === 0 ? (
               <tr><td colSpan={6} className="px-4 py-12 text-center text-text-muted">No leave requests</td></tr>
             ) : leaves.map(l => (
@@ -808,7 +955,7 @@ function PayrollConfigModal({ staff, userId, onClose }: {
   const [allowances, setAllowances] = useState<[string, number][]>([]);
   const [deductions, setDeductions] = useState<[string, number][]>([]);
 
-  const { data: configData, isLoading } = useQuery({
+  const { data: configData, isLoading, isError: _configError, error: _configErr } = useQuery({
     queryKey: ['payroll-config', userId],
     queryFn: () => staffManagementService.getPayrollConfig(userId),
     enabled: !!userId,
@@ -913,7 +1060,7 @@ function PayrollTab({ staff }: { staff: StaffMember[] }) {
   const [genForm, setGenForm] = useState({ userId: '', month: now.getMonth() + 1, year: now.getFullYear() });
   const [configUserId, setConfigUserId] = useState<string | null>(null);
 
-  const { data: res, isLoading } = useQuery({
+  const { data: res, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['payroll', month, year],
     queryFn: () => staffManagementService.getPayrollRuns(month, year),
   });
@@ -1015,6 +1162,8 @@ function PayrollTab({ staff }: { staff: StaffMember[] }) {
                     {Array.from({ length: 9 }).map((_, j) => <td key={j} className="px-4 py-3"><div className="h-4 bg-gray-100 rounded w-16" /></td>)}
                   </tr>
                 ))
+              ) : isError ? (
+                <tr><td colSpan={9} className="px-4 py-12 text-center"><span className="text-red-500">Failed to load payroll: {error?.message}</span><br/><button className="btn-primary text-sm mt-2" onClick={() => refetch()}>Retry</button></td></tr>
               ) : runs.length === 0 ? (
                 <tr><td colSpan={9} className="px-4 py-12 text-center text-text-muted">No payroll runs for this period</td></tr>
               ) : runs.map(r => (

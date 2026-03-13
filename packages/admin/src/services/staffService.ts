@@ -12,6 +12,8 @@ export interface StaffMember {
   isVerified: boolean;
   lastLoginAt: string | null;
   createdAt: string;
+  defaultShiftId?: string | null;
+  defaultShift?: { id: string; name: string; startTime: string; endTime: string } | null;
   branches?: Array<{ branch: { id: string; name: string } }>;
 }
 
@@ -23,6 +25,7 @@ export interface CreateStaffInput {
   role: 'ADMIN' | 'MANAGER' | 'STAFF';
   roleTitle?: string;
   branchIds?: string[];
+  defaultShiftId?: string | null;
 }
 
 export interface UpdateStaffInput {
@@ -33,6 +36,7 @@ export interface UpdateStaffInput {
   role?: 'ADMIN' | 'MANAGER' | 'STAFF';
   roleTitle?: string | null;
   isActive?: boolean;
+  defaultShiftId?: string | null;
 }
 
 export const staffService = {

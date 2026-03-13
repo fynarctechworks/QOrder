@@ -12,15 +12,6 @@ import { io, Socket } from 'socket.io-client';
 import { useAuthStore } from '../state/authStore';
 import type { Order, Table, OrderStatus } from '../types';
 
-export interface PaymentRequestPayload {
-  restaurantId: string;
-  tableId: string;
-  tableNumber: string;
-  total: number;
-  orderCount: number;
-  requestedAt: string;
-}
-
 interface SocketContextValue {
   socket: Socket | null;
   isConnected: boolean;
@@ -40,11 +31,12 @@ interface SocketContextValue {
   onSessionUpdated: (
     callback: (data: { sessionId: string; isFullyPaid?: boolean }) => void
   ) => () => void;
-  onPaymentRequest: (callback: (data: PaymentRequestPayload) => void) => () => void;
   onServiceRequest: (callback: (data: { id: string; type: string; tableId: string; tableName?: string }) => void) => () => void;
   onLeaveRequest: (callback: (data: { id: string; userName: string; leaveType: string; startDate: string; endDate: string; reason?: string }) => void) => () => void;
+  onStockLow: (callback: (data: { count: number; items: Array<{ id: string; name: string; unit: string; currentStock: number; minStock: number }> }) => void) => () => void;
+  onStaffLate: (callback: (data: { count: number; staff: Array<{ name: string; shiftName: string; shiftStart: string; minutesLate: number }> }) => void) => () => void;
+  onStaffEarlyCheckout: (callback: (data: { count: number; staff: Array<{ name: string; shiftName: string; shiftEnd: string; minutesEarly: number }> }) => void) => () => void;
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
-  acknowledgePayment: (tableId: string) => void;
   triggerSync: () => void;
   kdsCount: number;
   kdsUsers: { id: string; name: string; role: string; roleTitle?: string }[];
@@ -76,9 +68,6 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const sessionUpdatedCallbacks = useRef<
     Set<(data: { sessionId: string; isFullyPaid?: boolean }) => void>
   >(new Set());
-  const paymentRequestCallbacks = useRef<
-    Set<(data: PaymentRequestPayload) => void>
-  >(new Set());
   const kitchenReadyCallbacks = useRef<
     Set<(data: { orderId: string; orderNumber: string; tableName: string; preparedAt: string }) => void>
   >(new Set());
@@ -90,6 +79,15 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   >(new Set());
   const leaveRequestCallbacks = useRef<
     Set<(data: { id: string; userName: string; leaveType: string; startDate: string; endDate: string; reason?: string }) => void>
+  >(new Set());
+  const stockLowCallbacks = useRef<
+    Set<(data: { count: number; items: Array<{ id: string; name: string; unit: string; currentStock: number; minStock: number }> }) => void>
+  >(new Set());
+  const staffLateCallbacks = useRef<
+    Set<(data: { count: number; staff: Array<{ name: string; shiftName: string; shiftStart: string; minutesLate: number }> }) => void>
+  >(new Set());
+  const staffEarlyCheckoutCallbacks = useRef<
+    Set<(data: { count: number; staff: Array<{ name: string; shiftName: string; shiftEnd: string; minutesEarly: number }> }) => void>
   >(new Set());
 
   useEffect(() => {
@@ -163,10 +161,6 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       sessionUpdatedCallbacks.current.forEach((cb) => cb(data));
     });
 
-    socket.on('payment:request', (data: PaymentRequestPayload) => {
-      paymentRequestCallbacks.current.forEach((cb) => cb(data));
-    });
-
     socket.on('order:kitchenReady', (data: { orderId: string; orderNumber: string; tableName: string; preparedAt: string }) => {
       kitchenReadyCallbacks.current.forEach((cb) => cb(data));
     });
@@ -181,6 +175,18 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
     socket.on('staff:leaveRequest', (data: { id: string; userName: string; leaveType: string; startDate: string; endDate: string; reason?: string }) => {
       leaveRequestCallbacks.current.forEach((cb) => cb(data));
+    });
+
+    socket.on('notification:stockLow' as any, (data: { count: number; items: Array<{ id: string; name: string; unit: string; currentStock: number; minStock: number }> }) => {
+      stockLowCallbacks.current.forEach((cb) => cb(data));
+    });
+
+    socket.on('notification:staffLate' as any, (data: { count: number; staff: Array<{ name: string; shiftName: string; shiftStart: string; minutesLate: number }> }) => {
+      staffLateCallbacks.current.forEach((cb) => cb(data));
+    });
+
+    socket.on('notification:staffEarlyCheckout' as any, (data: { count: number; staff: Array<{ name: string; shiftName: string; shiftEnd: string; minutesEarly: number }> }) => {
+      staffEarlyCheckoutCallbacks.current.forEach((cb) => cb(data));
     });
 
     socket.on('kds:status' as any, (data: { count: number; users: { id: string; name: string; role: string; roleTitle?: string }[] }) => {
@@ -264,16 +270,6 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  const onPaymentRequest = useCallback(
-    (callback: (data: PaymentRequestPayload) => void) => {
-      paymentRequestCallbacks.current.add(callback);
-      return () => {
-        paymentRequestCallbacks.current.delete(callback);
-      };
-    },
-    []
-  );
-
   const onServiceRequest = useCallback(
     (callback: (data: { id: string; type: string; tableId: string; tableName?: string }) => void) => {
       serviceRequestCallbacks.current.add(callback);
@@ -294,16 +290,39 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  const updateOrderStatus = useCallback(
-    (orderId: string, status: OrderStatus) => {
-      socketRef.current?.emit('order:updateStatus', { orderId, status });
+  const onStockLow = useCallback(
+    (callback: (data: { count: number; items: Array<{ id: string; name: string; unit: string; currentStock: number; minStock: number }> }) => void) => {
+      stockLowCallbacks.current.add(callback);
+      return () => {
+        stockLowCallbacks.current.delete(callback);
+      };
     },
     []
   );
 
-  const acknowledgePayment = useCallback(
-    (tableId: string) => {
-      socketRef.current?.emit('payment:acknowledge' as any, { tableId });
+  const onStaffLate = useCallback(
+    (callback: (data: { count: number; staff: Array<{ name: string; shiftName: string; shiftStart: string; minutesLate: number }> }) => void) => {
+      staffLateCallbacks.current.add(callback);
+      return () => {
+        staffLateCallbacks.current.delete(callback);
+      };
+    },
+    []
+  );
+
+  const onStaffEarlyCheckout = useCallback(
+    (callback: (data: { count: number; staff: Array<{ name: string; shiftName: string; shiftEnd: string; minutesEarly: number }> }) => void) => {
+      staffEarlyCheckoutCallbacks.current.add(callback);
+      return () => {
+        staffEarlyCheckoutCallbacks.current.delete(callback);
+      };
+    },
+    []
+  );
+
+  const updateOrderStatus = useCallback(
+    (orderId: string, status: OrderStatus) => {
+      socketRef.current?.emit('order:updateStatus', { orderId, status });
     },
     []
   );
@@ -332,18 +351,19 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       onTableUpdate,
       onTableUpdated,
       onSessionUpdated,
-      onPaymentRequest,
       onServiceRequest,
       onLeaveRequest,
+      onStockLow,
+      onStaffLate,
+      onStaffEarlyCheckout,
       updateOrderStatus,
-      acknowledgePayment,
       triggerSync,
       kdsCount,
       kdsUsers,
       joinKds,
       leaveKds,
     }),
-    [isConnected, socketInstance, kdsCount, kdsUsers, onNewOrder, onNewOrderFull, onOrderStatusUpdate, onKitchenReady, onItemKitchenReady, onTableUpdate, onTableUpdated, onSessionUpdated, onPaymentRequest, onServiceRequest, onLeaveRequest, updateOrderStatus, acknowledgePayment, triggerSync, joinKds, leaveKds]
+    [isConnected, socketInstance, kdsCount, kdsUsers, onNewOrder, onNewOrderFull, onOrderStatusUpdate, onKitchenReady, onItemKitchenReady, onTableUpdate, onTableUpdated, onSessionUpdated, onServiceRequest, onLeaveRequest, onStockLow, onStaffLate, onStaffEarlyCheckout, updateOrderStatus, triggerSync, joinKds, leaveKds]
   );
 
   return (

@@ -38,7 +38,8 @@ export function RestaurantProvider({ children }: RestaurantProviderProps) {
     queryKey: ['restaurant', restaurantSlug],
     queryFn: () => restaurantService.getBySlug(restaurantSlug!),
     enabled: !!restaurantSlug,
-    staleTime: 1000 * 60 * 10, // 10 minutes
+    staleTime: 1000 * 30, // 30s — keep short so acceptsOrders toggle is picked up quickly
+    refetchOnMount: 'always',
   });
 
   const {

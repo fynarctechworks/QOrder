@@ -129,12 +129,18 @@ model User {
   verificationCode String?
   verificationExpiry DateTime?
   lastLoginAt    DateTime?
+  facePhoto      String?   // (deprecated)
+  faceDescriptor Json?     // (deprecated)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
   // Multi-tenant relation
   restaurantId String
   restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  // Default shift (for late/early alerts without daily assignment)
+  defaultShiftId String?
+  defaultShift   StaffShift? @relation("UserDefaultShift", fields: [defaultShiftId], references: [id], onDelete: SetNull)
 
   // Relations
   refreshTokens RefreshToken[]
@@ -433,7 +439,6 @@ enum PaymentMethod {
   CARD
   UPI
   WALLET
-  ONLINE // Gateway payment (Razorpay, Stripe, etc.)
   CREDIT // Charged to a credit account (pay later)
 }
 
@@ -441,7 +446,6 @@ enum PaymentStatus {
   PENDING
   COMPLETED
   FAILED
-  REFUNDED
 }
 
 model Payment {
@@ -451,16 +455,6 @@ model Payment {
   status    PaymentStatus @default(COMPLETED)
   reference String?       // Transaction reference / receipt number
   notes     String?
-
-  // Payment gateway fields
-  gatewayProvider  String?  // 'razorpay', 'stripe', etc.
-  gatewayOrderId   String?  // e.g. Razorpay order_xxx
-  gatewayPaymentId String?  // e.g. Razorpay pay_xxx
-  gatewaySignature String?  // Verification signature
-  gatewayData      Json?    // Full gateway response for audit
-  refundId         String?  // Gateway refund ID
-  refundAmount     Decimal? @db.Decimal(10, 2)
-  refundedAt       DateTime?
 
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
@@ -481,7 +475,6 @@ model Payment {
   @@index([restaurantId])
   @@index([branchId])
   @@index([createdAt])
-  @@unique([gatewayPaymentId], map: "Payment_gatewayPaymentId_unique")
 }
 
 // ==================== ORDERS ====================
@@ -499,6 +492,7 @@ model Order {
   id            String           @id @default(uuid())
   orderNumber   String           // Human-readable order number
   status        OrderStatus      @default(PENDING)
+  orderType     String           @default("DINE_IN") // DINE_IN, TAKEAWAY, QSR
   subtotal      Decimal          @db.Decimal(10, 2)
   discount      Decimal          @default(0) @db.Decimal(10, 2) // Total discount applied
   tax           Decimal          @db.Decimal(10, 2)
@@ -1100,6 +1094,82 @@ model CustomerInteraction {
 
 // ==================== STAFF MANAGEMENT & PAYROLL ====================
 
+// Biometric fingerprint device (ZKTeco / eSSL / USB scanner)
+model BiometricDevice {
+  id           String   @id @default(uuid())
+  name         String   // "Main Entrance", "Kitchen"
+  type         String   @default("ZKDEVICE") // ZKDEVICE | USB_SCANNER
+  ip           String?  // Device IP address (for ZK network devices)
+  port         Int      @default(4370)
+  serialNumber String?
+  isActive     Boolean  @default(true)
+  lastSyncAt   DateTime?
+  lastUsedAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  restaurantId String
+  userMaps     BiometricUserMap[]
+  logs         BiometricLog[]
+
+  @@index([restaurantId])
+}
+
+// Maps a user ID on the network biometric device to a system staff member
+model BiometricUserMap {
+  id           String @id @default(uuid())
+  deviceUserId Int    // User ID stored on the biometric device
+  deviceName   String?
+
+  userId       String
+  deviceId     String
+  restaurantId String
+  device       BiometricDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceUserId, deviceId])
+  @@index([userId])
+  @@index([deviceId])
+  @@index([restaurantId])
+}
+
+// Encrypted fingerprint template stored per staff member
+model BiometricTemplate {
+  id           String   @id @default(uuid())
+  userId       String
+  fingerIndex  Int      @default(1) // Which finger (1 = right thumb, etc.)
+  templateData String   // Base64 encoded encrypted fingerprint template
+  quality      Int?     // Template quality score (0-100)
+  deviceType   String?  // Device model used for enrollment
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  restaurantId String
+
+  @@unique([userId, fingerIndex])
+  @@index([userId])
+  @@index([restaurantId])
+}
+
+// Logs every biometric verification attempt
+model BiometricLog {
+  id           String   @id @default(uuid())
+  userId       String?  // Null if user is unidentified / no match
+  action       String   // ENROLL | CHECKIN | CHECKOUT | VERIFY
+  result       String   // SUCCESS | FAILED | REJECTED | SPOOF_DETECTED
+  matchScore   Float?   // Matching confidence score if available
+  deviceId     String?
+  device       BiometricDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  errorMessage String?
+  timestamp    DateTime @default(now())
+
+  restaurantId String
+
+  @@index([userId])
+  @@index([restaurantId])
+  @@index([timestamp])
+  @@index([result])
+}
+
 enum ShiftType {
   MORNING
   AFTERNOON
@@ -1124,8 +1194,9 @@ model StaffShift {
   restaurantId String
 
   // Relations
-  assignments ShiftAssignment[]
-  attendances Attendance[]
+  assignments    ShiftAssignment[]
+  attendances    Attendance[]
+  defaultForUsers User[] @relation("UserDefaultShift")
 
   @@index([restaurantId])
 }

@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { orderService } from '../services';
 import { settingsService } from '../services/settingsService';
 import { useSocket } from '../context/SocketContext';
-import { usePaymentRequests } from '../context/PaymentRequestContext';
 import { sanitize } from '../utils/sanitize';
 import { useCurrency } from '../hooks/useCurrency';
 import { timeAgo } from '../utils/timeAgo';
@@ -100,10 +100,9 @@ const BOARD_COL_META: { key: OrderStatus; label: string; dot: string; headerBg: 
 
 export default function OrdersPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const formatCurrency = useCurrency();
   const { onNewOrder, onNewOrderFull, onOrderStatusUpdate, onKitchenReady, onItemKitchenReady, kdsCount } = useSocket();
-  const { clearPaymentRequest, addPaymentRequest } = usePaymentRequests();
-
   // 'board' shows the 3-column Kanban; 'completed'/'cancelled' show card grids
   const [view, setView] = useState<'board' | 'completed' | 'cancelled'>('board');
   const [settlementTableId, setSettlementTableId] = useState<string | null>(null);
@@ -150,10 +149,11 @@ export default function OrdersPage() {
       }
       return { prev };
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (err, vars, ctx) => {
       // Rollback on failure
       if (ctx?.prev) qc.setQueryData(['orders'], ctx.prev);
-      toast.error('Failed to update status');
+      console.error('[OrdersPage] Failed to update status', { orderId: vars.id, targetStatus: vars.status, error: err });
+      toast.error(err instanceof Error ? err.message : 'Failed to update status');
     },
     onSuccess: (updatedOrder, vars) => {
       toast.success('Status updated');
@@ -531,6 +531,16 @@ export default function OrdersPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {/* Create Order */}
+          <button
+            onClick={() => navigate('/create-order')}
+            className="rounded-xl text-sm px-4 py-2.5 shadow-sm bg-primary hover:bg-primary/90 text-white active:scale-[0.97] flex items-center gap-2 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+            Create Order
+          </button>
           {/* Download CSV dropdown */}
           <div className="relative">
             <button
@@ -588,11 +598,9 @@ export default function OrdersPage() {
       </div>
 
       {/* ═══ Quick Stats ═══ */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-2 gap-3">
         {[
-          { label: 'Total Orders', value: String(all.length), color: 'text-text-primary', iconBg: 'bg-sky-500', icon: 'M16 4H18a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2M8 2h8v4H8V2M9 12h6M9 16h4', ring: '' },
-          { label: 'Active', value: String(activeCount), color: 'text-violet-600', iconBg: 'bg-violet-500', icon: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z', ring: '' },
-          { label: 'Running Tables', value: String(runningTablesCount), color: 'text-amber-600', iconBg: 'bg-amber-500', icon: 'M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z', ring: runningTablesCount > 0 ? 'ring-1 ring-amber-200' : '' },
+          { label: 'Active Orders', value: String(activeCount), color: 'text-violet-600', iconBg: 'bg-violet-500', icon: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z', ring: '' },
           { label: 'Pending Payments', value: formatCurrency(pendingPayments), color: 'text-primary', iconBg: 'bg-primary', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6', ring: pendingPayments > 0 ? 'ring-1 ring-orange-200' : '' },
         ].map(stat => (
           <div key={stat.label} className={`card p-4 transition-shadow ${stat.ring}`}>
@@ -610,9 +618,6 @@ export default function OrdersPage() {
           </div>
         ))}
       </div>
-
-      {/* ═══ Running Tables ═══ */}
-      <RunningTablesSection />
 
       {/* ═══ View Tabs ═══ */}
       <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
@@ -712,7 +717,9 @@ export default function OrdersPage() {
                         return;
                       }
                       for (const o of bill.orders) {
-                        advanceMut.mutate({ id: o.id, status: col.key as OrderStatus });
+                        if (o.status === bill.status) {
+                          advanceMut.mutate({ id: o.id, status: col.key as OrderStatus });
+                        }
                       }
                     }
                     dragBillRef.current = null;
@@ -733,11 +740,10 @@ export default function OrdersPage() {
                             if (bill.status === 'preparing' && !bill.orders.every(o => o.items.every(i => i.preparedAt))) return;
                             if (ns) {
                               for (const o of bill.orders) {
-                                advanceMut.mutate({ id: o.id, status: ns });
+                                if (o.status === bill.status) {
+                                  advanceMut.mutate({ id: o.id, status: ns });
+                                }
                               }
-                            }
-                            if (bill.status === 'payment_pending') {
-                              clearPaymentRequest(bill.tableId);
                             }
                           }}
                           onServeNoKds={bill.status === 'preparing' && kdsCount === 0
@@ -752,14 +758,14 @@ export default function OrdersPage() {
                               const ns = nextStatus(bill.status);
                               if (ns) {
                                 for (const o of bill.orders) {
-                                  advanceMut.mutate({ id: o.id, status: ns });
+                                  if (o.status === bill.status) {
+                                    advanceMut.mutate({ id: o.id, status: ns });
+                                  }
                                 }
                               }
                             }
                             : undefined}
-                          onSendWaiter={bill.status === 'payment_pending'
-                            ? () => addPaymentRequest(bill.tableId, bill.tableName, bill.total, bill.orderCount)
-                            : undefined}
+                          onSendWaiter={undefined}
                           onSettleBill={bill.status === 'payment_pending'
                             ? bill.tableId
                               ? () => setSettlementTableId(bill.tableId)
@@ -812,20 +818,21 @@ export default function OrdersPage() {
         </div>
       )}
 
+      {/* ═══ Running Tables ═══ */}
+      <RunningTablesSection />
+
       {/* ═══ Settlement Modal ═══ */}
       {settlementTableId && (
         <SettlementModal
           tableId={settlementTableId}
           formatCurrency={formatCurrency}
           onClose={() => {
-            clearPaymentRequest(settlementTableId);
             setSettlementTableId(null);
             qc.invalidateQueries({ queryKey: ['orders'] });
             qc.invalidateQueries({ queryKey: ['runningTables'] });
           }}
           onPrint={(sessionId) => {
             setPrintSessionId(sessionId);
-            setSettlementTableId(null);
           }}
         />
       )}
@@ -903,7 +910,6 @@ function TableBillCard({
   onDragEnd?: () => void;
 }) {
   const formatCurrency = useCurrency();
-  const { paymentRequests } = usePaymentRequests();
   const { data: restaurantSettings } = useQuery({
     queryKey: ['settings'],
     queryFn: settingsService.get,
@@ -915,11 +921,7 @@ function TableBillCard({
   const ns = nextStatus(bill.status);
   const meta = SM[bill.status];
 
-  // Check if waiter was already sent (persisted in payment request context)
-  const hasPaymentRequest = paymentRequests.some(r => r.tableId === bill.tableId);
-  const [waiterState, setWaiterState] = useState<'idle' | 'sent' | 'ready'>(
-    hasPaymentRequest ? 'ready' : 'idle'
-  );
+  const [waiterState, setWaiterState] = useState<'idle' | 'sent' | 'ready'>('idle');
 
   const handleSendWaiter = useCallback(() => {
     setWaiterState('sent');

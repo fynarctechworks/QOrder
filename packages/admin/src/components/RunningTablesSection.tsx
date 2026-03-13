@@ -101,7 +101,7 @@ export default function RunningTablesSection() {
   const { onTableUpdated } = useSocket();
 
   // Fetch running tables
-  const { data: runningTables = [], isLoading } = useQuery({
+  const { data: runningTables = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['runningTables'],
     queryFn: tableService.getRunningTables,
     refetchInterval: false, // No polling - use socket updates only
@@ -150,6 +150,15 @@ export default function RunningTablesSection() {
             </div>
           ))}
         </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="card p-6 text-center space-y-3">
+        <p className="text-red-500">Failed to load running tables</p>
+        <button className="btn-primary text-sm" onClick={() => refetch()}>Retry</button>
       </div>
     );
   }
