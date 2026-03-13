@@ -47,42 +47,11 @@ services:
       dockerfile: Dockerfile.backend
     container_name: qr_order_backend
     restart: unless-stopped
+    network_mode: host
+    env_file: .env
     environment:
       NODE_ENV: production
       PORT: 3000
-      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?required}@postgres:5432/${POSTGRES_DB:-qr_order}?schema=public}
-      REDIS_URL: ${REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379}
-      # REQUIRED: Must be set via .env or environment — no defaults for security
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required — set it in .env}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET is required — set it in .env}
-      JWT_ACCESS_EXPIRES_IN: 15m
-      JWT_REFRESH_EXPIRES_IN: 7d
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173,http://localhost:5174}
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASS: ${SMTP_PASS:-}
-      SMTP_FROM: ${SMTP_FROM:-noreply@example.com}
-      # Twilio (WhatsApp / OTP)
-      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
-      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
-      TWILIO_VERIFY_SERVICE_SID: ${TWILIO_VERIFY_SERVICE_SID:-}
-      TWILIO_WHATSAPP_FROM: ${TWILIO_WHATSAPP_FROM:-}
-      # Twilio WhatsApp Content Template SIDs
-      TWILIO_TPL_LOW_STOCK: ${TWILIO_TPL_LOW_STOCK:-}
-      TWILIO_TPL_STAFF_LATE: ${TWILIO_TPL_STAFF_LATE:-}
-      TWILIO_TPL_EARLY_CHECKOUT: ${TWILIO_TPL_EARLY_CHECKOUT:-}
-      TWILIO_TPL_ORDER_INVOICE: ${TWILIO_TPL_ORDER_INVOICE:-}
-      # AI chatbot
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-    ports:
-      - "3000:3000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     volumes:
       - uploads_data:/app/packages/backend/uploads
     healthcheck:
