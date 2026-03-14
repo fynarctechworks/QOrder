@@ -106,7 +106,8 @@ export default function CategoryForm({
     onSubmit(form);
   };
 
-  const apiBase = (import.meta.env.VITE_API_URL || 'http://localhost:3000/api').replace('/api', '');
+  const apiBase = (import.meta.env.VITE_API_URL ||
+    (import.meta.env.PROD ? 'https://api.infynarc.com/api' : 'http://localhost:3000/api')).replace('/api', '');
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">

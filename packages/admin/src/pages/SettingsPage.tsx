@@ -1846,7 +1846,7 @@ export default function SettingsPage() {
                     {form.printLogoUrl ? (
                       <div className="relative w-20 h-20 rounded-xl border border-gray-200 overflow-hidden bg-white flex items-center justify-center">
                         <img
-                          src={form.printLogoUrl.startsWith('/uploads') ? `${(import.meta.env.VITE_API_URL || 'http://localhost:3000/api').replace('/api', '')}${form.printLogoUrl}` : form.printLogoUrl}
+                          src={form.printLogoUrl.startsWith('/uploads') ? `${(import.meta.env.VITE_API_URL || (import.meta.env.PROD ? 'https://api.infynarc.com/api' : 'http://localhost:3000/api')).replace('/api', '')}${form.printLogoUrl}` : form.printLogoUrl}
                           alt="Receipt logo"
                           className="max-w-full max-h-full object-contain"
                         />
@@ -1985,7 +1985,7 @@ export default function SettingsPage() {
                         {form.printShowLogo && form.printLogoUrl && (
                           <div style={{ textAlign: 'center', marginBottom: 8 }}>
                             <img
-                              src={form.printLogoUrl.startsWith('/uploads') ? `${(import.meta.env.VITE_API_URL || 'http://localhost:3000/api').replace('/api', '')}${form.printLogoUrl}` : form.printLogoUrl}
+                              src={form.printLogoUrl.startsWith('/uploads') ? `${(import.meta.env.VITE_API_URL || (import.meta.env.PROD ? 'https://api.infynarc.com/api' : 'http://localhost:3000/api')).replace('/api', '')}${form.printLogoUrl}` : form.printLogoUrl}
                               alt="logo"
                               style={{ maxWidth: 100, maxHeight: 50, display: 'inline-block' }}
                             />

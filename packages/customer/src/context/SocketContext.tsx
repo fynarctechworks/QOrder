@@ -25,7 +25,8 @@ interface SocketContextValue {
 
 const SocketContext = createContext<SocketContextValue | null>(null);
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000';
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL ||
+  (import.meta.env.PROD ? 'https://api.infynarc.com' : 'http://localhost:3000');
 
 interface SocketProviderProps {
   children: ReactNode;

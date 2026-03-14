@@ -2,13 +2,14 @@ import ZKLib from 'node-zklib';
 import { prisma, AppError, logger } from '../lib/index.js';
 import { staffManagementService } from './staffManagementService.js';
 import { alertService } from './alertService.js';
+import { config } from '../config/index.js';
 import crypto from 'crypto';
 
 const CONNECTION_TIMEOUT = 10000;
 const INACTIVITY_TIMEOUT = 4000;
 
-// AES-256 encryption for template storage — generate a stable key from env or fallback
-const ENCRYPTION_KEY = process.env.BIOMETRIC_ENCRYPTION_KEY
+// AES-256 encryption for template storage — use configured key or generate from fallback
+const ENCRYPTION_KEY = config.biometric.encryptionKey
   || crypto.createHash('sha256').update('biometric-default-key').digest('hex');
 
 /* ═══════════════════ Encryption helpers ═══════════════════ */

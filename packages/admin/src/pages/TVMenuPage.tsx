@@ -5,7 +5,8 @@ import { useBranchStore } from '../state/branchStore';
 import { settingsService } from '../services/settingsService';
 
 const CUSTOMER_BASE =
-  (import.meta.env.VITE_CUSTOMER_URL as string) || 'http://localhost:5174';
+  (import.meta.env.VITE_CUSTOMER_URL as string) ||
+  (import.meta.env.PROD ? 'https://order.infynarc.com' : 'http://localhost:5174');
 
 export default function TVMenuPage() {
   const { user } = useAuth();

@@ -13,7 +13,7 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
-  CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  CORS_ORIGIN: z.string().default('http://localhost:5173,http://localhost:5174'),
   SMTP_HOST: z.string().default('smtp.gmail.com'),
   SMTP_PORT: z.string().default('587'),
   SMTP_USER: z.string().default(''),
@@ -37,6 +37,9 @@ const envSchema = z.object({
 
   // OpenAI (chatbot alternative)
   OPENAI_API_KEY: z.string().default(''),
+
+  // Biometric fingerprint encryption
+  BIOMETRIC_ENCRYPTION_KEY: z.string().default(''),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -51,6 +54,16 @@ if (parsed.data.NODE_ENV === 'production') {
   if (!parsed.data.REDIS_URL || parsed.data.REDIS_URL === 'redis://localhost:6379') {
     console.error('❌ REDIS_URL must be set to a non-default value in production');
     process.exit(1);
+  }
+  if (parsed.data.DATABASE_URL.includes('localhost')) {
+    console.error('❌ DATABASE_URL must point to a production database, not localhost');
+    process.exit(1);
+  }
+  if (parsed.data.CORS_ORIGIN.includes('localhost')) {
+    console.warn('⚠️  CORS_ORIGIN contains localhost — are you sure this is production?');
+  }
+  if (!parsed.data.BIOMETRIC_ENCRYPTION_KEY) {
+    console.warn('⚠️  BIOMETRIC_ENCRYPTION_KEY not set — using weak default. Set a 64-char hex key for production.');
   }
 }
 
@@ -101,6 +114,9 @@ export const config = {
   },
   openai: {
     apiKey: parsed.data.OPENAI_API_KEY,
+  },
+  biometric: {
+    encryptionKey: parsed.data.BIOMETRIC_ENCRYPTION_KEY,
   },
   isProduction: parsed.data.NODE_ENV === 'production',
   isDevelopment: parsed.data.NODE_ENV === 'development',
