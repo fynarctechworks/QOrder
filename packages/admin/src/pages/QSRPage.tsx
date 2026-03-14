@@ -65,18 +65,19 @@ function escapeHtml(text: string) {
 }
 
 const PRINT_CSS = `
-    body{font-family:'Courier New',monospace;max-width:300px;margin:0 auto;padding:0;color:#000;font-weight:bold;-webkit-print-color-adjust:exact}
+    *{color:#000!important;font-weight:bold!important}
+    body{font-family:'Courier New',monospace;max-width:300px;margin:0 auto;padding:0;-webkit-print-color-adjust:exact}
     .center{text-align:center}
     .restaurant{font-size:16px;font-weight:bold;margin:0 0 4px}
     .divider{border-top:1px dashed #999;margin:10px 0}
     .token-box{text-align:center;border:2px solid #111;border-radius:8px;padding:12px;margin:12px 0}
     .token-label{font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#000;font-weight:bold}
     .token-num{font-size:36px;font-weight:bold;line-height:1.1}
-    .item{display:flex;gap:6px;padding:4px 0;align-items:flex-start}
-    .qty{min-width:24px;font-weight:bold}
-    .name{flex:1}
-    .mods{font-size:11px;color:#000;margin-top:1px;font-weight:bold}
-    .price{text-align:right;white-space:nowrap;font-weight:600}
+    .item{display:flex;gap:6px;padding:4px 0;align-items:flex-start;font-size:14px}
+    .qty{min-width:24px;font-weight:bold;font-size:14px}
+    .name{flex:1;font-size:14px;font-weight:bold}
+    .mods{font-size:12px;color:#000;margin-top:1px;font-weight:bold}
+    .price{text-align:right;white-space:nowrap;font-weight:bold;font-size:14px}
     .total-row{display:flex;justify-content:space-between;padding:2px 0}
     .total-row.grand{font-size:14px;font-weight:bold;border-top:1px solid #111;padding-top:6px;margin-top:4px}
     .method{text-align:center;font-size:11px;color:#000;margin-top:8px;font-weight:bold}
