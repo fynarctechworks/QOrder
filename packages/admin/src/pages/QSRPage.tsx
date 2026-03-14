@@ -101,11 +101,9 @@ function printOneReceipt(w: Window, html: string, title: string): Promise<void> 
     w.document.close();
     let resolved = false;
     const done = () => { if (resolved) return; resolved = true; resolve(); };
-    setTimeout(() => {
-      w.print();
-      w.onafterprint = done;
-      setTimeout(done, 5000); // fallback
-    }, 300);
+    w.print();
+    w.onafterprint = done;
+    setTimeout(done, 5000);
   });
 }
 
@@ -160,7 +158,6 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
     if (!w) return;
     for (const job of jobs) {
       await printOneReceipt(w, job.html, job.title);
-      await new Promise(r => setTimeout(r, 500));
     }
     w.close();
   })();
