@@ -47,6 +47,8 @@ export const menuService = {
         description: true,
         image: true,
         sortOrder: true,
+        isActive: true,
+        kotStation: true,
         translations: true,
         _count: {
           select: { 

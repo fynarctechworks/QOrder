@@ -126,6 +126,7 @@ export const createCategorySchema = z.object({
   image: z.string().optional().nullable(),
   sortOrder: z.number().int().default(0),
   isActive: z.boolean().default(true),
+  kotStation: z.enum(['KITCHEN', 'BEVERAGE']).default('KITCHEN'),
   translations: z.record(z.string(), z.record(z.string(), z.string())).optional(),
 });
 

@@ -64,7 +64,7 @@ function escapeHtml(text: string) {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrency: (n: number) => string, restaurantName: string) {
+function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrency: (n: number) => string, restaurantName: string, itemStationMap?: Map<string, string>) {
   const w = window.open('', '_blank', 'width=400,height=600');
   if (!w) return;
 
@@ -73,10 +73,29 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
     return `<div class="item"><span class="qty">${item.quantity}x</span><div class="name">${escapeHtml(item.menuItemName)}${mods ? `<div class="mods">${escapeHtml(mods)}</div>` : ''}</div><span class="price">${escapeHtml(formatCurrency(item.totalPrice))}</span></div>`;
   }).join('');
 
-  const kitchenItemsHtml = order.items.map(item => {
+  // Split items by KOT station
+  const kitchenItems = order.items.filter(item => (itemStationMap?.get(item.menuItemId) || 'KITCHEN') === 'KITCHEN');
+  const beverageItems = order.items.filter(item => itemStationMap?.get(item.menuItemId) === 'BEVERAGE');
+
+  const buildKotHtml = (items: typeof order.items) => items.map(item => {
     const mods = (item.customizations || []).flatMap(g => g.options.map(o => o.name)).join(', ');
     return `<div class="k-item"><span class="k-qty">${item.quantity}x</span><div class="k-name">${escapeHtml(item.menuItemName)}${mods ? `<div class="k-mods">${escapeHtml(mods)}</div>` : ''}</div></div>`;
   }).join('');
+
+  const buildKotPage = (title: string, items: typeof order.items) => `
+    <div class="page k-section">
+      <p class="k-header center">${escapeHtml(title)}</p>
+      <p class="center" style="font-size:11px;color:#666;margin:2px 0 0">${escapeHtml(restaurantName)}</p>
+      <div class="k-token-box">
+        <div class="k-token-label">Token</div>
+        <div class="k-token-num">${escapeHtml(order.orderNumber)}</div>
+      </div>
+      ${order.customerName ? `<p class="center" style="font-size:12px;margin:4px 0"><strong>${escapeHtml(order.customerName)}</strong></p>` : ''}
+      <div class="divider"></div>
+      ${buildKotHtml(items)}
+      ${order.specialInstructions ? `<div class="divider"></div><p style="font-size:12px"><strong>Notes:</strong> ${escapeHtml(order.specialInstructions)}</p>` : ''}
+      <div class="k-time">${new Date().toLocaleString()}</div>
+    </div>`;
 
   w.document.write(`<!DOCTYPE html><html><head><title>QSR Print</title><style>
     body{font-family:'Courier New',monospace;max-width:300px;margin:0 auto;padding:0;color:#111}
@@ -133,20 +152,8 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
       <div class="footer">Thank you! Please wait for your token to be called.</div>
     </div>
 
-    <!-- Page 2: Kitchen KOT -->
-    <div class="page k-section">
-      <p class="k-header center">KITCHEN ORDER</p>
-      <p class="center" style="font-size:11px;color:#666;margin:2px 0 0">${escapeHtml(restaurantName)}</p>
-      <div class="k-token-box">
-        <div class="k-token-label">Token</div>
-        <div class="k-token-num">${escapeHtml(order.orderNumber)}</div>
-      </div>
-      ${order.customerName ? `<p class="center" style="font-size:12px;margin:4px 0"><strong>${escapeHtml(order.customerName)}</strong></p>` : ''}
-      <div class="divider"></div>
-      ${kitchenItemsHtml}
-      ${order.specialInstructions ? `<div class="divider"></div><p style="font-size:12px"><strong>Notes:</strong> ${escapeHtml(order.specialInstructions)}</p>` : ''}
-      <div class="k-time">${new Date().toLocaleString()}</div>
-    </div>
+    ${kitchenItems.length > 0 ? buildKotPage('KITCHEN ORDER', kitchenItems) : ''}
+    ${beverageItems.length > 0 ? buildKotPage('BEVERAGE ORDER', beverageItems) : ''}
 
     <script>window.onload=function(){window.print();window.onafterprint=function(){window.close();}}<\/script>
   </body></html>`);
@@ -196,6 +203,9 @@ export default function QSRPage() {
   const [completedOrder, setCompletedOrder] = useState<Order | null>(null);
   const settledRef = useRef(false);
 
+  // WhatsApp invoice state
+  const [whatsappStatus, setWhatsappStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
+
   // Split payment state
   const [showSplitMode, setShowSplitMode] = useState(false);
   const [splits, setSplits] = useState<SplitEntry[]>([]);
@@ -213,6 +223,40 @@ export default function QSRPage() {
   const [discountType, setDiscountType] = useState<'PERCENTAGE' | 'FLAT'>('PERCENTAGE');
   const [discountValue, setDiscountValue] = useState('');
 
+  /* ── Build menuItemId → kotStation map from cart + categories ── */
+  const catStationMap = useMemo(() => {
+    const map = new Map<string, string>();
+    categories.forEach(c => map.set(c.id, c.kotStation || 'KITCHEN'));
+    return map;
+  }, [categories]);
+
+  const buildItemStationMap = useCallback(() => {
+    const map = new Map<string, string>();
+    cart.forEach(c => {
+      map.set(c.menuItem.id, catStationMap.get(c.menuItem.categoryId) || 'KITCHEN');
+    });
+    return map;
+  }, [cart, catStationMap]);
+
+  /* ── Send WhatsApp invoice (fire-and-forget with UI feedback) ── */
+  const sendWhatsAppInvoice = async (orderId: string) => {
+    if (!customerPhone.trim()) return;
+    setWhatsappStatus('sending');
+    try {
+      const result = await orderService.sendWhatsAppBill([orderId]);
+      if (result.sent) {
+        setWhatsappStatus('sent');
+        toast.success('WhatsApp invoice sent!');
+      } else {
+        setWhatsappStatus('failed');
+        toast.error('WhatsApp invoice could not be delivered');
+      }
+    } catch {
+      setWhatsappStatus('failed');
+      toast.error('Failed to send WhatsApp invoice');
+    }
+  };
+
   /* ── Mutation — creates order directly as COMPLETED ── */
   const createOrderMut = useMutation({
     mutationFn: (data: Parameters<typeof orderService.createQSROrder>[0]) =>
@@ -224,8 +268,11 @@ export default function QSRPage() {
       setSettled(true);
       setSettling(false);
       toast.success(`Token #${order.orderNumber} — Order complete!`);
-      // Auto-print customer token + kitchen KOT
-      setTimeout(() => printReceipts(order, selectedQuickMethod || 'CASH', formatCurrency, restaurantName), 300);
+      // Auto-print customer token + station KOTs
+      const stationMap = buildItemStationMap();
+      setTimeout(() => printReceipts(order, selectedQuickMethod || 'CASH', formatCurrency, restaurantName, stationMap), 300);
+      // Auto-send WhatsApp invoice
+      sendWhatsAppInvoice(order.id);
     },
     onError: (err) => { setSettling(false); toast.error(err instanceof Error ? err.message : 'Failed to create order'); },
   });
@@ -249,6 +296,7 @@ export default function QSRPage() {
     setCompletedOrder(null);
     setDiscountType('PERCENTAGE');
     setDiscountValue('');
+    setWhatsappStatus('idle');
     settledRef.current = false;
   };
 
@@ -574,8 +622,9 @@ export default function QSRPage() {
             type="tel"
             value={customerPhone}
             onChange={e => setCustomerPhone(e.target.value)}
-            placeholder="Phone number"
-            className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary flex-1 sm:flex-none sm:w-36"
+            placeholder="Phone number *"
+            required
+            className={`border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary flex-1 sm:flex-none sm:w-36 ${!customerPhone.trim() ? 'border-red-300' : 'border-gray-200'}`}
           />
           </div>
           <div className="flex items-center gap-2">
@@ -810,7 +859,7 @@ export default function QSRPage() {
             </div>
             <button
               onClick={handleOpenSettle}
-              disabled={cart.length === 0}
+              disabled={cart.length === 0 || !customerPhone.trim()}
               className="w-full mt-2 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] shadow-sm flex items-center justify-center gap-2"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1009,12 +1058,31 @@ export default function QSRPage() {
 
             <div className="flex flex-col sm:flex-row gap-3 max-w-sm mx-auto">
               <button
-                onClick={() => printReceipts(completedOrder, selectedQuickMethod || 'CASH', formatCurrency, restaurantName)}
+                onClick={() => printReceipts(completedOrder, selectedQuickMethod || 'CASH', formatCurrency, restaurantName, buildItemStationMap())}
                 className="flex-1 px-5 py-3 bg-white border-2 border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-800 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 text-sm"
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
                 Reprint
               </button>
+
+              {completedOrder.customerPhone && whatsappStatus !== 'sent' && (
+                <button
+                  onClick={() => sendWhatsAppInvoice(completedOrder.id)}
+                  disabled={whatsappStatus === 'sending'}
+                  className="flex-1 px-5 py-3 bg-white border-2 border-emerald-500 text-emerald-600 hover:bg-emerald-500 hover:text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 text-sm disabled:opacity-50"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.625.846 5.059 2.284 7.034L.789 23.492a.5.5 0 00.613.613l4.458-1.495A11.932 11.932 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-2.37 0-4.567-.7-6.42-1.9l-.164-.1-3.392 1.137 1.137-3.392-.1-.164A9.935 9.935 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
+                  {whatsappStatus === 'sending' ? 'Sending...' : whatsappStatus === 'failed' ? 'Retry WhatsApp' : 'Send WhatsApp'}
+                </button>
+              )}
+
+              {whatsappStatus === 'sent' && (
+                <div className="flex-1 px-5 py-3 bg-emerald-50 border-2 border-emerald-200 text-emerald-600 rounded-xl font-semibold flex items-center justify-center gap-2 text-sm">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                  WhatsApp Sent
+                </div>
+              )}
+
               <button
                 onClick={handleCloseSettlement}
                 className="flex-1 px-5 py-3 bg-primary hover:bg-primary-hover text-white rounded-xl font-semibold transition-colors text-sm"

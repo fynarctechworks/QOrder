@@ -8,6 +8,7 @@ export interface CategoryFormData {
   description: string;
   image: string;
   isActive: boolean;
+  kotStation: 'KITCHEN' | 'BEVERAGE';
   translations: TranslationsMap;
 }
 
@@ -28,6 +29,7 @@ const EMPTY: CategoryFormData = {
   description: '',
   image: '',
   isActive: true,
+  kotStation: 'KITCHEN',
   translations: {},
 };
 
@@ -37,6 +39,7 @@ function fromCategory(cat: Category): CategoryFormData {
     description: cat.description || '',
     image: cat.image || '',
     isActive: cat.isActive,
+    kotStation: cat.kotStation || 'KITCHEN',
     translations: cat.translations || {},
   };
 }
@@ -224,6 +227,22 @@ export default function CategoryForm({
         />
         <span className="text-sm text-text-primary">Active</span>
       </label>
+
+      {/* KOT Station */}
+      <div>
+        <label className="block text-sm font-medium text-text-secondary mb-1">
+          KOT Station
+        </label>
+        <select
+          value={form.kotStation}
+          onChange={(e) => setForm((f) => ({ ...f, kotStation: e.target.value as 'KITCHEN' | 'BEVERAGE' }))}
+          className="input w-full"
+        >
+          <option value="KITCHEN">Kitchen</option>
+          <option value="BEVERAGE">Beverage</option>
+        </select>
+        <p className="text-xs text-text-tertiary mt-1">Items in this category will be printed on the selected station's KOT</p>
+      </div>
 
       <div className="flex justify-end gap-3 pt-2 border-t border-surface-elevated">
         <button

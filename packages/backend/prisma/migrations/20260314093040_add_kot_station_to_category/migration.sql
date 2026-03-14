@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Category" ADD COLUMN "kotStation" TEXT NOT NULL DEFAULT 'KITCHEN';

@@ -285,8 +285,9 @@ export default function CashierOrderModal({ open, onClose, onSubmit, isSubmittin
             type="tel"
             value={customerPhone}
             onChange={e => setCustomerPhone(e.target.value)}
-            placeholder="Phone number"
-            className="bg-white/10 text-white placeholder-white/40 border border-white/20 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-white/40 w-32"
+            placeholder="Phone number *"
+            required
+            className={`bg-white/10 text-white placeholder-white/40 border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-white/40 w-32 ${!customerPhone.trim() ? 'border-red-400/60' : 'border-white/20'}`}
           />
 
           {/* New Order button */}
@@ -448,7 +449,7 @@ export default function CashierOrderModal({ open, onClose, onSubmit, isSubmittin
             </div>
             <button
               onClick={handleSubmit}
-              disabled={cart.length === 0 || isSubmitting}
+              disabled={cart.length === 0 || isSubmitting || !customerPhone.trim()}
               className="w-full mt-2 py-3 bg-primary hover:bg-primary-hover text-white rounded-xl font-semibold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] shadow-sm flex items-center justify-center gap-2"
             >
               {isSubmitting ? (
