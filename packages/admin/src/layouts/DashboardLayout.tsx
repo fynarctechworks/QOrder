@@ -827,8 +827,8 @@ function DashboardLayoutInner() {
         {isLocked && <LockScreen hasPin={hasLockPin} onUnlock={unlock} />}
       </AnimatePresence>
 
-      {/* AI Chatbot */}
-      <Chatbot />
+      {/* AI Chatbot — only on dashboard */}
+      {location.pathname === '/dashboard' && <Chatbot />}
 
       {/* Logout Confirmation Modal */}
       <AnimatePresence>
