@@ -94,17 +94,14 @@ const PRINT_CSS = `
     @page{size:80mm auto;margin:0}
     @media print{html,body{width:80mm;margin:0;padding:0;overflow:hidden} *{color:#000!important;font-weight:bold!important}}`;
 
-function printOneReceipt(w: Window, html: string, title: string): Promise<void> {
-  return new Promise((resolve) => {
-    w.document.open();
-    w.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>${PRINT_CSS}</style></head><body style="padding:16px">${html}</body></html>`);
-    w.document.close();
-    let resolved = false;
-    const done = () => { if (resolved) return; resolved = true; resolve(); };
-    w.print();
-    w.onafterprint = done;
-    setTimeout(done, 5000);
-  });
+function firePrintJob(html: string, title: string) {
+  const w = window.open('', '_blank', 'width=400,height=600');
+  if (!w) return;
+  w.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>${PRINT_CSS}</style></head><body style="padding:16px">${html}</body></html>`);
+  w.document.close();
+  w.print();
+  w.onafterprint = () => w.close();
+  setTimeout(() => { try { w.close(); } catch {} }, 5000);
 }
 
 function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrency: (n: number) => string, restaurantName: string, itemStationMap?: Map<string, string>) {
@@ -149,18 +146,10 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
       <div class="method">Paid via ${escapeHtml(paymentMethod)}</div>
       <div class="footer">Thank you! Please wait for your token to be called.</div>`;
 
-  const jobs: Array<{ html: string; title: string }> = [{ html: customerHtml, title: 'Customer Token' }];
-  if (kitchenItems.length > 0) jobs.push({ html: buildKotHtmlBody('KITCHEN ORDER', kitchenItems), title: 'Kitchen KOT' });
-  if (beverageItems.length > 0) jobs.push({ html: buildKotHtmlBody('BEVERAGE ORDER', beverageItems), title: 'Beverage KOT' });
-
-  (async () => {
-    const w = window.open('', '_blank', 'width=400,height=600');
-    if (!w) return;
-    for (const job of jobs) {
-      await printOneReceipt(w, job.html, job.title);
-    }
-    w.close();
-  })();
+  // Fire all print jobs simultaneously — printer spooler queues them
+  firePrintJob(customerHtml, 'Customer Token');
+  if (kitchenItems.length > 0) firePrintJob(buildKotHtmlBody('KITCHEN ORDER', kitchenItems), 'Kitchen KOT');
+  if (beverageItems.length > 0) firePrintJob(buildKotHtmlBody('BEVERAGE ORDER', beverageItems), 'Beverage KOT');
 }
 
 /* ═══════════════════ QSR Page ═══════════════════ */
