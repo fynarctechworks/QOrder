@@ -94,10 +94,23 @@ const PRINT_CSS = `
     @page{size:80mm auto;margin:0}
     @media print{html,body{width:80mm;margin:0;padding:0;overflow:hidden} *{color:#000!important;font-weight:bold!important}}`;
 
-function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrency: (n: number) => string, restaurantName: string, itemStationMap?: Map<string, string>) {
-  const w = window.open('', '_blank', 'width=400,height=600');
-  if (!w) return;
+function printOneReceipt(html: string, title: string): Promise<void> {
+  return new Promise((resolve) => {
+    const w = window.open('', '_blank', 'width=400,height=600');
+    if (!w) { resolve(); return; }
+    w.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>${PRINT_CSS}</style></head><body style="padding:16px">${html}</body></html>`);
+    w.document.close();
+    let resolved = false;
+    const done = () => { if (resolved) return; resolved = true; try { w.close(); } catch {} resolve(); };
+    w.onload = () => {
+      w.print();
+      w.onafterprint = done;
+      setTimeout(done, 8000); // fallback
+    };
+  });
+}
 
+function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrency: (n: number) => string, restaurantName: string, itemStationMap?: Map<string, string>) {
   const customerItemsHtml = order.items.map(item => {
     const mods = (item.customizations || []).flatMap(g => g.options.map(o => o.name)).join(', ');
     return `<div class="item"><span class="qty">${item.quantity}x</span><div class="name">${escapeHtml(item.menuItemName)}${mods ? `<div class="mods">${escapeHtml(mods)}</div>` : ''}</div><span class="price">${escapeHtml(formatCurrency(item.totalPrice))}</span></div>`;
@@ -111,8 +124,7 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
     return `<div class="k-item"><span class="k-qty">${item.quantity}x</span><div class="k-name">${escapeHtml(item.menuItemName)}${mods ? `<div class="k-mods">${escapeHtml(mods)}</div>` : ''}</div></div>`;
   }).join('');
 
-  const buildKotSection = (title: string, items: typeof order.items, isLast: boolean) => `
-    <div class="section${isLast ? '' : ' cut-after'}">
+  const buildKotHtmlBody = (title: string, items: typeof order.items) => `
       <p class="k-header center">${escapeHtml(title)}</p>
       <p class="center" style="font-size:13px;margin:2px 0 0">${escapeHtml(restaurantName)}</p>
       <div class="k-token-box">
@@ -123,23 +135,9 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
       <div class="divider"></div>
       ${buildKotHtml(items)}
       ${order.specialInstructions ? `<div class="divider"></div><p style="font-size:13px"><strong>Notes:</strong> ${escapeHtml(order.specialInstructions)}</p>` : ''}
-      <div class="k-time">${new Date().toLocaleString()}</div>
-    </div>`;
+      <div class="k-time">${new Date().toLocaleString()}</div>`;
 
-  // Determine which KOT sections exist
-  const kotSections: string[] = [];
-  if (kitchenItems.length > 0) kotSections.push('kitchen');
-  if (beverageItems.length > 0) kotSections.push('beverage');
-  const hasKots = kotSections.length > 0;
-
-  w.document.write(`<!DOCTYPE html><html><head><title>QSR Print</title><style>
-    ${PRINT_CSS}
-    .section{padding:16px}
-    .cut-after{page-break-after:always}
-  </style></head><body>
-
-    <!-- Customer Token -->
-    <div class="section${hasKots ? ' cut-after' : ''}">
+  const customerHtml = `
       <p class="restaurant center">${escapeHtml(restaurantName)}</p>
       <div class="token-box">
         <div class="token-label">Token Number</div>
@@ -152,15 +150,18 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
       ${order.tax > 0 ? `<div class="total-row"><span>Tax</span><span>${escapeHtml(formatCurrency(order.tax))}</span></div>` : ''}
       <div class="total-row grand"><span>Total</span><span>${escapeHtml(formatCurrency(order.total))}</span></div>
       <div class="method">Paid via ${escapeHtml(paymentMethod)}</div>
-      <div class="footer">Thank you! Please wait for your token to be called.</div>
-    </div>
+      <div class="footer">Thank you! Please wait for your token to be called.</div>`;
 
-    ${kitchenItems.length > 0 ? buildKotSection('KITCHEN ORDER', kitchenItems, beverageItems.length === 0) : ''}
-    ${beverageItems.length > 0 ? buildKotSection('BEVERAGE ORDER', beverageItems, true) : ''}
+  const jobs: Array<{ html: string; title: string }> = [{ html: customerHtml, title: 'Customer Token' }];
+  if (kitchenItems.length > 0) jobs.push({ html: buildKotHtmlBody('KITCHEN ORDER', kitchenItems), title: 'Kitchen KOT' });
+  if (beverageItems.length > 0) jobs.push({ html: buildKotHtmlBody('BEVERAGE ORDER', beverageItems), title: 'Beverage KOT' });
 
-    <script>window.onload=function(){window.print();window.onafterprint=function(){window.close();}}<\/script>
-  </body></html>`);
-  w.document.close();
+  (async () => {
+    for (const job of jobs) {
+      await printOneReceipt(job.html, job.title);
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  })();
 }
 
 /* ═══════════════════ QSR Page ═══════════════════ */
