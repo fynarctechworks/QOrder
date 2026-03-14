@@ -132,7 +132,12 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
     .k-mods{font-size:12px;color:#444;font-weight:normal;margin-top:2px}
     .k-time{text-align:center;font-size:11px;color:#666;margin-top:8px}
 
-    @media print{body{margin:0;padding:0} .page{padding:8px}}
+    @page{size:80mm auto;margin:0}
+    @media print{
+      html,body{width:80mm;margin:0;padding:0;overflow:hidden}
+      .page{padding:4mm;page-break-after:always;page-break-inside:avoid}
+      .page:last-child{page-break-after:avoid}
+    }
   </style></head><body>
 
     <!-- Page 1: Customer Token -->

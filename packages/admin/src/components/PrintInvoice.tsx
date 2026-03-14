@@ -109,7 +109,8 @@ export default function PrintInvoice({
       .payments .row.paid{color:#059669;font-weight:700}
       .payments .row.remaining{color:#dc2626;font-weight:700}
       .footer{text-align:center;margin-top:12px;font-weight:700;font-size:13px}
-      @media print{body{padding:0;margin:0}}
+      @page{size:80mm auto;margin:0}
+      @media print{html,body{width:80mm;margin:0;padding:0;overflow:hidden}}
     </style></head><body>`;
 
     // Logo

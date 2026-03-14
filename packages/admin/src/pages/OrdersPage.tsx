@@ -198,7 +198,8 @@ export default function OrdersPage() {
               .logo{text-align:center;margin-bottom:8px}
               .logo img{max-width:120px;max-height:60px}
               .header-text{text-align:center;color:#666;font-size:11px;white-space:pre-line;margin-bottom:8px}
-              @media print{body{padding:0;margin:0}}
+              @page{size:80mm auto;margin:0}
+              @media print{html,body{width:80mm;margin:0;padding:0;overflow:hidden}}
             </style></head><body>`);
             if (logoUrl) w.document.write(`<div class="logo"><img src="${logoUrl}" alt="logo"></div>`);
             w.document.write(`<h2>${restaurantName}</h2>`);
@@ -1125,7 +1126,8 @@ function TableBillCard({
                       .logo{text-align:center;margin-bottom:8px}
                       .logo img{max-width:120px;max-height:60px}
                       .header-text{text-align:center;color:#666;font-size:11px;white-space:pre-line;margin-bottom:8px}
-                      @media print{body{padding:0;margin:0}}
+                      @page{size:80mm auto;margin:0}
+                      @media print{html,body{width:80mm;margin:0;padding:0;overflow:hidden}}
                     </style></head><body>`);
                     if (logoUrl) w.document.write(`<div class="logo"><img src="${logoUrl}" alt="logo"></div>`);
                     w.document.write(`<h2>${bill.tableName || 'Takeaway'}</h2>`);
