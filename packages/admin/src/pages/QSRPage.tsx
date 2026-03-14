@@ -83,7 +83,7 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
   }).join('');
 
   const buildKotPage = (title: string, items: typeof order.items) => `
-    <div class="page k-section">
+    <div class="section k-section">
       <p class="k-header center">${escapeHtml(title)}</p>
       <p class="center" style="font-size:11px;color:#666;margin:2px 0 0">${escapeHtml(restaurantName)}</p>
       <div class="k-token-box">
@@ -100,8 +100,7 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
   w.document.write(`<!DOCTYPE html><html><head><title>QSR Print</title><style>
     body{font-family:'Courier New',monospace;max-width:300px;margin:0 auto;padding:0;color:#111}
     .center{text-align:center}
-    .page{padding:16px;page-break-after:always}
-    .page:last-child{page-break-after:auto}
+    .section{padding:16px}
 
     /* Customer Token styles */
     .c-section{font-size:12px}
@@ -132,16 +131,19 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
     .k-mods{font-size:12px;color:#444;font-weight:normal;margin-top:2px}
     .k-time{text-align:center;font-size:11px;color:#666;margin-top:8px}
 
+    /* Cut line between receipts */
+    .cut-line{margin:0;padding:20mm 0;text-align:center;font-size:10px;color:#999;letter-spacing:0.2em}
+    .cut-line::before,.cut-line::after{content:'';display:inline-block;width:25%;border-top:1px dashed #999;vertical-align:middle;margin:0 4px}
+
     @page{size:80mm auto;margin:0}
     @media print{
       html,body{width:80mm;margin:0;padding:0;overflow:hidden}
-      .page{padding:4mm;page-break-after:always;page-break-inside:avoid}
-      .page:last-child{page-break-after:avoid}
+      .section{padding:4mm}
     }
   </style></head><body>
 
-    <!-- Page 1: Customer Token -->
-    <div class="page c-section">
+    <!-- Customer Token -->
+    <div class="section c-section">
       <p class="restaurant center">${escapeHtml(restaurantName)}</p>
       <div class="token-box">
         <div class="token-label">Token Number</div>
@@ -157,8 +159,8 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
       <div class="footer">Thank you! Please wait for your token to be called.</div>
     </div>
 
-    ${kitchenItems.length > 0 ? buildKotPage('KITCHEN ORDER', kitchenItems) : ''}
-    ${beverageItems.length > 0 ? buildKotPage('BEVERAGE ORDER', beverageItems) : ''}
+    ${kitchenItems.length > 0 ? `<div class="cut-line">✂ CUT HERE</div>` + buildKotPage('KITCHEN ORDER', kitchenItems) : ''}
+    ${beverageItems.length > 0 ? `<div class="cut-line">✂ CUT HERE</div>` + buildKotPage('BEVERAGE ORDER', beverageItems) : ''}
 
     <script>window.onload=function(){window.print();window.onafterprint=function(){window.close();}}<\/script>
   </body></html>`);
