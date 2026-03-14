@@ -64,16 +64,56 @@ function escapeHtml(text: string) {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrency: (n: number) => string, restaurantName: string, itemStationMap?: Map<string, string>) {
-  const w = window.open('', '_blank', 'width=400,height=600');
-  if (!w) return;
+const PRINT_CSS = `
+    body{font-family:'Courier New',monospace;max-width:300px;margin:0 auto;padding:0;color:#000;font-weight:bold;-webkit-print-color-adjust:exact}
+    .center{text-align:center}
+    .restaurant{font-size:16px;font-weight:bold;margin:0 0 4px}
+    .divider{border-top:1px dashed #999;margin:10px 0}
+    .token-box{text-align:center;border:2px solid #111;border-radius:8px;padding:12px;margin:12px 0}
+    .token-label{font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#000;font-weight:bold}
+    .token-num{font-size:36px;font-weight:bold;line-height:1.1}
+    .item{display:flex;gap:6px;padding:4px 0;align-items:flex-start}
+    .qty{min-width:24px;font-weight:bold}
+    .name{flex:1}
+    .mods{font-size:11px;color:#000;margin-top:1px;font-weight:bold}
+    .price{text-align:right;white-space:nowrap;font-weight:600}
+    .total-row{display:flex;justify-content:space-between;padding:2px 0}
+    .total-row.grand{font-size:14px;font-weight:bold;border-top:1px solid #111;padding-top:6px;margin-top:4px}
+    .method{text-align:center;font-size:11px;color:#000;margin-top:8px;font-weight:bold}
+    .footer{text-align:center;font-size:10px;color:#000;margin-top:12px;font-weight:bold}
+    .k-header{font-size:14px;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;margin:0}
+    .k-token-box{text-align:center;border:2px solid #111;border-radius:8px;padding:12px;margin:12px 0}
+    .k-token-label{font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#000;font-weight:bold}
+    .k-token-num{font-size:36px;font-weight:bold;line-height:1.1}
+    .k-item{display:flex;gap:8px;padding:6px 0;border-bottom:1px dotted #ccc;font-size:14px}
+    .k-qty{min-width:28px;font-weight:bold;font-size:15px}
+    .k-name{flex:1;font-weight:600}
+    .k-mods{font-size:12px;color:#000;font-weight:bold;margin-top:2px}
+    .k-time{text-align:center;font-size:11px;color:#000;margin-top:8px;font-weight:bold}
+    @page{size:80mm auto;margin:0}
+    @media print{html,body{width:80mm;margin:0;padding:0;overflow:hidden} *{color:#000!important;font-weight:bold!important}}`;
 
+function printSingleReceipt(bodyHtml: string, title: string): Promise<void> {
+  return new Promise((resolve) => {
+    const w = window.open('', '_blank', 'width=400,height=600');
+    if (!w) { resolve(); return; }
+    w.document.write(`<!DOCTYPE html><html><head><title>${escapeHtml(title)}</title><style>${PRINT_CSS}</style></head><body style="padding:16px">${bodyHtml}</body></html>`);
+    w.document.close();
+    w.onload = () => {
+      w.print();
+      w.onafterprint = () => { w.close(); resolve(); };
+      // Fallback if onafterprint doesn't fire (some browsers)
+      setTimeout(() => { try { w.close(); } catch {} resolve(); }, 10000);
+    };
+  });
+}
+
+function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrency: (n: number) => string, restaurantName: string, itemStationMap?: Map<string, string>) {
   const customerItemsHtml = order.items.map(item => {
     const mods = (item.customizations || []).flatMap(g => g.options.map(o => o.name)).join(', ');
     return `<div class="item"><span class="qty">${item.quantity}x</span><div class="name">${escapeHtml(item.menuItemName)}${mods ? `<div class="mods">${escapeHtml(mods)}</div>` : ''}</div><span class="price">${escapeHtml(formatCurrency(item.totalPrice))}</span></div>`;
   }).join('');
 
-  // Split items by KOT station
   const kitchenItems = order.items.filter(item => (itemStationMap?.get(item.menuItemId) || 'KITCHEN') === 'KITCHEN');
   const beverageItems = order.items.filter(item => itemStationMap?.get(item.menuItemId) === 'BEVERAGE');
 
@@ -82,10 +122,9 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
     return `<div class="k-item"><span class="k-qty">${item.quantity}x</span><div class="k-name">${escapeHtml(item.menuItemName)}${mods ? `<div class="k-mods">${escapeHtml(mods)}</div>` : ''}</div></div>`;
   }).join('');
 
-  const buildKotPage = (title: string, items: typeof order.items) => `
-    <div class="section k-section">
+  const buildKotBody = (title: string, items: typeof order.items) => `
       <p class="k-header center">${escapeHtml(title)}</p>
-      <p class="center" style="font-size:11px;color:#666;margin:2px 0 0">${escapeHtml(restaurantName)}</p>
+      <p class="center" style="font-size:11px;color:#000;margin:2px 0 0;font-weight:bold">${escapeHtml(restaurantName)}</p>
       <div class="k-token-box">
         <div class="k-token-label">Token</div>
         <div class="k-token-num">${escapeHtml(order.orderNumber)}</div>
@@ -94,56 +133,10 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
       <div class="divider"></div>
       ${buildKotHtml(items)}
       ${order.specialInstructions ? `<div class="divider"></div><p style="font-size:12px"><strong>Notes:</strong> ${escapeHtml(order.specialInstructions)}</p>` : ''}
-      <div class="k-time">${new Date().toLocaleString()}</div>
-    </div>`;
+      <div class="k-time">${new Date().toLocaleString()}</div>`;
 
-  w.document.write(`<!DOCTYPE html><html><head><title>QSR Print</title><style>
-    body{font-family:'Courier New',monospace;max-width:300px;margin:0 auto;padding:0;color:#111}
-    .center{text-align:center}
-    .section{padding:16px}
-
-    /* Customer Token styles */
-    .c-section{font-size:12px}
-    .restaurant{font-size:16px;font-weight:bold;margin:0 0 4px}
-    .divider{border-top:1px dashed #999;margin:10px 0}
-    .token-box{text-align:center;border:2px solid #111;border-radius:8px;padding:12px;margin:12px 0}
-    .token-label{font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#666}
-    .token-num{font-size:36px;font-weight:bold;line-height:1.1}
-    .item{display:flex;gap:6px;padding:4px 0;align-items:flex-start}
-    .qty{min-width:24px;font-weight:bold}
-    .name{flex:1}
-    .mods{font-size:11px;color:#666;margin-top:1px}
-    .price{text-align:right;white-space:nowrap;font-weight:600}
-    .total-row{display:flex;justify-content:space-between;padding:2px 0}
-    .total-row.grand{font-size:14px;font-weight:bold;border-top:1px solid #111;padding-top:6px;margin-top:4px}
-    .method{text-align:center;font-size:11px;color:#666;margin-top:8px}
-    .footer{text-align:center;font-size:10px;color:#888;margin-top:12px}
-
-    /* Kitchen KOT styles */
-    .k-section{font-size:13px}
-    .k-header{font-size:14px;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;margin:0}
-    .k-token-box{text-align:center;border:2px solid #111;border-radius:8px;padding:12px;margin:12px 0}
-    .k-token-label{font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#666}
-    .k-token-num{font-size:36px;font-weight:bold;line-height:1.1}
-    .k-item{display:flex;gap:8px;padding:6px 0;border-bottom:1px dotted #ccc;font-size:14px}
-    .k-qty{min-width:28px;font-weight:bold;font-size:15px}
-    .k-name{flex:1;font-weight:600}
-    .k-mods{font-size:12px;color:#444;font-weight:normal;margin-top:2px}
-    .k-time{text-align:center;font-size:11px;color:#666;margin-top:8px}
-
-    /* Cut line between receipts */
-    .cut-line{margin:0;padding:20mm 0;text-align:center;font-size:10px;color:#999;letter-spacing:0.2em}
-    .cut-line::before,.cut-line::after{content:'';display:inline-block;width:25%;border-top:1px dashed #999;vertical-align:middle;margin:0 4px}
-
-    @page{size:80mm auto;margin:0}
-    @media print{
-      html,body{width:80mm;margin:0;padding:0;overflow:hidden}
-      .section{padding:4mm}
-    }
-  </style></head><body>
-
-    <!-- Customer Token -->
-    <div class="section c-section">
+  // Customer token body
+  const customerBody = `
       <p class="restaurant center">${escapeHtml(restaurantName)}</p>
       <div class="token-box">
         <div class="token-label">Token Number</div>
@@ -156,15 +149,25 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
       ${order.tax > 0 ? `<div class="total-row"><span>Tax</span><span>${escapeHtml(formatCurrency(order.tax))}</span></div>` : ''}
       <div class="total-row grand"><span>Total</span><span>${escapeHtml(formatCurrency(order.total))}</span></div>
       <div class="method">Paid via ${escapeHtml(paymentMethod)}</div>
-      <div class="footer">Thank you! Please wait for your token to be called.</div>
-    </div>
+      <div class="footer">Thank you! Please wait for your token to be called.</div>`;
 
-    ${kitchenItems.length > 0 ? `<div class="cut-line">✂ CUT HERE</div>` + buildKotPage('KITCHEN ORDER', kitchenItems) : ''}
-    ${beverageItems.length > 0 ? `<div class="cut-line">✂ CUT HERE</div>` + buildKotPage('BEVERAGE ORDER', beverageItems) : ''}
+  // Build print queue: customer token first, then KOTs
+  const printQueue: Array<{ body: string; title: string }> = [
+    { body: customerBody, title: 'Customer Token' },
+  ];
+  if (kitchenItems.length > 0) printQueue.push({ body: buildKotBody('KITCHEN ORDER', kitchenItems), title: 'Kitchen KOT' });
+  if (beverageItems.length > 0) printQueue.push({ body: buildKotBody('BEVERAGE ORDER', beverageItems), title: 'Beverage KOT' });
 
-    <script>window.onload=function(){window.print();window.onafterprint=function(){window.close();}}<\/script>
-  </body></html>`);
-  w.document.close();
+  // Print sequentially with 3s delay between each
+  const DELAY_MS = 3000;
+  (async () => {
+    for (let i = 0; i < printQueue.length; i++) {
+      await printSingleReceipt(printQueue[i].body, printQueue[i].title);
+      if (i < printQueue.length - 1) {
+        await new Promise(r => setTimeout(r, DELAY_MS));
+      }
+    }
+  })();
 }
 
 /* ═══════════════════ QSR Page ═══════════════════ */
