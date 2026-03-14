@@ -94,19 +94,18 @@ const PRINT_CSS = `
     @page{size:80mm auto;margin:0}
     @media print{html,body{width:80mm;margin:0;padding:0;overflow:hidden} *{color:#000!important;font-weight:bold!important}}`;
 
-function printOneReceipt(html: string, title: string): Promise<void> {
+function printOneReceipt(w: Window, html: string, title: string): Promise<void> {
   return new Promise((resolve) => {
-    const w = window.open('', '_blank', 'width=400,height=600');
-    if (!w) { resolve(); return; }
+    w.document.open();
     w.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>${PRINT_CSS}</style></head><body style="padding:16px">${html}</body></html>`);
     w.document.close();
     let resolved = false;
-    const done = () => { if (resolved) return; resolved = true; try { w.close(); } catch {} resolve(); };
-    w.onload = () => {
+    const done = () => { if (resolved) return; resolved = true; resolve(); };
+    setTimeout(() => {
       w.print();
       w.onafterprint = done;
-      setTimeout(done, 8000); // fallback
-    };
+      setTimeout(done, 5000); // fallback
+    }, 300);
   });
 }
 
@@ -157,10 +156,13 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
   if (beverageItems.length > 0) jobs.push({ html: buildKotHtmlBody('BEVERAGE ORDER', beverageItems), title: 'Beverage KOT' });
 
   (async () => {
+    const w = window.open('', '_blank', 'width=400,height=600');
+    if (!w) return;
     for (const job of jobs) {
-      await printOneReceipt(job.html, job.title);
-      await new Promise(r => setTimeout(r, 2000));
+      await printOneReceipt(w, job.html, job.title);
+      await new Promise(r => setTimeout(r, 500));
     }
+    w.close();
   })();
 }
 
