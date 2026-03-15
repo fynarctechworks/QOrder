@@ -46,7 +46,6 @@ const PAYMENT_METHODS: Array<{ value: PaymentMethod; label: string; icon: string
 ];
 
 const METHOD_MAP = Object.fromEntries(PAYMENT_METHODS.map((m) => [m.value, m]));
-const VISIBLE_CATEGORY_COUNT = 8;
 
 /* ─── Held tickets localStorage helpers ── */
 const HELD_KEY = 'qsr_held_tickets';
@@ -196,7 +195,6 @@ export default function QSRPage() {
   const [notes, setNotes] = useState('');
   const [menuSearch, setMenuSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [showCategoryOverflow, setShowCategoryOverflow] = useState(false);
   const [activeCartItemId, setActiveCartItemId] = useState<string | null>(null);
 
   // Settlement modal state
@@ -411,26 +409,12 @@ export default function QSRPage() {
     return categories.filter(c => catIds.has(c.id)).sort((a, b) => a.sortOrder - b.sortOrder);
   }, [categories, menuItems]);
 
-  const visibleCategories = useMemo(
-    () => activeCategories.slice(0, VISIBLE_CATEGORY_COUNT),
-    [activeCategories],
-  );
-
-  const overflowCategories = useMemo(
-    () => activeCategories.slice(VISIBLE_CATEGORY_COUNT),
-    [activeCategories],
-  );
-
-  const selectedOverflowCategory = useMemo(
-    () => overflowCategories.find((cat) => cat.id === selectedCategory) || null,
-    [overflowCategories, selectedCategory],
-  );
-
   /* ── Refs for auto-scroll ── */
   const cartItemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const lastAddedIdRef = useRef<string | null>(null);
   const cartIdCounter = useRef(0);
-  const categoryOverflowRef = useRef<HTMLDivElement | null>(null);
+  const categoryScrollRef = useRef<HTMLDivElement | null>(null);
+  const categoryBtnRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
   useEffect(() => {
     if (lastAddedIdRef.current) {
@@ -443,18 +427,19 @@ export default function QSRPage() {
   }, [cart]);
 
   useEffect(() => {
-    if (!showCategoryOverflow) return;
+    const targetKey = selectedCategory === 'all' ? 'all' : selectedCategory;
+    const btn = categoryBtnRefs.current.get(targetKey);
+    if (btn) {
+      btn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }
+  }, [selectedCategory]);
 
-    const handleOutsideClick = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (categoryOverflowRef.current && !categoryOverflowRef.current.contains(target)) {
-        setShowCategoryOverflow(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleOutsideClick);
-    return () => document.removeEventListener('mousedown', handleOutsideClick);
-  }, [showCategoryOverflow]);
+  const scrollCategoryRail = useCallback((direction: 'left' | 'right') => {
+    const rail = categoryScrollRef.current;
+    if (!rail) return;
+    const offset = Math.max(rail.clientWidth * 0.7, 220);
+    rail.scrollBy({ left: direction === 'left' ? -offset : offset, behavior: 'smooth' });
+  }, []);
 
   /* ── Cart helpers ── */
   const addToCart = useCallback((item: MenuItem) => {
@@ -964,78 +949,66 @@ export default function QSRPage() {
               />
             </div>
 
-            <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
-              <button
-                onClick={() => {
-                  setSelectedCategory('all');
-                  setShowCategoryOverflow(false);
-                }}
-                className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
-                  selectedCategory === 'all'
-                    ? 'bg-primary text-white shadow-sm'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200'
-                }`}
-              >
-                All
-              </button>
-              {visibleCategories.map((cat: Category) => (
+            <div className="sticky top-0 z-10 -mx-3 md:-mx-5 px-3 md:px-5 py-2 bg-white/95 backdrop-blur border-y border-gray-100">
+              <div className="flex items-center gap-2">
                 <button
-                  key={cat.id}
-                  onClick={() => {
-                    setSelectedCategory(cat.id);
-                    setShowCategoryOverflow(false);
-                  }}
-                  className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
-                    selectedCategory === cat.id
-                      ? 'bg-primary text-white shadow-sm'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200'
-                  }`}
+                  type="button"
+                  onClick={() => scrollCategoryRail('left')}
+                  className="hidden md:inline-flex w-8 h-8 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:text-primary hover:border-primary/40 transition-colors"
+                  aria-label="Scroll categories left"
                 >
-                  {cat.name}
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                  </svg>
                 </button>
-              ))}
-              {overflowCategories.length > 0 && (
-                <div className="relative" ref={categoryOverflowRef}>
+
+                <div ref={categoryScrollRef} className="flex-1 flex items-center gap-2 overflow-x-auto scrollbar-none snap-x snap-mandatory">
                   <button
-                    type="button"
-                    onClick={() => setShowCategoryOverflow(prev => !prev)}
-                    className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all border inline-flex items-center gap-1.5 ${
-                      selectedOverflowCategory || showCategoryOverflow
+                    ref={(el) => {
+                      if (el) categoryBtnRefs.current.set('all', el);
+                      else categoryBtnRefs.current.delete('all');
+                    }}
+                    onClick={() => setSelectedCategory('all')}
+                    className={`snap-start px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all border ${
+                      selectedCategory === 'all'
                         ? 'bg-primary text-white border-primary shadow-sm'
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200'
                     }`}
-                    aria-haspopup="menu"
-                    aria-expanded={showCategoryOverflow}
                   >
-                    <span className="max-w-[120px] truncate">{selectedOverflowCategory?.name || 'More'}</span>
-                    <svg className={`w-3.5 h-3.5 transition-transform ${showCategoryOverflow ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                    </svg>
+                    All
                   </button>
 
-                  {showCategoryOverflow && (
-                    <div className="absolute right-0 mt-2 w-64 max-h-72 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl z-20 py-1">
-                      {overflowCategories.map((cat) => (
-                        <button
-                          key={cat.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedCategory(cat.id);
-                            setShowCategoryOverflow(false);
-                          }}
-                          className={`w-full text-left px-3.5 py-2 text-sm transition-colors ${
-                            selectedCategory === cat.id
-                              ? 'bg-primary/10 text-primary font-semibold'
-                              : 'text-gray-700 hover:bg-gray-50'
-                          }`}
-                        >
-                          {cat.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  {activeCategories.map((cat: Category) => (
+                    <button
+                      key={cat.id}
+                      ref={(el) => {
+                        if (el) categoryBtnRefs.current.set(cat.id, el);
+                        else categoryBtnRefs.current.delete(cat.id);
+                      }}
+                      onClick={() => setSelectedCategory(cat.id)}
+                      className={`snap-start px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all border ${
+                        selectedCategory === cat.id
+                          ? 'bg-primary text-white border-primary shadow-sm'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200'
+                      }`}
+                      title={cat.name}
+                    >
+                      <span className="block max-w-[170px] truncate">{cat.name}</span>
+                    </button>
+                  ))}
                 </div>
-              )}
+
+                <button
+                  type="button"
+                  onClick={() => scrollCategoryRail('right')}
+                  className="hidden md:inline-flex w-8 h-8 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:text-primary hover:border-primary/40 transition-colors"
+                  aria-label="Scroll categories right"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
 
