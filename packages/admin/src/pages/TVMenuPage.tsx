@@ -8,7 +8,7 @@ import { resolveImg } from '../utils/resolveImg';
 
 const CUSTOMER_BASE =
   (import.meta.env.VITE_CUSTOMER_URL as string) ||
-  (import.meta.env.PROD ? 'https://order.infynarc.com' : 'http://localhost:5174');
+  (import.meta.env.PROD ? 'https://qorderscan.infynarc.com' : 'http://localhost:5174');
 
 export default function TVMenuPage() {
   const { user } = useAuth();

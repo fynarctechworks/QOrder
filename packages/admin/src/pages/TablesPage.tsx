@@ -15,7 +15,7 @@ import PrintInvoice from '../components/PrintInvoice';
 import type { Table, TableStatus } from '../types';
 
 const CUSTOMER_BASE_URL = import.meta.env.VITE_CUSTOMER_URL ||
-  (import.meta.env.PROD ? 'https://order.infynarc.com' : 'http://localhost:5174');
+  (import.meta.env.PROD ? 'https://qorderscan.infynarc.com' : 'http://localhost:5174');
 
 /* ═══════════════════════════ Constants ════════════════════════ */
 

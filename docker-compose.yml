@@ -71,7 +71,7 @@ services:
         PACKAGE_PATH: packages/customer
         VITE_API_URL: ${VITE_API_URL:-https://api.infynarc.com/api}
         VITE_SOCKET_URL: ${VITE_SOCKET_URL:-https://api.infynarc.com}
-        VITE_CUSTOMER_URL: ${VITE_CUSTOMER_URL:-https://order.infynarc.com}
+        VITE_CUSTOMER_URL: ${VITE_CUSTOMER_URL:-https://qorderscan.infynarc.com}
     container_name: qr_order_customer
     restart: unless-stopped
     ports:
@@ -88,7 +88,7 @@ services:
         PACKAGE_PATH: packages/admin
         VITE_API_URL: ${VITE_API_URL:-https://api.infynarc.com/api}
         VITE_SOCKET_URL: ${VITE_SOCKET_URL:-https://api.infynarc.com}
-        VITE_CUSTOMER_URL: ${VITE_CUSTOMER_URL:-https://order.infynarc.com}
+        VITE_CUSTOMER_URL: ${VITE_CUSTOMER_URL:-https://qorderscan.infynarc.com}
     container_name: qr_order_admin
     restart: unless-stopped
     ports:
