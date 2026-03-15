@@ -1,12 +1,19 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { restaurantService } from '../services/restaurantService';
+import { apiClient } from '../services/apiClient';
 import { getDietType } from '../components/DietBadge';
 import { resolveImg } from '../utils/resolveImg';
 import type { Category, MenuItem } from '../types';
 
-const SLIDE_INTERVAL = 10_000; // 10 seconds per category
+interface TVSlide {
+  id: string;
+  imageUrl: string;
+  sortOrder: number;
+}
+
+const SLIDE_INTERVAL = 10_000; // 10 seconds per category/slide
 const REFETCH_INTERVAL = 120_000; // Refetch menu every 2 minutes
 
 /** Format price with currency symbol */
@@ -92,29 +99,43 @@ function TVMenuItem({ item, currency }: { item: MenuItem; currency: string }) {
 function PaginationDots({
   total,
   active,
+  slidePageCount,
   onDotClick,
 }: {
   total: number;
   active: number;
+  slidePageCount: number;
   onDotClick: (index: number) => void;
 }) {
   if (total <= 1) return null;
   return (
     <div className="flex items-center justify-center gap-2 mt-6">
-      {Array.from({ length: total }, (_, i) => (
-        <button
-          key={i}
-          onClick={() => onDotClick(i)}
-          className={`rounded-full transition-all duration-300 ${
-            i === active
-              ? 'w-8 h-3 bg-emerald-400'
-              : 'w-3 h-3 bg-white/20 hover:bg-white/40'
-          }`}
-        />
-      ))}
+      {Array.from({ length: total }, (_, i) => {
+        const isSlide = i < slidePageCount;
+        return (
+          <button
+            key={i}
+            onClick={() => onDotClick(i)}
+            className={`rounded-full transition-all duration-300 ${
+              i === active
+                ? isSlide
+                  ? 'w-8 h-3 bg-blue-400'
+                  : 'w-8 h-3 bg-emerald-400'
+                : isSlide
+                  ? 'w-3 h-3 bg-blue-400/30 hover:bg-blue-400/50'
+                  : 'w-3 h-3 bg-white/20 hover:bg-white/40'
+            }`}
+          />
+        );
+      })}
     </div>
   );
 }
+
+/** A carousel "page" is either a category view or a full-screen slide image */
+type CarouselPage =
+  | { type: 'category'; category: Category; items: MenuItem[] }
+  | { type: 'slide'; slide: TVSlide };
 
 export default function TVMenuPage() {
   const { restaurantId, branchId } = useParams<{
@@ -122,7 +143,7 @@ export default function TVMenuPage() {
     branchId?: string;
   }>();
 
-  const [activeCategoryIndex, setActiveCategoryIndex] = useState(0);
+  const [activePageIndex, setActivePageIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval>>();
 
@@ -150,6 +171,17 @@ export default function TVMenuPage() {
     refetchInterval: REFETCH_INTERVAL,
   });
 
+  // Fetch TV slides
+  const { data: tvSlides = [] } = useQuery({
+    queryKey: ['tv-slides', restaurantId, branchId],
+    queryFn: () => {
+      const params = branchId ? `?branchId=${branchId}` : '';
+      return apiClient.get<TVSlide[]>(`/restaurants/${restaurantId}/tv-slides${params}`);
+    },
+    enabled: !!restaurantId,
+    refetchInterval: REFETCH_INTERVAL,
+  });
+
   // Sort categories
   const sortedCategories = [...categories].sort((a, b) => a.sortOrder - b.sortOrder);
 
@@ -164,29 +196,54 @@ export default function TVMenuPage() {
     (cat) => (itemsByCategory[cat.id]?.length ?? 0) > 0,
   );
 
-  const currentCategory = activeCategories[activeCategoryIndex] as Category | undefined;
-  const currentItems = currentCategory ? itemsByCategory[currentCategory.id] ?? [] : [];
+  // Build unified carousel: slides first, then categories
+  const carouselPages: CarouselPage[] = useMemo(() => {
+    const pages: CarouselPage[] = [];
+
+    // Add slide pages first (full-screen images)
+    tvSlides.forEach((slide) => {
+      pages.push({ type: 'slide', slide });
+    });
+
+    // Then category pages
+    activeCategories.forEach((cat) => {
+      pages.push({ type: 'category', category: cat, items: itemsByCategory[cat.id] ?? [] });
+    });
+
+    return pages;
+  }, [tvSlides, activeCategories, itemsByCategory]);
+
+  const currentPage = carouselPages[activePageIndex] as CarouselPage | undefined;
   const currency = restaurant?.currency ?? '₹';
+
+  // Count of slide pages vs category pages
+  const slidePageCount = tvSlides.length;
 
   // Auto-advance carousel
   const advanceSlide = useCallback(() => {
-    setActiveCategoryIndex((prev) =>
-      activeCategories.length > 0 ? (prev + 1) % activeCategories.length : 0,
+    setActivePageIndex((prev) =>
+      carouselPages.length > 0 ? (prev + 1) % carouselPages.length : 0,
     );
-  }, [activeCategories.length]);
+  }, [carouselPages.length]);
+
+  const goToPreviousSlide = useCallback(() => {
+    setActivePageIndex((prev) =>
+      prev <= 0 ? carouselPages.length - 1 : prev - 1,
+    );
+  }, [carouselPages.length]);
 
   useEffect(() => {
-    if (isPaused || activeCategories.length <= 1) return;
+    if (isPaused || carouselPages.length <= 1) return;
     timerRef.current = setInterval(advanceSlide, SLIDE_INTERVAL);
     return () => clearInterval(timerRef.current);
-  }, [advanceSlide, isPaused, activeCategories.length]);
+  }, [advanceSlide, isPaused, carouselPages.length]);
 
-  // Reset index when categories change
+  // Reset index when pages change
   useEffect(() => {
-    if (activeCategoryIndex >= activeCategories.length) {
-      setActiveCategoryIndex(0);
+    if (activePageIndex >= carouselPages.length) {
+      setActivePageIndex(0);
     }
-  }, [activeCategories.length, activeCategoryIndex]);
+  }, [carouselPages.length, activePageIndex]);
 
   // Fullscreen toggle
   const toggleFullscreen = useCallback(() => {
@@ -205,9 +262,7 @@ export default function TVMenuPage() {
         advanceSlide();
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault();
-        setActiveCategoryIndex((prev) =>
-          prev <= 0 ? activeCategories.length - 1 : prev - 1,
-        );
+        goToPreviousSlide();
       } else if (e.key === 'p') {
         setIsPaused((p) => !p);
       } else if (e.key === 'f') {
@@ -216,10 +271,10 @@ export default function TVMenuPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [advanceSlide, activeCategories.length, toggleFullscreen]);
+  }, [advanceSlide, goToPreviousSlide, toggleFullscreen]);
 
   // Loading state
-  if (!restaurant || categories.length === 0) {
+  if (!restaurant || (categories.length === 0 && tvSlides.length === 0)) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -230,8 +285,8 @@ export default function TVMenuPage() {
     );
   }
 
-  // No items at all
-  if (activeCategories.length === 0) {
+  // No items and no slides
+  if (carouselPages.length === 0) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -241,6 +296,76 @@ export default function TVMenuPage() {
       </div>
     );
   }
+
+  // ── Full-screen slide image page ──
+  if (currentPage?.type === 'slide') {
+    return (
+      <div
+        className="min-h-screen bg-gray-950 text-white flex flex-col cursor-none select-none"
+        onClick={() => setIsPaused((p) => !p)}
+      >
+        {/* Slide image — full screen */}
+        <div className="flex-1 flex items-center justify-center relative overflow-hidden">
+          <img
+            src={resolveImg(currentPage.slide.imageUrl)}
+            alt="Menu slide"
+            className="w-full h-full object-contain"
+          />
+
+          {/* Pause badge */}
+          {isPaused && (
+            <span className="absolute top-4 right-4 text-xs text-amber-400 bg-amber-400/10 px-3 py-1 rounded-full">
+              PAUSED
+            </span>
+          )}
+
+          {/* Fullscreen button */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleFullscreen();
+            }}
+            className="absolute top-4 right-16 text-white/30 hover:text-white/70 transition-colors"
+            title="Toggle fullscreen (F)"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5"
+              />
+            </svg>
+          </button>
+        </div>
+
+        {/* Footer / Pagination */}
+        <footer className="px-8 pb-4 pt-2">
+          <PaginationDots
+            total={carouselPages.length}
+            active={activePageIndex}
+            slidePageCount={slidePageCount}
+            onDotClick={(idx) => setActivePageIndex(idx)}
+          />
+          {!isPaused && carouselPages.length > 1 && (
+            <div className="mt-3 h-1 bg-white/5 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-emerald-500/50 rounded-full"
+                style={{ animation: `tvMenuProgress ${SLIDE_INTERVAL}ms linear infinite` }}
+              />
+            </div>
+          )}
+        </footer>
+
+        <style>{`
+          @keyframes tvMenuProgress { from { width: 0%; } to { width: 100%; } }
+        `}</style>
+      </div>
+    );
+  }
+
+  // ── Category page (original view) ──
+  const currentCategory = currentPage?.type === 'category' ? currentPage.category : undefined;
+  const currentItems = currentPage?.type === 'category' ? currentPage.items : [];
 
   return (
     <div
@@ -265,24 +390,27 @@ export default function TVMenuPage() {
           </div>
         </div>
 
-        {/* Category tabs */}
+        {/* Category tabs — only show categories, not slide pages */}
         <nav className="flex items-center gap-1 overflow-x-auto max-w-[60%] scrollbar-none">
-          {activeCategories.map((cat, idx) => (
-            <button
-              key={cat.id}
-              onClick={(e) => {
-                e.stopPropagation();
-                setActiveCategoryIndex(idx);
-              }}
-              className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all duration-300 ${
-                idx === activeCategoryIndex
-                  ? 'bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40'
-                  : 'text-white/40 hover:text-white/70 hover:bg-white/5'
-              }`}
-            >
-              {cat.name}
-            </button>
-          ))}
+          {activeCategories.map((cat, idx) => {
+            const pageIdx = slidePageCount + idx;
+            return (
+              <button
+                key={cat.id}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActivePageIndex(pageIdx);
+                }}
+                className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all duration-300 ${
+                  activePageIndex === pageIdx
+                    ? 'bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40'
+                    : 'text-white/40 hover:text-white/70 hover:bg-white/5'
+                }`}
+              >
+                {cat.name}
+              </button>
+            );
+          })}
         </nav>
 
         <div className="flex items-center gap-3 shrink-0">
@@ -337,15 +465,16 @@ export default function TVMenuPage() {
       {/* ─── Footer / Pagination ─── */}
       <footer className="px-8 pb-6 pt-2">
         <PaginationDots
-          total={activeCategories.length}
-          active={activeCategoryIndex}
+          total={carouselPages.length}
+          active={activePageIndex}
+          slidePageCount={slidePageCount}
           onDotClick={(idx) => {
-            setActiveCategoryIndex(idx);
+            setActivePageIndex(idx);
           }}
         />
 
         {/* Progress bar for auto-advance */}
-        {!isPaused && activeCategories.length > 1 && (
+        {!isPaused && carouselPages.length > 1 && (
           <div className="mt-4 h-1 bg-white/5 rounded-full overflow-hidden">
             <div
               className="h-full bg-emerald-500/50 rounded-full"

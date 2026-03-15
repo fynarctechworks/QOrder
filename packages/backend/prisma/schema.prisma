@@ -51,6 +51,7 @@ model Restaurant {
   groupOrders    GroupOrder[]
   discounts      Discount[]
   customers      Customer[]
+  tvMenuSlides   TVMenuSlide[]
 
   @@index([slug])
   @@index([isActive])
@@ -86,6 +87,7 @@ model Branch {
   modifierGroups ModifierGroup[]
   ingredients    Ingredient[]
   purchaseOrders PurchaseOrder[]
+  tvMenuSlides   TVMenuSlide[]
 
   @@unique([restaurantId, code])
   @@unique([restaurantId, name])
@@ -1388,4 +1390,27 @@ model CreditTransaction {
   @@index([restaurantId])
   @@index([type])
   @@index([createdAt])
+}
+
+// ==================== TV MENU SLIDES ====================
+
+model TVMenuSlide {
+  id           String   @id @default(uuid())
+  imageUrl     String   // Path to the uploaded image
+  sortOrder    Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Multi-tenant relation
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  // Branch relation (optional — null means shared across all branches)
+  branchId String?
+  branch   Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@index([restaurantId])
+  @@index([branchId])
+  @@index([sortOrder])
 }

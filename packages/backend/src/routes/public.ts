@@ -320,6 +320,29 @@ router.post(
 router.post('/:restaurantId/discounts/validate-coupon', couponLimiter, discountController.validateCoupon);
 router.get('/:restaurantId/discounts/auto-apply', apiLimiter, discountController.getAutoApply);
 
+// ─── TV Menu Slides: Customer display ───
+router.get('/:restaurantId/tv-slides', apiLimiter, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { restaurantId } = req.params;
+    const branchId = req.query.branchId as string | undefined;
+
+    const where: Record<string, unknown> = { restaurantId, isActive: true };
+    if (branchId) {
+      where.OR = [{ branchId }, { branchId: null }];
+    }
+
+    const slides = await prisma.tVMenuSlide.findMany({
+      where,
+      orderBy: { sortOrder: 'asc' },
+      select: { id: true, imageUrl: true, sortOrder: true },
+    });
+
+    res.json({ success: true, data: slides });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // ─── Service Requests: Customer creates ───
 router.post('/:restaurantId/service-requests', serviceRequestController.create);
 
