@@ -400,13 +400,13 @@ export default function QSRPage() {
         return item.name.toLowerCase().includes(q) || item.description?.toLowerCase().includes(q);
       }
       return true;
-    });
+    }).sort((a, b) => a.name.localeCompare(b.name));
   }, [menuItems, selectedCategory, menuSearch]);
 
   /* ── Active categories (that have available items) ── */
   const activeCategories = useMemo(() => {
     const catIds = new Set(menuItems.filter(i => i.isAvailable).map(i => i.categoryId));
-    return categories.filter(c => catIds.has(c.id)).sort((a, b) => a.sortOrder - b.sortOrder);
+    return categories.filter(c => catIds.has(c.id)).sort((a, b) => a.name.localeCompare(b.name));
   }, [categories, menuItems]);
 
   /* ── Refs for auto-scroll ── */
@@ -962,7 +962,7 @@ export default function QSRPage() {
                   </svg>
                 </button>
 
-                <div ref={categoryScrollRef} className="flex-1 flex items-center gap-2 overflow-x-auto scrollbar-none snap-x snap-mandatory">
+                <div ref={categoryScrollRef} className="flex-1 flex items-center gap-2 overflow-x-auto snap-x snap-mandatory pb-1">
                   <button
                     ref={(el) => {
                       if (el) categoryBtnRefs.current.set('all', el);

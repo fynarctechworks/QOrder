@@ -202,13 +202,13 @@ export default function CreateOrderPage() {
         return item.name.toLowerCase().includes(q) || item.description?.toLowerCase().includes(q);
       }
       return true;
-    });
+    }).sort((a, b) => a.name.localeCompare(b.name));
   }, [menuItems, selectedCategory, menuSearch]);
 
   /* ── Active categories (that have available items) ── */
   const activeCategories = useMemo(() => {
     const catIds = new Set(menuItems.filter(i => i.isAvailable).map(i => i.categoryId));
-    return categories.filter(c => catIds.has(c.id)).sort((a, b) => a.sortOrder - b.sortOrder);
+    return categories.filter(c => catIds.has(c.id)).sort((a, b) => a.name.localeCompare(b.name));
   }, [categories, menuItems]);
 
   /* ── Tables for dropdown ── */
@@ -252,6 +252,8 @@ export default function CreateOrderPage() {
   const cartItemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const lastAddedIdRef = useRef<string | null>(null);
   const cartIdCounter = useRef(0);
+  const categoryScrollRef = useRef<HTMLDivElement | null>(null);
+  const categoryBtnRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
   useEffect(() => {
     if (lastAddedIdRef.current) {
@@ -262,6 +264,21 @@ export default function CreateOrderPage() {
       lastAddedIdRef.current = null;
     }
   }, [cart]);
+
+  useEffect(() => {
+    const targetKey = selectedCategory === 'all' ? 'all' : selectedCategory;
+    const btn = categoryBtnRefs.current.get(targetKey);
+    if (btn) {
+      btn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }
+  }, [selectedCategory]);
+
+  const scrollCategoryRail = useCallback((direction: 'left' | 'right') => {
+    const rail = categoryScrollRef.current;
+    if (!rail) return;
+    const offset = Math.max(rail.clientWidth * 0.7, 220);
+    rail.scrollBy({ left: direction === 'left' ? -offset : offset, behavior: 'smooth' });
+  }, []);
 
   /* ── Cart helpers ── */
   const addToCart = useCallback((item: MenuItem) => {
@@ -748,31 +765,67 @@ export default function CreateOrderPage() {
               />
             </div>
 
-            {/* Category tabs */}
-            <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
-              <button
-                onClick={() => setSelectedCategory('all')}
-                className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
-                  selectedCategory === 'all'
-                    ? 'bg-primary text-white shadow-sm'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200'
-                }`}
-              >
-                All
-              </button>
-              {activeCategories.map((cat: Category) => (
+            {/* Category sticky rail */}
+            <div className="sticky top-0 z-10 -mx-3 md:-mx-5 px-3 md:px-5 py-2 bg-white/95 backdrop-blur border-y border-gray-100">
+              <div className="flex items-center gap-2">
                 <button
-                  key={cat.id}
-                  onClick={() => setSelectedCategory(cat.id)}
-                  className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
-                    selectedCategory === cat.id
-                      ? 'bg-primary text-white shadow-sm'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200'
-                  }`}
+                  type="button"
+                  onClick={() => scrollCategoryRail('left')}
+                  className="hidden md:inline-flex w-8 h-8 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:text-primary hover:border-primary/40 transition-colors"
+                  aria-label="Scroll categories left"
                 >
-                  {cat.name}
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                  </svg>
                 </button>
-              ))}
+
+                <div ref={categoryScrollRef} className="flex-1 flex items-center gap-2 overflow-x-auto snap-x snap-mandatory pb-1">
+                  <button
+                    ref={(el) => {
+                      if (el) categoryBtnRefs.current.set('all', el);
+                      else categoryBtnRefs.current.delete('all');
+                    }}
+                    onClick={() => setSelectedCategory('all')}
+                    className={`snap-start px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all border ${
+                      selectedCategory === 'all'
+                        ? 'bg-primary text-white border-primary shadow-sm'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200'
+                    }`}
+                  >
+                    All
+                  </button>
+
+                  {activeCategories.map((cat: Category) => (
+                    <button
+                      key={cat.id}
+                      ref={(el) => {
+                        if (el) categoryBtnRefs.current.set(cat.id, el);
+                        else categoryBtnRefs.current.delete(cat.id);
+                      }}
+                      onClick={() => setSelectedCategory(cat.id)}
+                      className={`snap-start px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all border ${
+                        selectedCategory === cat.id
+                          ? 'bg-primary text-white border-primary shadow-sm'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200'
+                      }`}
+                      title={cat.name}
+                    >
+                      <span className="block max-w-[170px] truncate">{cat.name}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => scrollCategoryRail('right')}
+                  className="hidden md:inline-flex w-8 h-8 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:text-primary hover:border-primary/40 transition-colors"
+                  aria-label="Scroll categories right"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
 
