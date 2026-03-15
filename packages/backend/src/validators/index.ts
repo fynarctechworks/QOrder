@@ -330,6 +330,16 @@ export const changePasswordSchema = z.object({
   newPassword: passwordSchema,
 });
 
+export const forgotPasswordSchema = z.object({
+  email: z.string().email('Invalid email address'),
+});
+
+export const resetPasswordSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  code: z.string().length(6, 'Reset code must be 6 digits'),
+  newPassword: passwordSchema,
+});
+
 // ==================== MENU QUERIES ====================
 
 export const menuItemQuerySchema = z.object({

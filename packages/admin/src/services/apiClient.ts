@@ -203,6 +203,32 @@ class ApiClient {
     });
   }
 
+  /** POST for public/auth endpoints — skips token refresh & force-logout on 401 */
+  async postPublic<T>(endpoint: string, data?: unknown): Promise<T> {
+    const url = `${this._baseUrl}${endpoint}`;
+    const config: RequestInit = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: data ? JSON.stringify(data) : undefined,
+    };
+
+    const response = await fetch(url, config);
+
+    if (!response.ok) {
+      const errorData = (await response.json()) as ApiError;
+      let msg = errorData.error?.message || 'An error occurred';
+      const details = (errorData.error as any)?.details;
+      if (Array.isArray(details) && details.length) {
+        msg += ': ' + details.map((d: { path: string; message: string }) => `${d.path} – ${d.message}`).join(', ');
+      }
+      throw new Error(msg);
+    }
+
+    const body = (await response.json()) as ApiResponse<T>;
+    return body.data;
+  }
+
   async postFormData<T>(endpoint: string, formData: FormData): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'POST',

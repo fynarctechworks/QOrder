@@ -247,4 +247,42 @@ export const authController = {
       next(error);
     }
   },
+
+  async forgotPassword(
+    req: Request,
+    res: Response<ApiResponse>,
+    next: NextFunction
+  ) {
+    try {
+      const { email } = req.body;
+      const result = await authService.forgotPassword(email);
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async resetPassword(
+    req: Request,
+    res: Response<ApiResponse>,
+    next: NextFunction
+  ) {
+    try {
+      const { email, code, newPassword } = req.body;
+      const result = await authService.resetPassword(email, code, newPassword);
+
+      res.clearCookie(REFRESH_TOKEN_COOKIE, CLEAR_COOKIE_OPTIONS);
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
 };

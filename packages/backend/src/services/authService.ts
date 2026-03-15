@@ -6,7 +6,7 @@ import { config } from '../config/index.js';
 import { prisma, AppError, logger } from '../lib/index.js';
 import type { AccessTokenPayload, RefreshTokenPayload } from '../types/index.js';
 import type { RegisterInput, LoginInput } from '../validators/index.js';
-import { generateOTP, sendVerificationEmail } from './emailService.js';
+import { generateOTP, sendVerificationEmail, sendPasswordResetEmail } from './emailService.js';
 
 const SALT_ROUNDS = 12;
 const OTP_EXPIRY_MINUTES = 10;
@@ -479,6 +479,65 @@ export const authService = {
 
     // Revoke all refresh tokens (force re-login)
     await this.logoutAll(userId);
+  },
+
+  // Request password reset — sends OTP to user's email
+  async forgotPassword(email: string) {
+    const user = await prisma.user.findFirst({ where: { email } });
+
+    // Always return success to prevent email enumeration
+    if (!user || !user.isVerified || !user.isActive) {
+      return { message: 'If an account with that email exists, a reset code has been sent.' };
+    }
+
+    const otp = generateOTP();
+    const otpExpiry = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { verificationCode: otp, verificationExpiry: otpExpiry },
+    });
+
+    await sendPasswordResetEmail(email, otp, user.name);
+
+    return { message: 'If an account with that email exists, a reset code has been sent.' };
+  },
+
+  // Reset password with OTP
+  async resetPassword(email: string, code: string, newPassword: string) {
+    const user = await prisma.user.findFirst({ where: { email } });
+
+    if (!user) {
+      throw AppError.badRequest('Invalid or expired reset code');
+    }
+
+    if (!user.verificationCode || !user.verificationExpiry) {
+      throw AppError.badRequest('No reset code found. Please request a new one.');
+    }
+
+    if (new Date() > user.verificationExpiry) {
+      throw AppError.badRequest('Reset code has expired. Please request a new one.');
+    }
+
+    if (user.verificationCode !== code) {
+      throw AppError.badRequest('Invalid reset code');
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        verificationCode: null,
+        verificationExpiry: null,
+      },
+    });
+
+    // Revoke all refresh tokens (force re-login on all devices)
+    await this.logoutAll(user.id);
+
+    return { message: 'Password reset successfully. Please login with your new password.' };
   },
 
   // Clean up expired refresh tokens

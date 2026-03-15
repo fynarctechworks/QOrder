@@ -30,9 +30,12 @@ export default function LoginPage() {
       toast.success('Welcome back!');
       navigate(from, { replace: true });
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Invalid credentials'
-      );
+      const msg = error instanceof Error ? error.message : '';
+      if (msg.toLowerCase().includes('invalid credentials')) {
+        toast.error('Wrong username or password');
+      } else {
+        toast.error(msg || 'Login failed. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -133,6 +136,14 @@ export default function LoginPage() {
                   </svg>
                 )}
               </button>
+            </div>
+            <div className="text-right mt-1.5">
+              <Link
+                to="/forgot-password"
+                className="text-xs text-primary font-medium hover:underline"
+              >
+                Forgot password?
+              </Link>
             </div>
           </div>
 

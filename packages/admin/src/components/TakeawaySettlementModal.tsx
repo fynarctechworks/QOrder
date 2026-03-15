@@ -66,7 +66,7 @@ export default function TakeawaySettlementModal({
   const [settling, setSettling] = useState(false);
   const [settled, setSettled] = useState(false);
   const [showSplitMode, setShowSplitMode] = useState(false);
-  const [selectedQuickMethod, setSelectedQuickMethod] = useState<PaymentMethod | null>(null);
+  const [selectedQuickMethod, setSelectedQuickMethod] = useState<PaymentMethod | null>('CASH');
   const [whatsappStatus, setWhatsappStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
 
   /* ── Settings (for print config) ── */

@@ -21,7 +21,7 @@ interface VerifyEmailResponse {
 
 export const authService = {
   async login(identifier: string, password: string): Promise<LoginResponse> {
-    const result = await apiClient.post<LoginResponse>('/auth/login', { identifier, password });
+    const result = await apiClient.postPublic<LoginResponse>('/auth/login', { identifier, password });
     // Store access token for Bearer auth & socket handshake
     if (result.accessToken) {
       useAuthStore.getState().setAccessToken(result.accessToken);
@@ -49,6 +49,14 @@ export const authService = {
 
   async resendVerification(email: string): Promise<{ message: string }> {
     return apiClient.post<{ message: string }>('/auth/resend-verification', { email });
+  },
+
+  async forgotPassword(email: string): Promise<{ message: string }> {
+    return apiClient.postPublic<{ message: string }>('/auth/forgot-password', { email });
+  },
+
+  async resetPassword(email: string, code: string, newPassword: string): Promise<{ message: string }> {
+    return apiClient.postPublic<{ message: string }>('/auth/reset-password', { email, code, newPassword });
   },
 
   async logout(): Promise<void> {

@@ -10,6 +10,8 @@ import {
   changePasswordSchema,
   verifyEmailSchema,
   resendVerificationSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
 } from '../validators/index.js';
 
 const router = Router();
@@ -41,6 +43,20 @@ router.post(
   authLimiter,
   validate(loginSchema),
   authController.login
+);
+
+router.post(
+  '/forgot-password',
+  authLimiter,
+  validate(forgotPasswordSchema),
+  authController.forgotPassword
+);
+
+router.post(
+  '/reset-password',
+  authLimiter,
+  validate(resetPasswordSchema),
+  authController.resetPassword
 );
 
 router.post(

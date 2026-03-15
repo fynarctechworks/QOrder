@@ -111,7 +111,7 @@ export default function SettlementModal({
   const [settled, setSettled] = useState(false);
   const [settledSessionId, setSettledSessionId] = useState<string | null>(null);
   const [showSplitMode, setShowSplitMode] = useState(false);
-  const [selectedQuickMethod, setSelectedQuickMethod] = useState<PaymentMethod | null>(null);
+  const [selectedQuickMethod, setSelectedQuickMethod] = useState<PaymentMethod | null>('CASH');
   const autoPrintedRef = useRef(false);
 
   /* ── Settings (for auto-print config) ── */

@@ -335,7 +335,7 @@ function PrinterTestButton({
 /** Skeleton */
 function SettingsSkeleton() {
   return (
-    <div className="space-y-6 w-full max-w-2xl">
+    <div className="space-y-6 w-full max-w-5xl">
       {/* Header skeleton */}
       <div className="animate-pulse">
         <div className="h-7 w-32 bg-gray-200 rounded mb-2" />
@@ -849,7 +849,7 @@ export default function SettingsPage() {
   if (isLoading && profileLoading) return <SettingsSkeleton />;
 
   if (profileError || settingsError) return (
-    <div className="w-full max-w-2xl space-y-6">
+    <div className="w-full max-w-5xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-text-primary tracking-tight">Settings</h1>
       </div>
@@ -863,7 +863,7 @@ export default function SettingsPage() {
   /* ═════════════════════════ RENDER ═════════════════════════ */
 
   return (
-    <div className="space-y-6 w-full max-w-2xl">
+    <div className="space-y-6 w-full max-w-5xl">
 
       {/* ── Header ──────────────────────────────────────────── */}
       <div>
@@ -874,13 +874,14 @@ export default function SettingsPage() {
       </div>
 
       {/* ── Tab Navigation ──────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-1.5">
-        <div className="flex flex-wrap gap-1">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-1.5 sticky top-0 z-10 w-fit max-w-full overflow-x-auto">
+        <div className="flex gap-1">
           {TABS.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+              title={tab.label}
+              className={`inline-flex items-center justify-center gap-1.5 px-2 sm:px-3 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all duration-200 whitespace-nowrap shrink-0 ${
                 activeTab === tab.key
                   ? 'bg-primary text-white shadow-sm'
                   : 'text-text-secondary hover:bg-gray-50 hover:text-text-primary'
@@ -889,7 +890,7 @@ export default function SettingsPage() {
               <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={tab.icon} />
               </svg>
-              <span>{tab.label}</span>
+              <span className="hidden sm:inline">{tab.label}</span>
             </button>
           ))}
         </div>

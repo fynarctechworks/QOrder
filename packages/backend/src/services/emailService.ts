@@ -80,6 +80,57 @@ export async function sendVerificationEmail(
   }
 }
 
+/** Send password-reset OTP email */
+export async function sendPasswordResetEmail(
+  to: string,
+  otp: string,
+  userName: string
+): Promise<void> {
+  const safeUserName = escapeHtml(userName);
+  const html = `
+    <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; background: #f8faf8; border-radius: 16px;">
+      <div style="text-align: center; margin-bottom: 24px;">
+        <h1 style="color: #1a3c34; font-size: 22px; margin: 0;">Q Order</h1>
+        <p style="color: #6b7280; font-size: 14px; margin-top: 4px;">Password Reset</p>
+      </div>
+      
+      <div style="background: #ffffff; border-radius: 12px; padding: 28px 24px; border: 1px solid #e5e7eb;">
+        <p style="color: #374151; font-size: 15px; margin: 0 0 8px;">Hi <strong>${safeUserName}</strong>,</p>
+        <p style="color: #6b7280; font-size: 14px; margin: 0 0 24px; line-height: 1.5;">
+          We received a request to reset your password. Use the code below to proceed.
+        </p>
+        
+        <div style="text-align: center; margin: 24px 0;">
+          <div style="display: inline-block; background: #fef3c7; border: 2px dashed #d97706; border-radius: 12px; padding: 16px 32px;">
+            <span style="font-size: 32px; font-weight: 700; letter-spacing: 8px; color: #92400e;">${otp}</span>
+          </div>
+        </div>
+        
+        <p style="color: #9ca3af; font-size: 13px; text-align: center; margin: 0;">
+          This code expires in <strong>10 minutes</strong>.
+        </p>
+      </div>
+      
+      <p style="color: #9ca3af; font-size: 12px; text-align: center; margin-top: 20px; line-height: 1.4;">
+        If you didn't request this, you can safely ignore this email.
+      </p>
+    </div>
+  `;
+
+  try {
+    await transporter.sendMail({
+      from: `"Q Order" <${config.smtp.from}>`,
+      to,
+      subject: `${otp} — Reset your Q Order password`,
+      html,
+    });
+    logger.info({ to }, 'Password reset email sent');
+  } catch (error) {
+    logger.error({ error, to }, 'Failed to send password reset email');
+    throw new Error('Failed to send password reset email. Please try again.');
+  }
+}
+
 /** Send e-bill / receipt email */
 export async function sendReceiptEmail(to: string, order: {
   orderNumber: string;
