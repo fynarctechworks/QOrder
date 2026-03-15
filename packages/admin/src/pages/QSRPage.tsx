@@ -46,6 +46,7 @@ const PAYMENT_METHODS: Array<{ value: PaymentMethod; label: string; icon: string
 ];
 
 const METHOD_MAP = Object.fromEntries(PAYMENT_METHODS.map((m) => [m.value, m]));
+const VISIBLE_CATEGORY_COUNT = 8;
 
 /* ─── Held tickets localStorage helpers ── */
 const HELD_KEY = 'qsr_held_tickets';
@@ -195,6 +196,7 @@ export default function QSRPage() {
   const [notes, setNotes] = useState('');
   const [menuSearch, setMenuSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [showCategoryOverflow, setShowCategoryOverflow] = useState(false);
   const [activeCartItemId, setActiveCartItemId] = useState<string | null>(null);
 
   // Settlement modal state
@@ -409,10 +411,26 @@ export default function QSRPage() {
     return categories.filter(c => catIds.has(c.id)).sort((a, b) => a.sortOrder - b.sortOrder);
   }, [categories, menuItems]);
 
+  const visibleCategories = useMemo(
+    () => activeCategories.slice(0, VISIBLE_CATEGORY_COUNT),
+    [activeCategories],
+  );
+
+  const overflowCategories = useMemo(
+    () => activeCategories.slice(VISIBLE_CATEGORY_COUNT),
+    [activeCategories],
+  );
+
+  const selectedOverflowCategory = useMemo(
+    () => overflowCategories.find((cat) => cat.id === selectedCategory) || null,
+    [overflowCategories, selectedCategory],
+  );
+
   /* ── Refs for auto-scroll ── */
   const cartItemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const lastAddedIdRef = useRef<string | null>(null);
   const cartIdCounter = useRef(0);
+  const categoryOverflowRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (lastAddedIdRef.current) {
@@ -423,6 +441,20 @@ export default function QSRPage() {
       lastAddedIdRef.current = null;
     }
   }, [cart]);
+
+  useEffect(() => {
+    if (!showCategoryOverflow) return;
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (categoryOverflowRef.current && !categoryOverflowRef.current.contains(target)) {
+        setShowCategoryOverflow(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [showCategoryOverflow]);
 
   /* ── Cart helpers ── */
   const addToCart = useCallback((item: MenuItem) => {
@@ -934,7 +966,10 @@ export default function QSRPage() {
 
             <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
               <button
-                onClick={() => setSelectedCategory('all')}
+                onClick={() => {
+                  setSelectedCategory('all');
+                  setShowCategoryOverflow(false);
+                }}
                 className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
                   selectedCategory === 'all'
                     ? 'bg-primary text-white shadow-sm'
@@ -943,10 +978,13 @@ export default function QSRPage() {
               >
                 All
               </button>
-              {activeCategories.map((cat: Category) => (
+              {visibleCategories.map((cat: Category) => (
                 <button
                   key={cat.id}
-                  onClick={() => setSelectedCategory(cat.id)}
+                  onClick={() => {
+                    setSelectedCategory(cat.id);
+                    setShowCategoryOverflow(false);
+                  }}
                   className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
                     selectedCategory === cat.id
                       ? 'bg-primary text-white shadow-sm'
@@ -956,6 +994,48 @@ export default function QSRPage() {
                   {cat.name}
                 </button>
               ))}
+              {overflowCategories.length > 0 && (
+                <div className="relative" ref={categoryOverflowRef}>
+                  <button
+                    type="button"
+                    onClick={() => setShowCategoryOverflow(prev => !prev)}
+                    className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all border inline-flex items-center gap-1.5 ${
+                      selectedOverflowCategory || showCategoryOverflow
+                        ? 'bg-primary text-white border-primary shadow-sm'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200'
+                    }`}
+                    aria-haspopup="menu"
+                    aria-expanded={showCategoryOverflow}
+                  >
+                    <span className="max-w-[120px] truncate">{selectedOverflowCategory?.name || 'More'}</span>
+                    <svg className={`w-3.5 h-3.5 transition-transform ${showCategoryOverflow ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+
+                  {showCategoryOverflow && (
+                    <div className="absolute right-0 mt-2 w-64 max-h-72 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl z-20 py-1">
+                      {overflowCategories.map((cat) => (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedCategory(cat.id);
+                            setShowCategoryOverflow(false);
+                          }}
+                          className={`w-full text-left px-3.5 py-2 text-sm transition-colors ${
+                            selectedCategory === cat.id
+                              ? 'bg-primary/10 text-primary font-semibold'
+                              : 'text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          {cat.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
