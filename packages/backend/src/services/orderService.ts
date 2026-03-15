@@ -429,9 +429,25 @@ export const orderService = {
             );
           }
 
+          // Generate sequential token number (001-999, wraps around)
+          const effectiveBranchId = table?.branchId ?? fallbackBranchId ?? null;
+          const lastOrder = await tx.order.findFirst({
+            where: {
+              restaurantId,
+              ...(effectiveBranchId ? { OR: [{ branchId: effectiveBranchId }, { branchId: null }] } : {}),
+              tokenNumber: { not: null },
+            },
+            orderBy: { createdAt: 'desc' },
+            select: { tokenNumber: true },
+          });
+          const tokenNumber = lastOrder?.tokenNumber && lastOrder.tokenNumber < 999
+            ? lastOrder.tokenNumber + 1
+            : 1;
+
           return tx.order.create({
             data: {
               orderNumber,
+              tokenNumber,
               restaurantId,
               tableId,
               sessionId,
@@ -469,6 +485,7 @@ export const orderService = {
             select: {
               id: true,
               orderNumber: true,
+              tokenNumber: true,
               restaurantId: true,
               tableId: true,
               sessionId: true,

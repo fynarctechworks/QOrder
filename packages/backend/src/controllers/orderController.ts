@@ -48,6 +48,7 @@ interface RawOrderItem {
 interface RawOrder {
   id: string;
   orderNumber: string;
+  tokenNumber?: number | null;
   restaurantId: string;
   orderType?: string | null;
   tableId?: string | null;
@@ -97,6 +98,7 @@ function transformOrder(raw: RawOrder) {
   return {
     id: raw.id,
     orderNumber: raw.orderNumber,
+    tokenNumber: raw.tokenNumber ?? null,
     restaurantId: raw.restaurantId,
     tableId: raw.tableId ?? '',
     tableName: raw.table

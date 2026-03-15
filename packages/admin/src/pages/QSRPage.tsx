@@ -1,11 +1,11 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { menuService, settingsService, orderService } from '../services';
+import { menuService, settingsService, orderService, tableService } from '../services';
 import { useCurrency } from '../hooks/useCurrency';
 import DietBadge from '../components/DietBadge';
 import Modal from '../components/Modal';
-import type { MenuItem, Category, Order } from '../types';
+import type { MenuItem, Category, Order, Table } from '../types';
 
 /* ─── Types ── */
 interface SelectedModifier {
@@ -118,13 +118,17 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
     return `<div class="k-item"><span class="k-qty">${item.quantity}x</span><div class="k-name">${escapeHtml(item.menuItemName)}${mods ? `<div class="k-mods">${escapeHtml(mods)}</div>` : ''}</div></div>`;
   }).join('');
 
+  const tableLabel = order.tableName && order.tableName !== 'QSR Order' && order.tableName !== 'Takeaway'
+    ? order.tableName : '';
+
   const buildKotHtmlBody = (title: string, items: typeof order.items) => `
       <p class="k-header center">${escapeHtml(title)}</p>
       <p class="center" style="font-size:13px;margin:2px 0 0">${escapeHtml(restaurantName)}</p>
       <div class="k-token-box">
         <div class="k-token-label">Token</div>
-        <div class="k-token-num">${escapeHtml(order.orderNumber)}</div>
+        <div class="k-token-num">${escapeHtml(order.tokenNumber ? String(order.tokenNumber).padStart(3, '0') : order.orderNumber)}</div>
       </div>
+      ${tableLabel ? `<p class="center" style="font-size:16px;margin:4px 0;font-weight:bold">${escapeHtml(tableLabel)}</p>` : ''}
       ${order.customerName ? `<p class="center" style="font-size:14px;margin:4px 0"><strong>${escapeHtml(order.customerName)}</strong></p>` : ''}
       <div class="divider"></div>
       ${buildKotHtml(items)}
@@ -135,8 +139,9 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
       <p class="restaurant center">${escapeHtml(restaurantName)}</p>
       <div class="token-box">
         <div class="token-label">Token Number</div>
-        <div class="token-num">${escapeHtml(order.orderNumber)}</div>
+        <div class="token-num">${escapeHtml(order.tokenNumber ? String(order.tokenNumber).padStart(3, '0') : order.orderNumber)}</div>
       </div>
+      ${tableLabel ? `<p class="center" style="font-size:16px;margin:4px 0;font-weight:bold">${escapeHtml(tableLabel)}</p>` : ''}
       <div class="divider"></div>
       ${customerItemsHtml}
       <div class="divider"></div>
@@ -173,6 +178,11 @@ export default function QSRPage() {
     queryFn: settingsService.get,
   });
 
+  const { data: tables = [] } = useQuery<Table[]>({
+    queryKey: ['tables'],
+    queryFn: tableService.getAll,
+  });
+
   const dataError = menuErr || catErr;
 
   const taxRate = settings?.taxRate ?? 0;
@@ -194,6 +204,9 @@ export default function QSRPage() {
   const [settled, setSettled] = useState(false);
   const [completedOrder, setCompletedOrder] = useState<Order | null>(null);
   const settledRef = useRef(false);
+
+  // Table selection state
+  const [selectedTable, setSelectedTable] = useState('');
 
   // WhatsApp invoice state
   const [whatsappStatus, setWhatsappStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
@@ -259,7 +272,7 @@ export default function QSRPage() {
       setCompletedOrder(order);
       setSettled(true);
       setSettling(false);
-      toast.success(`Token #${order.orderNumber} — Order complete!`);
+      toast.success(`Token #${order.tokenNumber ? String(order.tokenNumber).padStart(3, '0') : order.orderNumber} — Order complete!`);
       // Auto-print customer token + station KOTs
       const stationMap = buildItemStationMap();
       setTimeout(() => printReceipts(order, selectedQuickMethod || 'CASH', formatCurrency, restaurantName, stationMap), 300);
@@ -289,6 +302,7 @@ export default function QSRPage() {
     setDiscountType('PERCENTAGE');
     setDiscountValue('');
     setWhatsappStatus('idle');
+    setSelectedTable('');
     settledRef.current = false;
   };
 
@@ -535,6 +549,7 @@ export default function QSRPage() {
           ? c.selectedModifiers.map(m => ({ modifierId: m.modifierId }))
           : undefined,
       })),
+      tableId: selectedTable || undefined,
       customerName: customerName.trim() || undefined,
       customerPhone: customerPhone.trim() || undefined,
       notes: notes.trim() || undefined,
@@ -564,6 +579,7 @@ export default function QSRPage() {
           ? c.selectedModifiers.map(m => ({ modifierId: m.modifierId }))
           : undefined,
       })),
+      tableId: selectedTable || undefined,
       customerName: customerName.trim() || undefined,
       customerPhone: customerPhone.trim() || undefined,
       notes: notes.trim() || undefined,
@@ -618,6 +634,22 @@ export default function QSRPage() {
             required
             className={`border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary flex-1 sm:flex-none sm:w-36 ${!customerPhone.trim() ? 'border-red-300' : 'border-gray-200'}`}
           />
+          <select
+            value={selectedTable}
+            onChange={e => setSelectedTable(e.target.value)}
+            className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary flex-1 sm:flex-none sm:w-36 bg-white"
+          >
+            <option value="">Counter</option>
+            {tables
+              .filter(t => t.status === 'available' || t.status === 'occupied')
+              .sort((a, b) => Number(a.number) - Number(b.number))
+              .map(t => (
+                <option key={t.id} value={t.id} disabled={t.status === 'occupied'}>
+                  {t.name ? `${t.name} (${t.number})` : `Table ${t.number}`}
+                  {t.status === 'occupied' ? ' • Occupied' : ''}
+                </option>
+              ))}
+          </select>
           </div>
           <div className="flex items-center gap-2">
           <button

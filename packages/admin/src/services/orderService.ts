@@ -126,6 +126,7 @@ export const orderService = {
   /** QSR order — created directly as COMPLETED (pre-paid at counter) */
   async createQSROrder(data: {
     items: Array<{ menuItemId: string; quantity: number; notes?: string; modifiers?: Array<{ modifierId: string }> }>;
+    tableId?: string;
     customerName?: string;
     customerPhone?: string;
     notes?: string;

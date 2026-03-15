@@ -99,6 +99,7 @@ export interface CustomizationOption {
 export interface Order {
   id: string;
   orderNumber: string;
+  tokenNumber?: number | null;
   restaurantId: string;
   tableId: string;
   tableName: string;
