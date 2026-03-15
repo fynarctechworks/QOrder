@@ -25,6 +25,7 @@ function mapApiOrder(raw: Record<string, unknown>): Order {
   return {
     id: r.id as string,
     orderNumber: (r.orderNumber as string) || '',
+    tokenNumber: r.tokenNumber != null ? Number(r.tokenNumber) : null,
     restaurantId: r.restaurantId as string,
     tableId: (r.tableId as string) || '',
     tableName: (r.tableName as string) || 'Unknown',
