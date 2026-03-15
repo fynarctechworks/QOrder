@@ -996,7 +996,9 @@ function TableBillCard({
             >
               <div className="flex items-center justify-between mb-1.5">
                 <span className="font-mono text-[11px] font-semibold text-text-secondary">
-                  #{order.orderNumber || order.id.slice(-6).toUpperCase()}
+                  {order.tokenNumber != null
+                    ? `Token #${String(order.tokenNumber).padStart(3, '0')}`
+                    : `#${order.orderNumber || order.id.slice(-6).toUpperCase()}`}
                 </span>
                 <span className="text-[11px] text-text-muted">{timeAgo(order.createdAt)}</span>
               </div>
@@ -1248,7 +1250,9 @@ function OrderCard({
         <div className="flex items-start justify-between">
           <div className="min-w-0">
             <p className="font-mono text-sm font-semibold text-text-primary tracking-wide leading-5">
-              #{order.orderNumber || order.id.slice(-6).toUpperCase()}
+              {order.tokenNumber != null
+                ? `Token #${String(order.tokenNumber).padStart(3, '0')}`
+                : `#${order.orderNumber || order.id.slice(-6).toUpperCase()}`}
             </p>
             <div className="flex items-center gap-2 mt-1">
               <span className="inline-flex items-center gap-1 text-[11px] font-medium text-text-secondary bg-surface-elevated px-2 py-0.5 rounded">
@@ -1430,7 +1434,9 @@ function OrderDetail({
             <div className="min-w-0">
               <div className="flex items-center gap-2.5 flex-wrap">
                 <h2 className="text-lg font-bold text-text-primary leading-6">
-                  #{order.orderNumber || order.id.slice(-6).toUpperCase()}
+                  {order.tokenNumber != null
+                    ? `Token #${String(order.tokenNumber).padStart(3, '0')}`
+                    : `#${order.orderNumber || order.id.slice(-6).toUpperCase()}`}
                 </h2>
                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold leading-none ${meta.bg} ${meta.text}`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
