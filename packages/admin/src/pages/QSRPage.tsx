@@ -2049,13 +2049,6 @@ export default function QSRPage() {
 
 /* ═══════════════════ QSR Order Card ═══════════════════ */
 
-const STATUS_BADGE: Record<string, { label: string; bg: string; text: string; dot: string }> = {
-  completed: { label: 'Completed', bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
-  cancelled: { label: 'Cancelled', bg: 'bg-red-50', text: 'text-red-700', dot: 'bg-red-500' },
-  pending: { label: 'Pending', bg: 'bg-amber-50', text: 'text-amber-700', dot: 'bg-amber-500' },
-  preparing: { label: 'Preparing', bg: 'bg-violet-50', text: 'text-violet-700', dot: 'bg-violet-500' },
-  payment_pending: { label: 'Payment Pending', bg: 'bg-orange-50', text: 'text-primary', dot: 'bg-primary' },
-};
 
 function QSROrderCard({
   order,
