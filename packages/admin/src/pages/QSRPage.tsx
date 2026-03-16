@@ -2070,7 +2070,6 @@ function QSROrderCard({
   onServeItem?: (itemId: string) => void;
   isServingItem?: boolean;
 }) {
-  const badge = STATUS_BADGE[order.status] ?? { label: order.status, bg: 'bg-gray-50', text: 'text-gray-700', dot: 'bg-gray-500' };
   const token = order.tokenNumber != null
     ? String(order.tokenNumber).padStart(3, '0')
     : order.orderNumber;
