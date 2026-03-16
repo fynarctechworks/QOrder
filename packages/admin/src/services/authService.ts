@@ -5,7 +5,11 @@ import type { User } from '../types';
 interface LoginResponse {
   user: User;
   accessToken?: string;
+  requires2FA?: boolean;
+  userId?: string;
 }
+
+type LoginResult = LoginResponse | { requires2FA: true; userId: string };
 
 interface RegisterResponse {
   message: string;
@@ -20,10 +24,10 @@ interface VerifyEmailResponse {
 }
 
 export const authService = {
-  async login(identifier: string, password: string): Promise<LoginResponse> {
-    const result = await apiClient.postPublic<LoginResponse>('/auth/login', { identifier, password });
+  async login(identifier: string, password: string): Promise<LoginResult> {
+    const result = await apiClient.postPublic<LoginResult>('/auth/login', { identifier, password });
     // Store access token for Bearer auth & socket handshake
-    if (result.accessToken) {
+    if ('accessToken' in result && result.accessToken) {
       useAuthStore.getState().setAccessToken(result.accessToken);
     }
     return result;

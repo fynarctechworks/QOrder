@@ -30,11 +30,16 @@ model Restaurant {
   latitude    Float?            // Geo-fence: restaurant latitude
   longitude   Float?            // Geo-fence: restaurant longitude
   geoFenceRadius Int  @default(50) // Geo-fence radius in meters
+  businessType   String?  // RESTAURANT, CAFE, BAR, CLOUD_KITCHEN, FOOD_TRUCK
+  gstNumber      String?  // GST/Tax registration number
+  onboardingStatus Json  @default("{}") // Tracks completed/skipped onboarding steps
+  onboardingCompleted Boolean @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   // Relations
   users          User[]
+  subscriptions  Subscription[]
   branches       Branch[]
   categories     Category[]
   menuItems      MenuItem[]
@@ -135,6 +140,12 @@ model User {
   lastLoginAt    DateTime?
   facePhoto      String?   // (deprecated)
   faceDescriptor Json?     // (deprecated)
+
+  // Two-Factor Authentication
+  twoFactorEnabled    Boolean  @default(false)
+  twoFactorSecret     String?  // TOTP secret (encrypted)
+  twoFactorBackupCodes Json?   // Hashed backup codes
+
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -1413,4 +1424,69 @@ model TVMenuSlide {
   @@index([restaurantId])
   @@index([branchId])
   @@index([sortOrder])
+}
+
+// ==================== SUBSCRIPTION PLANS ====================
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+}
+
+model Plan {
+  id            String       @id @default(uuid())
+  name          String       @unique // "Free Trial", "Basic", "Pro", "Enterprise"
+  description   String?
+  monthlyPrice  Decimal      @db.Decimal(10, 2)
+  yearlyPrice   Decimal      @db.Decimal(10, 2)
+  features      Json         @default("[]") // Array of feature strings
+  maxBranches   Int          @default(1)
+  maxStaff      Int          @default(5)
+  maxTables     Int          @default(20)
+  isActive      Boolean      @default(true)
+  sortOrder     Int          @default(0)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  subscriptions Subscription[]
+
+  @@index([isActive])
+  @@index([sortOrder])
+}
+
+model Subscription {
+  id                  String             @id @default(uuid())
+  status              SubscriptionStatus @default(TRIAL)
+  billingCycle        BillingCycle       @default(MONTHLY)
+  currentPeriodStart  DateTime           @default(now())
+  currentPeriodEnd    DateTime
+  trialEndsAt         DateTime?
+  cancelledAt         DateTime?
+  razorpaySubscriptionId String?  @unique
+  razorpayCustomerId  String?
+  razorpayPaymentId   String?  // Last payment ID
+  amount              Decimal            @db.Decimal(10, 2)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  // Plan relation
+  planId String
+  plan   Plan @relation(fields: [planId], references: [id])
+
+  // Restaurant relation
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+  @@index([planId])
+  @@index([status])
+  @@index([razorpaySubscriptionId])
 }

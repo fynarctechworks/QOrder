@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authController } from '../controllers/index.js';
+import { twoFactorController } from '../controllers/twoFactorController.js';
 import { authenticate } from '../middlewares/auth.js';
 import { validate } from '../middlewares/validate.js';
 import { authLimiter } from '../middlewares/rateLimiter.js';
@@ -91,5 +92,18 @@ router.post(
   validate(changePasswordSchema),
   authController.changePassword
 );
+
+// 2FA login verification (public — user provides userId + code after login)
+router.post(
+  '/2fa/verify-login',
+  authLimiter,
+  authController.verifyTwoFactor
+);
+
+// 2FA management (protected)
+router.get('/2fa/status', authenticate, twoFactorController.status);
+router.post('/2fa/setup', authenticate, twoFactorController.setup);
+router.post('/2fa/enable', authenticate, twoFactorController.enable);
+router.post('/2fa/disable', authenticate, twoFactorController.disable);
 
 export default router;

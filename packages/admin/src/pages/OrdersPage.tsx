@@ -945,14 +945,21 @@ function TableBillCard({
       className={`card border-l-[3px] ${meta.border} hover:shadow-elevated transition-all duration-200${handleDragStart ? ' cursor-grab active:cursor-grabbing' : ''}`}
     >
       <div className="p-4 flex flex-col gap-3">
-        {/* Header: Table Name + Status */}
+        {/* Header: Table Name + Token + Status */}
         <div className="flex items-start justify-between">
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <svg className="w-4 h-4 text-text-secondary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
               </svg>
               <p className="text-sm font-bold text-text-primary">{bill.tableName}</p>
+              {bill.orders.length === 1 && (
+                <span className="inline-flex items-center font-mono text-sm font-extrabold text-orange-700 bg-orange-50 border border-orange-100 rounded-md px-2 py-0.5 leading-none tracking-wide">
+                  {bill.orders[0]?.tokenNumber != null
+                    ? `Token #${String(bill.orders[0]?.tokenNumber).padStart(3, '0')}`
+                    : `#${bill.orders[0]?.orderNumber || bill.orders[0]?.id.slice(-6).toUpperCase()}`}
+                </span>
+              )}
               {bill.orders[0]?.sectionName && (
                 <span className="inline-flex items-center gap-1 text-[10px] font-medium text-text-muted bg-gray-100 px-1.5 py-0.5 rounded ml-1">
                   <svg className="w-2.5 h-2.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -994,14 +1001,6 @@ function TableBillCard({
               onClick={() => onSelectOrder(order)}
               className="bg-surface-elevated/60 rounded-lg p-2.5 cursor-pointer hover:bg-surface-elevated transition-colors"
             >
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="font-mono text-[11px] font-semibold text-text-secondary">
-                  {order.tokenNumber != null
-                    ? `Token #${String(order.tokenNumber).padStart(3, '0')}`
-                    : `#${order.orderNumber || order.id.slice(-6).toUpperCase()}`}
-                </span>
-                <span className="text-[11px] text-text-muted">{timeAgo(order.createdAt)}</span>
-              </div>
               <div className="space-y-0.5">
                 {order.items.map(item => (
                   <div key={item.id} className="flex items-baseline justify-between gap-2 text-[13px]">
@@ -1246,29 +1245,29 @@ function OrderCard({
         ${isPending ? 'ring-1 ring-amber-200/70' : ''}`}
     >
       <div className="p-4 flex flex-col gap-3">
-        {/* Row 1: Order ID + Status badge */}
+        {/* Row 1: Table/Order Type + Token + Status badge */}
         <div className="flex items-start justify-between">
           <div className="min-w-0">
-            <p className="font-mono text-sm font-semibold text-text-primary tracking-wide leading-5">
-              {order.tokenNumber != null
-                ? `Token #${String(order.tokenNumber).padStart(3, '0')}`
-                : `#${order.orderNumber || order.id.slice(-6).toUpperCase()}`}
-            </p>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-text-secondary bg-surface-elevated px-2 py-0.5 rounded">
-                <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
-                </svg>
-                {order.tableName}
+            <div className="flex items-center gap-2 flex-wrap">
+              <svg className="w-4 h-4 text-text-secondary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+              </svg>
+              <p className="text-sm font-bold text-text-primary">{order.tableName}</p>
+              <span className="inline-flex items-center font-mono text-sm font-extrabold text-orange-700 bg-orange-50 border border-orange-100 rounded-md px-2 py-0.5 leading-none tracking-wide">
+                {order.tokenNumber != null
+                  ? `Token #${String(order.tokenNumber).padStart(3, '0')}`
+                  : `#${order.orderNumber || order.id.slice(-6).toUpperCase()}`}
               </span>
               {order.sectionName && (
-                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-text-muted bg-gray-100 px-2 py-0.5 rounded">
-                  <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-text-muted bg-gray-100 px-1.5 py-0.5 rounded">
+                  <svg className="w-2.5 h-2.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                   </svg>
                   {order.sectionName}
                 </span>
               )}
+            </div>
+            <div className="flex items-center gap-2 mt-1">
               <span className="text-[11px] text-text-muted leading-none">{timeAgo(order.createdAt)}</span>
             </div>
             {order.customerName && (
@@ -1433,7 +1432,7 @@ function OrderDetail({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2.5 flex-wrap">
-                <h2 className="text-lg font-bold text-text-primary leading-6">
+                <h2 className="inline-flex items-center font-mono text-2xl font-black text-orange-700 bg-orange-50 border border-orange-100 rounded-lg px-3 py-1 leading-none tracking-wide">
                   {order.tokenNumber != null
                     ? `Token #${String(order.tokenNumber).padStart(3, '0')}`
                     : `#${order.orderNumber || order.id.slice(-6).toUpperCase()}`}

@@ -32,6 +32,9 @@ const StaffManagementPage = lazy(() => import('./pages/StaffManagementPage'));
 const CreditPage = lazy(() => import('./pages/CreditPage'));
 const QSRPage = lazy(() => import('./pages/QSRPage'));
 const TVMenuPage = lazy(() => import('./pages/TVMenuPage'));
+const OnboardingPage = lazy(() => import('./pages/OnboardingPage'));
+const TwoFactorVerifyPage = lazy(() => import('./pages/TwoFactorVerifyPage'));
+const SubscriptionPage = lazy(() => import('./pages/SubscriptionPage'));
 
 function App() {
   return (
@@ -46,6 +49,14 @@ function App() {
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route path="/2fa-verify" element={<TwoFactorVerifyPage />} />
+
+            {/* Onboarding (protected, outside dashboard layout) */}
+            <Route path="/onboarding" element={
+              <ProtectedRoute>
+                <OnboardingPage />
+              </ProtectedRoute>
+            } />
 
             {/* Protected routes */}
             <Route
@@ -140,6 +151,11 @@ function App() {
               <Route path="settings" element={
                 <ProtectedRoute allowedRoles={['OWNER']}>
                   <SettingsPage />
+                </ProtectedRoute>
+              } />
+              <Route path="subscription" element={
+                <ProtectedRoute allowedRoles={['OWNER']}>
+                  <SubscriptionPage />
                 </ProtectedRoute>
               } />
             </Route>

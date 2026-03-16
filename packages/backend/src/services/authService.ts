@@ -72,7 +72,7 @@ export const authService = {
     // If unverified user exists with same email, update their data
     if (existingEmail && !existingEmail.isVerified) {
       const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-      
+
       await prisma.user.update({
         where: { id: existingEmail.id },
         data: {
@@ -148,7 +148,7 @@ export const authService = {
       where: { email },
       include: {
         restaurant: {
-          select: { id: true, name: true, slug: true },
+          select: { id: true, name: true, slug: true, onboardingCompleted: true },
         },
       },
     });
@@ -249,6 +249,7 @@ export const authService = {
             name: true,
             slug: true,
             isActive: true,
+            onboardingCompleted: true,
           },
         },
       },
@@ -276,6 +277,27 @@ export const authService = {
       throw AppError.unauthorized('Invalid credentials');
     }
 
+    // Check if 2FA is enabled
+    if (user.twoFactorEnabled) {
+      return {
+        requires2FA: true,
+        userId: user.id,
+        user: {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          name: user.name,
+          role: user.role,
+          roleTitle: user.roleTitle,
+          restaurantId: user.restaurantId,
+        },
+        restaurant: user.restaurant,
+        accessToken: '',
+        refreshToken: '',
+        expiresAt: new Date(0),
+      };
+    }
+
     // Update last login
     await prisma.user.update({
       where: { id: user.id },
@@ -283,6 +305,72 @@ export const authService = {
     });
 
     // Generate tokens
+    const tokens = await this.generateTokens({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      restaurantId: user.restaurantId,
+    });
+
+    return {
+      requires2FA: false,
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        name: user.name,
+        role: user.role,
+        roleTitle: user.roleTitle,
+        restaurantId: user.restaurantId,
+      },
+      restaurant: user.restaurant,
+      ...tokens,
+    };
+  },
+
+  // Verify 2FA code and complete login
+  async verifyTwoFactorLogin(userId: string, code: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        restaurant: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            isActive: true,
+            onboardingCompleted: true,
+          },
+        },
+      },
+    });
+
+    if (!user) throw AppError.notFound('User');
+    if (!user.twoFactorEnabled || !user.twoFactorSecret) {
+      throw AppError.badRequest('2FA is not enabled for this account');
+    }
+
+    // Try TOTP code first
+    const { verify } = await import('otplib');
+    const verifyResult = await verify({ token: code, secret: user.twoFactorSecret });
+    let isValid = verifyResult.valid;
+
+    // If not valid, try backup codes
+    if (!isValid) {
+      const { twoFactorService } = await import('./twoFactorService.js');
+      isValid = await twoFactorService.verifyBackupCode(userId, code);
+    }
+
+    if (!isValid) {
+      throw AppError.unauthorized('Invalid 2FA code');
+    }
+
+    // Update last login
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    });
+
     const tokens = await this.generateTokens({
       id: user.id,
       email: user.email,

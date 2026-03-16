@@ -13,7 +13,7 @@ interface AuthContextValue {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (identifier: string, password: string) => Promise<void>;
+  login: (identifier: string, password: string) => Promise<{ requires2FA?: boolean; userId?: string }>;
   logout: () => Promise<void>;
 }
 
@@ -70,7 +70,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (identifier: string, password: string) => {
     queryClient.clear();
     const response = await authService.login(identifier, password);
-    setUser(response.user);
+    if ('requires2FA' in response && response.requires2FA) {
+      return { requires2FA: true as const, userId: response.userId };
+    }
+    if ('user' in response) {
+      setUser(response.user);
+    }
+    return {};
   };
 
   const logout = async () => {

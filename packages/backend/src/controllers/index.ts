@@ -15,3 +15,6 @@ export { receiptController } from './receiptController.js';
 export { crmController } from './crmController.js';
 export { reportController } from './reportController.js';
 export { staffManagementController } from './staffManagementController.js';
+export { onboardingController } from './onboardingController.js';
+export { subscriptionController } from './subscriptionController.js';
+export { twoFactorController } from './twoFactorController.js';

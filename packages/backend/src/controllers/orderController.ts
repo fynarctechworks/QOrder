@@ -293,7 +293,7 @@ export const orderController = {
     }
   },
 
-  // QSR order creation — goes straight to COMPLETED (pre-paid at counter)
+  // QSR order creation — goes to PREPARING (items served individually, then completed)
   async createQSROrder(
     req: Request<unknown, unknown, CreateOrderInput>,
     res: Response<ApiResponse>,
@@ -302,7 +302,7 @@ export const orderController = {
     try {
       const restaurantId = req.restaurantId!;
       const restaurantData = (req as unknown as { restaurantData?: RestaurantMiddlewareData }).restaurantData;
-      const order = await orderService.createOrder(restaurantId, req.body, restaurantData, 'COMPLETED', req.branchId, 'QSR');
+      const order = await orderService.createOrder(restaurantId, req.body, restaurantData, 'PREPARING', req.branchId, 'QSR');
 
       // Fetch full order data for admin response + socket
       const fullOrderData = await orderService.getOrderById(order.id, restaurantId);

@@ -1,11 +1,16 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { menuService, settingsService, orderService, tableService } from '../services';
+import { crmService } from '../services/crmService';
+import type { Customer } from '../services/crmService';
+import { reportService } from '../services/reportService';
 import { useCurrency } from '../hooks/useCurrency';
+import { timeAgo } from '../utils/timeAgo';
 import DietBadge from '../components/DietBadge';
 import Modal from '../components/Modal';
-import type { MenuItem, Category, Order, Table } from '../types';
+import type { MenuItem, Category, Order, OrderStatus, Table } from '../types';
 
 /* ─── Types ── */
 interface SelectedModifier {
@@ -107,7 +112,8 @@ function firePrintJob(html: string, title: string) {
 function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrency: (n: number) => string, restaurantName: string, itemStationMap?: Map<string, string>) {
   const customerItemsHtml = order.items.map(item => {
     const mods = (item.customizations || []).flatMap(g => g.options.map(o => o.name)).join(', ');
-    return `<div class="item"><span class="qty">${item.quantity}x</span><div class="name">${escapeHtml(item.menuItemName)}${mods ? `<div class="mods">${escapeHtml(mods)}</div>` : ''}</div><span class="price">${escapeHtml(formatCurrency(item.totalPrice))}</span></div>`;
+    const displayName = mods ? `(${mods}) ${escapeHtml(item.menuItemName)}` : escapeHtml(item.menuItemName);
+    return `<div class="item"><span class="qty">${item.quantity}x</span><div class="name">${displayName}</div><span class="price">${escapeHtml(formatCurrency(item.totalPrice))}</span></div>`;
   }).join('');
 
   const kitchenItems = order.items.filter(item => (itemStationMap?.get(item.menuItemId) || 'KITCHEN') === 'KITCHEN');
@@ -183,6 +189,12 @@ export default function QSRPage() {
     queryFn: tableService.getAll,
   });
 
+  const { data: topItemsData = [] } = useQuery({
+    queryKey: ['top-items-qsr'],
+    queryFn: () => reportService.topSellingItems({ limit: '20' }),
+    staleTime: 5 * 60 * 1000,
+  });
+
   const dataError = menuErr || catErr;
 
   const taxRate = settings?.taxRate ?? 0;
@@ -195,10 +207,15 @@ export default function QSRPage() {
   const [notes, setNotes] = useState('');
   const [menuSearch, setMenuSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [stationFilter, setStationFilter] = useState<'ALL' | 'KITCHEN' | 'BEVERAGE'>('ALL');
   const [activeCartItemId, setActiveCartItemId] = useState<string | null>(null);
 
   // Settlement modal state
   const [showSettlement, setShowSettlement] = useState(false);
+  const [phoneSuggestions, setPhoneSuggestions] = useState<Customer[]>([]);
+  const [showPhoneSuggestions, setShowPhoneSuggestions] = useState(false);
+  const phoneSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const phoneSuggestionsRef = useRef<HTMLDivElement>(null);
   const [selectedQuickMethod, setSelectedQuickMethod] = useState<PaymentMethod | null>(null);
   const [settling, setSettling] = useState(false);
   const [settled, setSettled] = useState(false);
@@ -227,6 +244,134 @@ export default function QSRPage() {
   // Discount state
   const [discountType, setDiscountType] = useState<'PERCENTAGE' | 'FLAT'>('PERCENTAGE');
   const [discountValue, setDiscountValue] = useState('');
+
+  // QSR Order Board state
+  const [showOrderBoard, setShowOrderBoard] = useState(false);
+  const [boardSearch, setBoardSearch] = useState('');
+
+  /* ── Fetch orders for the QSR board ── */
+  const { data: qsrOrdersData, isLoading: qsrOrdersLoading, refetch: refetchQsrOrders } = useQuery({
+    queryKey: ['qsr-board-orders'],
+    queryFn: () => orderService.getAll({ limit: 500 }),
+    enabled: showOrderBoard,
+    refetchInterval: showOrderBoard ? 10_000 : false,
+    staleTime: 3_000,
+  });
+
+  /* ── Board search filter ── */
+  const matchesBoardSearch = useCallback((o: Order) => {
+    if (!boardSearch.trim()) return true;
+    const q = boardSearch.toLowerCase();
+    return (
+      (o.tokenNumber != null && String(o.tokenNumber).padStart(3, '0').includes(q)) ||
+      (o.orderNumber && o.orderNumber.toLowerCase().includes(q)) ||
+      (o.customerName && o.customerName.toLowerCase().includes(q)) ||
+      o.items.some(i => i.menuItemName.toLowerCase().includes(q))
+    );
+  }, [boardSearch]);
+
+  /* ── Split orders into 3 board sections based on item-level serve state ── */
+  const boardColumns = useMemo(() => {
+    const all = qsrOrdersData?.data ?? [];
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const preparing: Order[] = [];
+    const served: Order[] = [];     // orders with at least one served item but not all
+    const completed: Order[] = [];
+    for (const o of all) {
+      if (o.tableName !== 'QSR Order') continue;
+      if (new Date(o.createdAt) < todayStart) continue;
+      if (!matchesBoardSearch(o)) continue;
+      if (o.status === 'completed') {
+        completed.push(o);
+      } else if (o.status === 'pending' || o.status === 'preparing' || o.status === 'payment_pending') {
+        // Check item-level serve state
+        const totalItems = o.items.length;
+        const servedItems = o.items.filter(i => !!i.preparedAt).length;
+        if (servedItems === totalItems && totalItems > 0) {
+          // All served — treat as completed visually (will be auto-completed by mutation)
+          completed.push(o);
+        } else if (servedItems > 0) {
+          // Partially served — show in both columns
+          preparing.push(o); // still has unserved items
+          served.push(o);    // has some served items
+        } else {
+          preparing.push(o);
+        }
+      }
+    }
+    preparing.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    served.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    completed.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return { preparing, served, completed };
+  }, [qsrOrdersData, matchesBoardSearch]);
+
+  const boardCounts = useMemo(() => ({
+    preparing: boardColumns.preparing.length,
+    served: boardColumns.served.length,
+    completed: boardColumns.completed.length,
+    total: boardColumns.preparing.length + boardColumns.served.length + boardColumns.completed.length,
+  }), [boardColumns]);
+
+  const qsrTotalRevenue = useMemo(() =>
+    boardColumns.completed.reduce((s, o) => s + o.total, 0),
+    [boardColumns]
+  );
+
+  /* ── Per-item serve mutation ── */
+  const markItemServedMut = useMutation({
+    mutationFn: ({ orderId, itemId }: { orderId: string; itemId: string }) =>
+      orderService.markItemKitchenReady(orderId, itemId),
+    onMutate: async ({ orderId, itemId }) => {
+      await qc.cancelQueries({ queryKey: ['qsr-board-orders'] });
+      const prev = qc.getQueryData<{ data: Order[]; pagination: unknown }>(['qsr-board-orders']);
+      if (prev) {
+        qc.setQueryData(['qsr-board-orders'], {
+          ...prev,
+          data: prev.data.map(o =>
+            o.id === orderId
+              ? { ...o, items: o.items.map(i => i.id === itemId ? { ...i, preparedAt: new Date().toISOString() } : i) }
+              : o
+          ),
+        });
+      }
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['qsr-board-orders'], ctx.prev);
+      toast.error('Failed to mark item served');
+    },
+    onSuccess: (result) => {
+      if (result.allItemsReady) {
+        // Auto-complete the order
+        boardAdvanceMut.mutate({ id: result.orderId, status: 'completed' as OrderStatus });
+        toast.success('All items served — order completed!');
+      }
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['qsr-board-orders'] }),
+  });
+
+  /* ── Board status advance mutation ── */
+  const boardAdvanceMut = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: OrderStatus }) =>
+      orderService.updateStatus(id, status),
+    onMutate: async ({ id, status }) => {
+      await qc.cancelQueries({ queryKey: ['qsr-board-orders'] });
+      const prev = qc.getQueryData<{ data: Order[] }>(['qsr-board-orders']);
+      if (prev) {
+        qc.setQueryData(['qsr-board-orders'], {
+          ...prev,
+          data: prev.data.map(o => o.id === id ? { ...o, status, updatedAt: new Date().toISOString() } : o),
+        });
+      }
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['qsr-board-orders'], ctx.prev);
+      toast.error('Failed to update status');
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['qsr-board-orders'] }),
+  });
 
   /* ── Build menuItemId → kotStation map from cart + categories ── */
   const catStationMap = useMemo(() => {
@@ -262,17 +407,18 @@ export default function QSRPage() {
     }
   };
 
-  /* ── Mutation — creates order directly as COMPLETED ── */
+  /* ── Mutation — creates QSR order as PREPARING ── */
   const createOrderMut = useMutation({
     mutationFn: (data: Parameters<typeof orderService.createQSROrder>[0]) =>
       orderService.createQSROrder(data),
     onSuccess: (order) => {
       qc.invalidateQueries({ queryKey: ['orders'] });
+      qc.invalidateQueries({ queryKey: ['qsr-board-orders'] });
       settledRef.current = true;
       setCompletedOrder(order);
       setSettled(true);
       setSettling(false);
-      toast.success(`Token #${order.tokenNumber ? String(order.tokenNumber).padStart(3, '0') : order.orderNumber} — Order complete!`);
+      toast.success(`Token #${order.tokenNumber ? String(order.tokenNumber).padStart(3, '0') : order.orderNumber} — Order placed!`);
       // Auto-print customer token + station KOTs
       const stationMap = buildItemStationMap();
       setTimeout(() => printReceipts(order, selectedQuickMethod || 'CASH', formatCurrency, restaurantName, stationMap), 300);
@@ -390,24 +536,55 @@ export default function QSRPage() {
     return map;
   }, [categories]);
 
+  /* ── Category station map ── */
+  const categoryStationMap = useMemo(() => {
+    const map = new Map<string, 'KITCHEN' | 'BEVERAGE'>();
+    categories.forEach(c => map.set(c.id, c.kotStation));
+    return map;
+  }, [categories]);
+
+  /* ── Top items id→rank map ── */
+  const topItemRankMap = useMemo(() => {
+    const map = new Map<string, number>();
+    topItemsData.forEach((t: any, i: number) => map.set(t.menuItemId ?? t.itemId, i));
+    return map;
+  }, [topItemsData]);
+
   /* ── Filtered menu ── */
   const availableItems = useMemo(() => {
+    const isTop = selectedCategory === 'top';
     return menuItems.filter(item => {
       if (!item.isAvailable) return false;
-      if (selectedCategory !== 'all' && item.categoryId !== selectedCategory) return false;
+      if (isTop) {
+        if (!topItemRankMap.has(item.id)) return false;
+      } else if (selectedCategory !== 'all' && item.categoryId !== selectedCategory) {
+        return false;
+      }
+      if (stationFilter !== 'ALL') {
+        const station = categoryStationMap.get(item.categoryId);
+        if (station !== stationFilter) return false;
+      }
       if (menuSearch.trim()) {
         const q = menuSearch.toLowerCase();
         return item.name.toLowerCase().includes(q) || item.description?.toLowerCase().includes(q);
       }
       return true;
-    }).sort((a, b) => a.name.localeCompare(b.name));
-  }, [menuItems, selectedCategory, menuSearch]);
+    }).sort((a, b) => {
+      if (isTop) {
+        return (topItemRankMap.get(a.id) ?? 99) - (topItemRankMap.get(b.id) ?? 99);
+      }
+      return a.name.localeCompare(b.name);
+    });
+  }, [menuItems, selectedCategory, menuSearch, stationFilter, categoryStationMap, topItemRankMap]);
 
-  /* ── Active categories (that have available items) ── */
+  /* ── Active categories (that have available items, filtered by station) ── */
   const activeCategories = useMemo(() => {
     const catIds = new Set(menuItems.filter(i => i.isAvailable).map(i => i.categoryId));
-    return categories.filter(c => catIds.has(c.id)).sort((a, b) => a.name.localeCompare(b.name));
-  }, [categories, menuItems]);
+    return categories.filter(c =>
+      catIds.has(c.id) &&
+      (stationFilter === 'ALL' || c.kotStation === stationFilter)
+    ).sort((a, b) => a.name.localeCompare(b.name));
+  }, [categories, menuItems, stationFilter]);
 
   /* ── Refs for auto-scroll ── */
   const cartItemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -443,33 +620,38 @@ export default function QSRPage() {
 
   /* ── Cart helpers ── */
   const addToCart = useCallback((item: MenuItem) => {
-    const hasCustomizations = (item.customizationGroups?.length ?? 0) > 0;
-    if (!hasCustomizations) {
-      const existing = cart.find(c => c.menuItem.id === item.id && c.selectedModifiers.length === 0);
-      if (existing) {
-        setCart(prev => prev.map(c =>
-          c.cartId === existing.cartId ? { ...c, quantity: c.quantity + 1 } : c
-        ));
-        lastAddedIdRef.current = existing.cartId;
-        setActiveCartItemId(existing.cartId);
-        return;
-      }
+    // Build default modifiers for this item
+    const defaultMods: SelectedModifier[] = [];
+    item.customizationGroups?.forEach(g => {
+      g.options.forEach(opt => {
+        if (opt.isDefault && opt.isAvailable) {
+          defaultMods.push({ modifierId: opt.id, name: opt.name, price: opt.priceModifier });
+        }
+      });
+    });
+
+    const defaultModIds = new Set(defaultMods.map(m => m.modifierId));
+
+    // Find existing cart entry with same item + same modifier set
+    const existing = cart.find(c => {
+      if (c.menuItem.id !== item.id) return false;
+      if (c.selectedModifiers.length !== defaultMods.length) return false;
+      return c.selectedModifiers.every(m => defaultModIds.has(m.modifierId));
+    });
+
+    if (existing) {
+      setCart(prev => prev.map(c =>
+        c.cartId === existing.cartId ? { ...c, quantity: c.quantity + 1 } : c
+      ));
+      lastAddedIdRef.current = existing.cartId;
+      setActiveCartItemId(existing.cartId);
+      return;
     }
 
     const id = `cart-${++cartIdCounter.current}`;
     lastAddedIdRef.current = id;
     setActiveCartItemId(id);
-    setCart(prev => {
-      const defaultMods: SelectedModifier[] = [];
-      item.customizationGroups?.forEach(g => {
-        g.options.forEach(opt => {
-          if (opt.isDefault && opt.isAvailable) {
-            defaultMods.push({ modifierId: opt.id, name: opt.name, price: opt.priceModifier });
-          }
-        });
-      });
-      return [...prev, { cartId: id, menuItem: item, quantity: 1, selectedModifiers: defaultMods }];
-    });
+    setCart(prev => [...prev, { cartId: id, menuItem: item, quantity: 1, selectedModifiers: defaultMods }]);
   }, [cart]);
 
   const updateQuantity = useCallback((cartId: string, delta: number) => {
@@ -629,18 +811,64 @@ export default function QSRPage() {
         </div>
       )}
       {/* ═══ Top bar ═══ */}
-      <div className="bg-white border-b border-gray-200 px-3 md:px-6 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3 shrink-0">
-        <div>
+      <div className="bg-white border-b border-gray-200 px-3 md:px-6 py-2.5 flex items-center gap-3 shrink-0">
+        {/* Title */}
+        <div className="shrink-0">
           <h1 className="text-lg md:text-xl font-bold text-text-primary tracking-tight">QSR</h1>
-          <p className="text-xs md:text-sm text-text-muted hidden sm:block">Quick service — counter order &amp; settle</p>
+          <p className="text-xs text-text-muted hidden sm:block leading-none mt-0.5">Quick service — counter order &amp; settle</p>
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 md:gap-3">
-          <div className="flex items-center gap-2">
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Action buttons */}
+        <div className="flex items-center gap-2">
+          {/* Station toggle + search (only in QSR order mode) */}
+          {!showOrderBoard && (
+            <>
+              <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-xl shrink-0">
+                {(['ALL', 'KITCHEN', 'BEVERAGE'] as const).map(s => (
+                  <button
+                    key={s}
+                    onClick={() => { setStationFilter(s); setSelectedCategory('all'); }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      stationFilter === s
+                        ? 'bg-white text-text-primary shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {s === 'KITCHEN' && (
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M17 14v6m-3-3h6M6 10h.01M6 14h.01M6 18h.01M10 10h.01M10 14h.01M10 18h.01M14 10h.01M3 6h18M3 6a2 2 0 012-2h14a2 2 0 012 2M3 6l2 14h14l2-14" />
+                      </svg>
+                    )}
+                    {s === 'BEVERAGE' && (
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 3h6l1 9H8L9 3zM8 12c0 4 8 4 8 0M10 21h4M12 12v9" />
+                      </svg>
+                    )}
+                    {s === 'ALL' ? 'All' : s === 'KITCHEN' ? 'Kitchen' : 'Beverage'}
+                  </button>
+                ))}
+              </div>
+              <div className="relative w-44 shrink-0">
+                <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  type="text"
+                  value={menuSearch}
+                  onChange={e => setMenuSearch(e.target.value)}
+                  placeholder="Search…"
+                  className="w-full pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                />
+              </div>
+            </>
+          )}
           <select
             value={selectedTable}
             onChange={e => setSelectedTable(e.target.value)}
-            className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary flex-1 sm:flex-none sm:w-36 bg-white"
+            className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary w-32 bg-white"
           >
             <option value="">Counter</option>
             {tables
@@ -653,8 +881,21 @@ export default function QSRPage() {
                 </option>
               ))}
           </select>
-          </div>
-          <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setShowOrderBoard(!showOrderBoard); if (!showOrderBoard) refetchQsrOrders(); }}
+            className={`relative rounded-xl text-sm px-4 py-2 shadow-sm active:scale-[0.97] flex items-center gap-2 transition-colors ${
+              showOrderBoard
+                ? 'bg-violet-600 text-white hover:bg-violet-700'
+                : 'border border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+            </svg>
+            {showOrderBoard ? 'Back to QSR' : 'QSR Order Board'}
+          </button>
+          {!showOrderBoard && (
+          <>
           <button
             onClick={resetForm}
             className="btn-primary rounded-xl text-sm px-4 py-2 shadow-sm active:scale-[0.97] flex items-center gap-2"
@@ -678,11 +919,154 @@ export default function QSRPage() {
               </span>
             )}
           </button>
-          </div>
+          </>
+          )}
         </div>
       </div>
 
       {/* ═══ Body ═══ */}
+      {showOrderBoard ? (
+        /* ═══ QSR Order Board — 3-Column Kanban ═══ */
+        <div className="flex-1 flex flex-col overflow-hidden bg-background">
+          {/* Stats + Search Bar */}
+          <div className="shrink-0 px-3 md:px-5 py-3 bg-white border-b border-gray-200">
+            <div className="flex flex-col md:flex-row md:items-center gap-3">
+              {/* Quick stat pills */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-violet-50 text-violet-700">
+                  <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />
+                  Preparing {boardCounts.preparing}
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-orange-50 text-primary">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+                  Served {boardCounts.served}
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  Completed {boardCounts.completed}
+                </span>
+                <span className="text-xs text-text-muted font-medium px-2 tabular-nums">Revenue: {formatCurrency(qsrTotalRevenue)}</span>
+              </div>
+              {/* Search */}
+              <div className="relative md:ml-auto md:w-72">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Search token, name, item…"
+                  value={boardSearch}
+                  onChange={e => setBoardSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Kanban Columns */}
+          {qsrOrdersLoading ? (
+            <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4 p-3 md:p-5">
+              {Array.from({ length: 3 }).map((_, ci) => (
+                <div key={ci} className="flex flex-col min-h-[200px]">
+                  <div className="h-10 bg-gray-100 rounded-t-xl animate-pulse" />
+                  <div className="flex-1 border border-t-0 rounded-b-xl p-2.5 space-y-2.5 bg-gray-50/50">
+                    {Array.from({ length: 2 }).map((_, i) => (
+                      <div key={i} className="card p-4 animate-pulse"><div className="h-16 bg-gray-100 rounded" /></div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4 p-3 md:p-5 min-h-full">
+                {/* ── Column: Preparing ── */}
+                <div className="flex flex-col min-h-[200px]">
+                  <div className="flex items-center justify-between px-3.5 py-2.5 rounded-t-xl bg-violet-50">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-violet-500" />
+                      <span className="text-sm font-semibold text-violet-700">Preparing</span>
+                    </div>
+                    <span className="text-xs font-bold tabular-nums px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">{boardCounts.preparing}</span>
+                  </div>
+                  <div className="flex-1 rounded-b-xl border border-t-0 p-2.5 space-y-2.5 overflow-y-auto max-h-[calc(100vh-280px)] bg-violet-50/20 border-violet-100/50">
+                    {boardColumns.preparing.length === 0 ? (
+                      <p className="text-center text-xs text-text-muted py-8">No orders preparing</p>
+                    ) : (
+                      <AnimatePresence mode="popLayout">
+                        {boardColumns.preparing.map(order => (
+                          <QSROrderCard
+                            key={order.id}
+                            order={order}
+                            formatCurrency={formatCurrency}
+                            mode="preparing"
+                            onServeItem={(itemId) => markItemServedMut.mutate({ orderId: order.id, itemId })}
+                            isServingItem={markItemServedMut.isPending}
+                          />
+                        ))}
+                      </AnimatePresence>
+                    )}
+                  </div>
+                </div>
+
+                {/* ── Column: Served ── */}
+                <div className="flex flex-col min-h-[200px]">
+                  <div className="flex items-center justify-between px-3.5 py-2.5 rounded-t-xl bg-orange-50">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-primary" />
+                      <span className="text-sm font-semibold text-primary">Served</span>
+                    </div>
+                    <span className="text-xs font-bold tabular-nums px-2 py-0.5 rounded-full bg-orange-100 text-primary">{boardCounts.served}</span>
+                  </div>
+                  <div className="flex-1 rounded-b-xl border border-t-0 p-2.5 space-y-2.5 overflow-y-auto max-h-[calc(100vh-280px)] bg-orange-50/20 border-orange-100/50">
+                    {boardColumns.served.length === 0 ? (
+                      <p className="text-center text-xs text-text-muted py-8">No items served yet</p>
+                    ) : (
+                      <AnimatePresence mode="popLayout">
+                        {boardColumns.served.map(order => (
+                          <QSROrderCard
+                            key={`served-${order.id}`}
+                            order={order}
+                            formatCurrency={formatCurrency}
+                            mode="served"
+                          />
+                        ))}
+                      </AnimatePresence>
+                    )}
+                  </div>
+                </div>
+
+                {/* ── Column: Completed ── */}
+                <div className="flex flex-col min-h-[200px]">
+                  <div className="flex items-center justify-between px-3.5 py-2.5 rounded-t-xl bg-emerald-50">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                      <span className="text-sm font-semibold text-emerald-700">Completed</span>
+                    </div>
+                    <span className="text-xs font-bold tabular-nums px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">{boardCounts.completed}</span>
+                  </div>
+                  <div className="flex-1 rounded-b-xl border border-t-0 p-2.5 space-y-2.5 overflow-y-auto max-h-[calc(100vh-280px)] bg-emerald-50/20 border-emerald-100/50">
+                    {boardColumns.completed.length === 0 ? (
+                      <p className="text-center text-xs text-text-muted py-8">No completed orders</p>
+                    ) : (
+                      <AnimatePresence mode="popLayout">
+                        {boardColumns.completed.map(order => (
+                          <QSROrderCard
+                            key={order.id}
+                            order={order}
+                            formatCurrency={formatCurrency}
+                            mode="completed"
+                          />
+                        ))}
+                      </AnimatePresence>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
       <div className="flex flex-1 overflow-hidden bg-background relative">
 
         {/* Mobile cart overlay */}
@@ -759,10 +1143,10 @@ export default function QSRPage() {
                       </div>
 
                       {c.selectedModifiers.length > 0 && !isActive && (
-                        <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
+                        <div className="mt-1.5 flex flex-wrap gap-1">
                           {c.selectedModifiers.map(m => (
-                            <span key={m.modifierId} className="text-[11px] text-primary">
-                              +{m.name}{m.price > 0 ? ` (${formatCurrency(m.price)})` : ''}
+                            <span key={m.modifierId} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[11px] font-medium text-primary">
+                              {m.name}{m.price > 0 ? <span className="text-primary/70">+{formatCurrency(m.price)}</span> : ''}
                             </span>
                           ))}
                         </div>
@@ -773,7 +1157,7 @@ export default function QSRPage() {
                           {c.menuItem.customizationGroups.map(group => {
                             const selectedIds = new Set(c.selectedModifiers.map(m => m.modifierId));
                             return (
-                              <div key={group.id} className="flex flex-wrap gap-1.5">
+                              <div key={group.id} className="flex flex-wrap gap-1.5 w-full">
                                 {group.options.filter(o => o.isAvailable).map(opt => {
                                   const isSelected = selectedIds.has(opt.id);
                                   return (
@@ -781,15 +1165,15 @@ export default function QSRPage() {
                                       key={opt.id}
                                       type="button"
                                       onClick={(e) => { e.stopPropagation(); toggleModifier(c.cartId, group.id, group.maxSelections, opt); }}
-                                      className={`cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border active:scale-95 select-none ${
+                                      className={`cursor-pointer flex flex-col items-center justify-center px-3 py-2 rounded-lg transition-all border active:scale-95 select-none flex-1 ${
                                         isSelected
                                           ? 'bg-primary/10 border-primary text-primary'
                                           : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400'
                                       }`}
                                     >
-                                      {opt.name}
+                                      <span className="text-sm font-semibold leading-tight">{opt.name}</span>
                                       {opt.priceModifier > 0 && (
-                                        <span className={`text-[11px] ${isSelected ? 'text-primary/70' : 'text-gray-400'}`}>+{formatCurrency(opt.priceModifier)}</span>
+                                        <span className={`text-[11px] font-medium leading-tight mt-0.5 ${isSelected ? 'text-primary/70' : 'text-gray-400'}`}>+{formatCurrency(opt.priceModifier)}</span>
                                       )}
                                     </button>
                                   );
@@ -921,21 +1305,8 @@ export default function QSRPage() {
               <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{totalItems}</span>
             )}
           </button>
-          <div className="px-3 md:px-5 py-3 bg-white border-b border-gray-200 shrink-0">
-            <div className="relative mb-3">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <input
-                type="text"
-                value={menuSearch}
-                onChange={e => setMenuSearch(e.target.value)}
-                placeholder="Search menu items…"
-                className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-              />
-            </div>
-
-            <div className="sticky top-0 z-10 -mx-3 md:-mx-5 px-3 md:px-5 py-2 bg-white/95 backdrop-blur border-y border-gray-100">
+          <div className="shrink-0">
+            <div className="sticky top-0 z-10 px-3 md:px-5 py-2 bg-white/95 backdrop-blur border-b border-gray-100">
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -963,6 +1334,26 @@ export default function QSRPage() {
                   >
                     All
                   </button>
+
+                  {topItemsData.length > 0 && (
+                    <button
+                      ref={(el) => {
+                        if (el) categoryBtnRefs.current.set('top', el);
+                        else categoryBtnRefs.current.delete('top');
+                      }}
+                      onClick={() => setSelectedCategory('top')}
+                      className={`snap-start flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all border ${
+                        selectedCategory === 'top'
+                          ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                          : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-200'
+                      }`}
+                    >
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                      </svg>
+                      Top Selling
+                    </button>
+                  )}
 
                   {activeCategories.map((cat: Category) => (
                     <button
@@ -1006,44 +1397,88 @@ export default function QSRPage() {
                 </svg>
                 <p className="text-sm font-medium">No items found</p>
               </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                {availableItems.map((item) => {
-                  const qty = getCartQty(item.id);
-                  const price = item.discountPrice ?? item.price;
-                  const catName = categoryMap.get(item.categoryId) || '';
+            ) : (() => {
+              const renderItemCard = (item: typeof availableItems[0]) => {
+                const qty = getCartQty(item.id);
+                const price = item.discountPrice ?? item.price;
+                const catName = categoryMap.get(item.categoryId) || '';
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => addToCart(item)}
+                    className={`text-left bg-white rounded-xl border p-3.5 transition-all active:scale-[0.97] hover:shadow-md relative ${
+                      qty > 0 ? 'border-primary ring-1 ring-primary/30 bg-primary/5' : 'border-border hover:border-muted'
+                    }`}
+                  >
+                    {qty > 0 && (
+                      <span className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center shadow-sm">
+                        {qty}
+                      </span>
+                    )}
+                    <div className="flex items-start justify-between gap-2 mb-1.5">
+                      <DietBadge type={item.dietType} />
+                    </div>
+                    <p className="text-sm font-semibold text-text-primary truncate">{item.name}</p>
+                    {catName && (
+                      <p className="text-xs text-text-muted mt-0.5 truncate">{catName}</p>
+                    )}
+                    <p className="text-sm font-bold text-primary mt-2">{formatCurrency(price)}</p>
+                  </button>
+                );
+              };
 
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => addToCart(item)}
-                      className={`text-left bg-white rounded-xl border p-3.5 transition-all active:scale-[0.97] hover:shadow-md relative ${
-                        qty > 0 ? 'border-primary ring-1 ring-primary/30 bg-primary/5' : 'border-border hover:border-muted'
-                      }`}
-                    >
-                      {qty > 0 && (
-                        <span className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center shadow-sm">
-                          {qty}
+              if (selectedCategory === 'all' || menuSearch.trim()) {
+                return (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                    {availableItems.map(renderItemCard)}
+                  </div>
+                );
+              }
+
+              const vegItems = availableItems.filter(i => i.dietType === 'VEG');
+              const nonVegItems = availableItems.filter(i => i.dietType !== 'VEG');
+
+              const bothExist = vegItems.length > 0 && nonVegItems.length > 0;
+
+              return (
+                <div className={bothExist ? 'grid grid-cols-2 gap-4 divide-x divide-gray-100' : 'block'}>
+                  {/* Veg */}
+                  {vegItems.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="w-3 h-3 rounded-sm border-2 border-green-600 flex items-center justify-center shrink-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-600" />
                         </span>
-                      )}
-
-                      <div className="flex items-start justify-between gap-2 mb-1.5">
-                        <DietBadge type={item.dietType} />
+                        <span className="text-xs font-semibold text-green-700 uppercase tracking-wide">Veg</span>
+                        <span className="text-xs text-gray-400">({vegItems.length})</span>
                       </div>
-
-                      <p className="text-sm font-semibold text-text-primary truncate">{item.name}</p>
-                      {catName && (
-                        <p className="text-xs text-text-muted mt-0.5 truncate">{catName}</p>
-                      )}
-                      <p className="text-sm font-bold text-primary mt-2">{formatCurrency(price)}</p>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+                      <div className={`grid gap-3 ${bothExist ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'}`}>
+                        {vegItems.map(renderItemCard)}
+                      </div>
+                    </div>
+                  )}
+                  {/* Non Veg */}
+                  {nonVegItems.length > 0 && (
+                    <div className={bothExist ? 'pl-4' : ''}>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="w-3 h-3 rounded-sm border-2 border-red-600 flex items-center justify-center shrink-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-600" />
+                        </span>
+                        <span className="text-xs font-semibold text-red-700 uppercase tracking-wide">Non Veg</span>
+                        <span className="text-xs text-gray-400">({nonVegItems.length})</span>
+                      </div>
+                      <div className={`grid gap-3 ${bothExist ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'}`}>
+                        {nonVegItems.map(renderItemCard)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>
+      )}
 
       {/* ═══ Settlement Modal ═══ */}
       <Modal open={showSettlement} onClose={handleCloseSettlement} title="" maxWidth="max-w-2xl">
@@ -1174,24 +1609,68 @@ export default function QSRPage() {
             {/* Customer Details */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1.5">Customer Name *</label>
+                <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1.5">Customer Name</label>
                 <input
                   type="text"
                   value={customerName}
                   onChange={e => setCustomerName(e.target.value)}
                   placeholder="Enter name"
-                  className={`w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary ${!customerName.trim() ? 'border-red-300' : 'border-gray-200'}`}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1.5">Phone Number *</label>
+              <div className="relative">
+                <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1.5">Phone Number</label>
                 <input
                   type="tel"
                   value={customerPhone}
-                  onChange={e => setCustomerPhone(e.target.value)}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setCustomerPhone(val);
+                    if (phoneSearchTimer.current) clearTimeout(phoneSearchTimer.current);
+                    if (val.trim().length >= 3) {
+                      phoneSearchTimer.current = setTimeout(async () => {
+                        try {
+                          const res = await crmService.getCustomers({ search: val.trim(), limit: 5 });
+                          setPhoneSuggestions(res.data);
+                          setShowPhoneSuggestions(res.data.length > 0);
+                        } catch { setShowPhoneSuggestions(false); }
+                      }, 300);
+                    } else {
+                      setPhoneSuggestions([]);
+                      setShowPhoneSuggestions(false);
+                    }
+                  }}
+                  onBlur={() => setTimeout(() => setShowPhoneSuggestions(false), 150)}
+                  onFocus={() => { if (phoneSuggestions.length > 0) setShowPhoneSuggestions(true); }}
                   placeholder="Enter phone"
-                  className={`w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary ${!customerPhone.trim() ? 'border-red-300' : 'border-gray-200'}`}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                  autoComplete="off"
                 />
+                {showPhoneSuggestions && phoneSuggestions.length > 0 && (
+                  <div ref={phoneSuggestionsRef} className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                    {phoneSuggestions.map(c => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => {
+                          setCustomerPhone(c.phone);
+                          if (c.name) setCustomerName(c.name);
+                          setShowPhoneSuggestions(false);
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 transition-colors text-left"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 text-xs font-bold">
+                          {(c.name || c.phone).charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-gray-900 truncate">{c.name || 'Unknown'}</p>
+                          <p className="text-xs text-gray-500">{c.phone} • {c.totalVisits} visit{c.totalVisits !== 1 ? 's' : ''}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1271,7 +1750,7 @@ export default function QSRPage() {
 
                   <button
                     onClick={handleQuickSettle}
-                    disabled={settling || !customerName.trim() || !customerPhone.trim()}
+                    disabled={settling}
                     className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-colors disabled:opacity-60 flex items-center justify-center gap-2 text-base"
                   >
                     {settling ? (
@@ -1463,7 +1942,7 @@ export default function QSRPage() {
                 {splitsReady ? (
                   <button
                     onClick={handleSplitSettle}
-                    disabled={settling || !customerName.trim() || !customerPhone.trim()}
+                    disabled={settling}
                     className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-colors disabled:opacity-60 flex items-center justify-center gap-2 text-base"
                   >
                     {settling ? (
@@ -1492,7 +1971,7 @@ export default function QSRPage() {
       </Modal>
 
       {/* ═══ Recall Modal ═══ */}
-      <Modal open={showRecall} onClose={() => setShowRecall(false)} title="Held Tickets" maxWidth="max-w-lg">
+      <Modal open={showRecall} onClose={() => setShowRecall(false)} title="Held Tickets" maxWidth="max-w-3xl">
         {heldTickets.length === 0 ? (
           <div className="text-center py-12 text-gray-400">
             <svg className="w-16 h-16 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
@@ -1502,7 +1981,7 @@ export default function QSRPage() {
             <p className="text-xs mt-1">Hold a ticket to park it here</p>
           </div>
         ) : (
-          <div className="space-y-3 max-h-[60vh] overflow-y-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[75vh] overflow-y-auto">
             {heldTickets.map(ticket => {
               const itemCount = ticket.cart.reduce((s, c) => s + c.quantity, 0);
               const ticketTotal = ticket.cart.reduce((sum, c) => {
@@ -1567,3 +2046,146 @@ export default function QSRPage() {
     </div>
   );
 }
+
+/* ═══════════════════ QSR Order Card ═══════════════════ */
+
+const STATUS_BADGE: Record<string, { label: string; bg: string; text: string; dot: string }> = {
+  completed: { label: 'Completed', bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
+  cancelled: { label: 'Cancelled', bg: 'bg-red-50', text: 'text-red-700', dot: 'bg-red-500' },
+  pending: { label: 'Pending', bg: 'bg-amber-50', text: 'text-amber-700', dot: 'bg-amber-500' },
+  preparing: { label: 'Preparing', bg: 'bg-violet-50', text: 'text-violet-700', dot: 'bg-violet-500' },
+  payment_pending: { label: 'Payment Pending', bg: 'bg-orange-50', text: 'text-primary', dot: 'bg-primary' },
+};
+
+function QSROrderCard({
+  order,
+  formatCurrency,
+  mode = 'completed',
+  onServeItem,
+  isServingItem,
+}: {
+  order: Order;
+  formatCurrency: (n: number) => string;
+  mode?: 'preparing' | 'served' | 'completed';
+  onServeItem?: (itemId: string) => void;
+  isServingItem?: boolean;
+}) {
+  const badge = STATUS_BADGE[order.status] ?? { label: order.status, bg: 'bg-gray-50', text: 'text-gray-700', dot: 'bg-gray-500' };
+  const token = order.tokenNumber != null
+    ? String(order.tokenNumber).padStart(3, '0')
+    : order.orderNumber;
+
+  const servedCount = order.items.filter(i => !!i.preparedAt).length;
+  const totalItemCount = order.items.length;
+
+  // Filter items based on mode
+  const displayItems = mode === 'preparing'
+    ? order.items.filter(i => !i.preparedAt)   // Show only UNSERVED items
+    : mode === 'served'
+    ? order.items.filter(i => !!i.preparedAt)  // Show only SERVED items
+    : order.items;                              // Completed: show all
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 12, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{ duration: 0.2 }}
+      className="bg-white rounded-xl border border-gray-200 hover:border-gray-300 shadow-sm hover:shadow-md transition-all overflow-hidden"
+    >
+      {/* Header */}
+      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center shrink-0 ${
+            mode === 'completed' ? 'bg-emerald-100 text-emerald-700' :
+            mode === 'served' ? 'bg-orange-100 text-primary' :
+            'bg-violet-100 text-violet-700'
+          }`}>
+            <span className="text-[9px] font-semibold uppercase leading-none tracking-wider">TKN</span>
+            <span className="text-base font-extrabold leading-tight tabular-nums">{token}</span>
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-gray-900 truncate">
+              {order.customerName || 'Walk-in'}
+            </p>
+            <p className="text-[11px] text-gray-400 mt-0.5">
+              {timeAgo(order.createdAt)}
+              {order.customerPhone && ` • ${order.customerPhone}`}
+            </p>
+          </div>
+        </div>
+        {mode !== 'completed' && (
+          <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-semibold shrink-0 bg-gray-100 text-gray-600 tabular-nums">
+            {servedCount}/{totalItemCount} served
+          </span>
+        )}
+      </div>
+
+      {/* Items */}
+      <div className="px-3 py-2 space-y-1">
+        {displayItems.map((item) => (
+          <div
+            key={item.id}
+            className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors ${
+              item.preparedAt ? 'bg-emerald-50/60' : 'bg-gray-50/60'
+            }`}
+          >
+            <span className={`w-6 h-6 rounded-md text-xs font-bold flex items-center justify-center shrink-0 ${
+              item.preparedAt ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-600'
+            }`}>
+              {item.quantity}
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className={`font-medium truncate ${item.preparedAt ? 'text-emerald-700' : 'text-gray-800'}`}>
+                {item.menuItemName}
+              </p>
+              {item.customizations && item.customizations.length > 0 && (
+                <p className="text-[10px] text-gray-400 truncate">
+                  {item.customizations.flatMap(g => g.options.map(o => o.name)).join(', ')}
+                </p>
+              )}
+            </div>
+            <span className="text-xs text-gray-400 tabular-nums shrink-0">
+              {formatCurrency(item.totalPrice)}
+            </span>
+
+            {/* Serve button (preparing mode, unserved items) */}
+            {mode === 'preparing' && !item.preparedAt && onServeItem && (
+              <button
+                onClick={() => onServeItem(item.id)}
+                disabled={isServingItem}
+                className="shrink-0 px-3 py-1.5 rounded-lg bg-primary hover:bg-primary-hover text-white text-xs font-semibold transition-all active:scale-95 disabled:opacity-50 flex items-center gap-1"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                Serve
+              </button>
+            )}
+
+            {/* Served checkmark */}
+            {item.preparedAt && mode !== 'preparing' && (
+              <span className="shrink-0 w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Footer */}
+      <div className="px-4 py-2 bg-gray-50/80 border-t border-gray-100 flex items-center justify-between">
+        <span className="text-xs text-gray-500 tabular-nums">
+          {order.items.reduce((s, i) => s + i.quantity, 0)} items
+        </span>
+        <span className="text-sm font-bold text-gray-900 tabular-nums">
+          {formatCurrency(order.total)}
+        </span>
+      </div>
+    </motion.div>
+  );
+}
+

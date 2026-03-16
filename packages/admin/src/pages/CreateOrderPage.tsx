@@ -878,7 +878,7 @@ export default function CreateOrderPage() {
       </div>
 
       {/* ═══ Recall Modal ═══ */}
-      <Modal open={showRecall} onClose={() => setShowRecall(false)} title="Held Tickets" maxWidth="max-w-lg">
+      <Modal open={showRecall} onClose={() => setShowRecall(false)} title="Held Tickets" maxWidth="max-w-3xl">
         {heldTickets.length === 0 ? (
           <div className="text-center py-12 text-gray-400">
             <svg className="w-16 h-16 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
@@ -888,7 +888,7 @@ export default function CreateOrderPage() {
             <p className="text-xs mt-1">Hold a ticket to park it here</p>
           </div>
         ) : (
-          <div className="space-y-3 max-h-[60vh] overflow-y-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[75vh] overflow-y-auto">
             {heldTickets.map(ticket => {
               const itemCount = ticket.cart.reduce((s, c) => s + c.quantity, 0);
               const ticketTotal = ticket.cart.reduce((sum, c) => {
