@@ -13,7 +13,6 @@ import { useIdleLock } from '../hooks/useIdleLock';
 import { useNotificationSound } from '../hooks/useNotificationSound';
 import NotificationOverlay, { useNotificationOverlay } from '../components/NotificationOverlay';
 import Chatbot from '../components/Chatbot';
-import OnboardingBanner from '../components/OnboardingBanner';
 
 const navigation = [
   {
@@ -816,7 +815,6 @@ function DashboardLayoutInner() {
 
         {/* Page content */}
         <main className="p-3 md:p-6">
-          <OnboardingBanner />
           <Outlet />
         </main>
       </div>

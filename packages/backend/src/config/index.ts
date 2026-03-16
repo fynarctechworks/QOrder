@@ -41,10 +41,6 @@ const envSchema = z.object({
   // Biometric fingerprint encryption
   BIOMETRIC_ENCRYPTION_KEY: z.string().default(''),
 
-  // Razorpay (subscription payments)
-  RAZORPAY_KEY_ID: z.string().default(''),
-  RAZORPAY_KEY_SECRET: z.string().default(''),
-  RAZORPAY_WEBHOOK_SECRET: z.string().default(''),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -122,11 +118,6 @@ export const config = {
   },
   biometric: {
     encryptionKey: parsed.data.BIOMETRIC_ENCRYPTION_KEY,
-  },
-  razorpay: {
-    keyId: parsed.data.RAZORPAY_KEY_ID,
-    keySecret: parsed.data.RAZORPAY_KEY_SECRET,
-    webhookSecret: parsed.data.RAZORPAY_WEBHOOK_SECRET,
   },
   isProduction: parsed.data.NODE_ENV === 'production',
   isDevelopment: parsed.data.NODE_ENV === 'development',
