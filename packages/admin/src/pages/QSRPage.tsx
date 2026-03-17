@@ -110,7 +110,7 @@ function firePrintJob(html: string, title: string) {
   setTimeout(() => { try { w.close(); } catch {} }, 5000);
 }
 
-function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrency: (n: number) => string, restaurantName: string, itemStationMap?: Map<string, string>) {
+function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrency: (n: number) => string, restaurantName: string, itemStationMap?: Map<string, string>, orderLabel?: string) {
   const customerItemsHtml = order.items.map(item => {
     const mods = (item.customizations || []).flatMap(g => g.options.map(o => o.name)).join(', ');
     const displayName = mods ? `(${mods}) ${escapeHtml(item.menuItemName)}` : escapeHtml(item.menuItemName);
@@ -125,8 +125,7 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
     return `<div class="k-item"><span class="k-qty">${item.quantity}x</span><div class="k-name">${escapeHtml(item.menuItemName)}${mods ? `<div class="k-mods">${escapeHtml(mods)}</div>` : ''}</div></div>`;
   }).join('');
 
-  const tableLabel = order.tableName && order.tableName !== 'QSR Order' && order.tableName !== 'Takeaway'
-    ? order.tableName : '';
+  const typeLabel = orderLabel || (order.tableName && order.tableName !== 'QSR Order' && order.tableName !== 'Takeaway' ? order.tableName : 'Counter');
 
   const buildKotHtmlBody = (title: string, items: typeof order.items) => `
       <p class="k-header center">${escapeHtml(title)}</p>
@@ -135,7 +134,7 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
         <div class="k-token-label">Token</div>
         <div class="k-token-num">${escapeHtml(order.tokenNumber ? String(order.tokenNumber).padStart(3, '0') : order.orderNumber)}</div>
       </div>
-      ${tableLabel ? `<p class="center" style="font-size:16px;margin:4px 0;font-weight:bold">${escapeHtml(tableLabel)}</p>` : ''}
+      <p class="center" style="font-size:16px;margin:4px 0;font-weight:bold">${escapeHtml(typeLabel)}</p>
       ${order.customerName ? `<p class="center" style="font-size:14px;margin:4px 0"><strong>${escapeHtml(order.customerName)}</strong></p>` : ''}
       <div class="divider"></div>
       ${buildKotHtml(items)}
@@ -148,7 +147,7 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
         <div class="token-label">Token Number</div>
         <div class="token-num">${escapeHtml(order.tokenNumber ? String(order.tokenNumber).padStart(3, '0') : order.orderNumber)}</div>
       </div>
-      ${tableLabel ? `<p class="center" style="font-size:16px;margin:4px 0;font-weight:bold">${escapeHtml(tableLabel)}</p>` : ''}
+      <p class="center" style="font-size:16px;margin:4px 0;font-weight:bold">${escapeHtml(typeLabel)}</p>
       <div class="divider"></div>
       ${customerItemsHtml}
       <div class="divider"></div>
@@ -440,7 +439,8 @@ export default function QSRPage() {
       toast.success(`Token #${order.tokenNumber ? String(order.tokenNumber).padStart(3, '0') : order.orderNumber} — Order placed!`);
       // Auto-print customer token + station KOTs
       const stationMap = buildItemStationMap();
-      setTimeout(() => printReceipts(order, selectedQuickMethod || 'CASH', formatCurrency, restaurantName, stationMap), 300);
+      const orderLabel = selectedTable === 'takeaway' ? 'Takeaway' : selectedTable ? (tables.find(t => t.id === selectedTable)?.name || `Table ${tables.find(t => t.id === selectedTable)?.number}`) : 'Counter';
+      setTimeout(() => printReceipts(order, selectedQuickMethod || 'CASH', formatCurrency, restaurantName, stationMap, orderLabel), 300);
       // Auto-send WhatsApp invoice
       sendWhatsAppInvoice(order.id);
     },
