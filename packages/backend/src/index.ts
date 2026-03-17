@@ -7,6 +7,8 @@ import { authService } from './services/authService.js';
 import { sessionService } from './services/sessionService.js';
 import { orderService } from './services/orderService.js';
 import { alertService } from './services/alertService.js';
+import { reportService } from './services/reportService.js';
+import { sendDailyReportEmail } from './services/emailService.js';
 import { startFingerprintBridge, stopFingerprintBridge } from './fingerprint-bridge/index.js';
 
 async function bootstrap() {
@@ -90,6 +92,42 @@ async function bootstrap() {
         logger.warn({ err }, 'Periodic staff late alert check failed');
       }
     }, 5 * 60 * 1000);
+
+    // Daily report — fires at 23:00 IST every day
+    const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+    const lastReportSent = new Set<string>(); // tracks "YYYY-MM-DD" dates already sent
+    setInterval(async () => {
+      try {
+        const istNow = new Date(Date.now() + IST_OFFSET_MS);
+        const hh = istNow.getUTCHours();
+        const mm = istNow.getUTCMinutes();
+        const dateKey = `${istNow.getUTCFullYear()}-${String(istNow.getUTCMonth() + 1).padStart(2, '0')}-${String(istNow.getUTCDate()).padStart(2, '0')}`;
+        if (hh !== 23 || mm !== 0) return;
+        if (lastReportSent.has(dateKey)) return;
+        lastReportSent.add(dateKey);
+        // Keep set small
+        if (lastReportSent.size > 7) {
+          const oldest = [...lastReportSent][0];
+          lastReportSent.delete(oldest);
+        }
+        const restaurants = await prisma.restaurant.findMany({
+          where: { isActive: true },
+          select: { id: true },
+        });
+        for (const r of restaurants) {
+          try {
+            const report = await reportService.generateDailyReport(r.id);
+            if (report && report.recipients.length > 0 && report.totalOrders > 0) {
+              await sendDailyReportEmail(report.recipients, report);
+            }
+          } catch (err) {
+            logger.warn({ err, restaurantId: r.id }, 'Daily report failed for restaurant');
+          }
+        }
+      } catch (err) {
+        logger.warn({ err }, 'Daily report scheduler error');
+      }
+    }, 60 * 1000); // check every minute
 
     // Start server
     httpServer.listen(config.port, () => {

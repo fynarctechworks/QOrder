@@ -201,3 +201,108 @@ export async function sendReceiptEmail(to: string, order: {
   });
   logger.info({ to, orderNumber: order.orderNumber }, 'Receipt email sent');
 }
+
+/** Send daily end-of-day report email */
+export async function sendDailyReportEmail(recipients: string[], report: {
+  restaurantName: string;
+  currency: string;
+  dateLabel: string;
+  totalOrders: number;
+  totalRevenue: number;
+  totalTax: number;
+  totalDiscount: number;
+  settled: number;
+  pending: number;
+  cancelledCount: number;
+  byType: Array<{ orderType: string; count: bigint; revenue: number }>;
+  topItems: Array<{ name: string; qty: bigint; revenue: number }>;
+}): Promise<void> {
+  const c = report.currency;
+  const fmt = (n: number) => `${c}${n.toFixed(2)}`;
+  const safe = (s: string) => escapeHtml(s);
+
+  const typeLabels: Record<string, string> = { QSR: 'QSR / Counter', DINE_IN: 'Dine-In', TAKEAWAY: 'Takeaway' };
+
+  const typeRows = report.byType.map(r => `
+    <tr>
+      <td style="padding:8px 12px;border-bottom:1px solid #f3f4f6;">${typeLabels[r.orderType] ?? r.orderType}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #f3f4f6;text-align:center;">${Number(r.count)}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #f3f4f6;text-align:right;">${fmt(r.revenue)}</td>
+    </tr>`).join('');
+
+  const itemRows = report.topItems.map((item, i) => `
+    <tr>
+      <td style="padding:8px 12px;border-bottom:1px solid #f3f4f6;color:#6b7280;">${i + 1}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #f3f4f6;">${safe(item.name)}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #f3f4f6;text-align:center;">${Number(item.qty)}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #f3f4f6;text-align:right;">${fmt(item.revenue)}</td>
+    </tr>`).join('');
+
+  const html = `
+    <div style="font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;max-width:600px;margin:0 auto;padding:32px 24px;background:#f8faf8;border-radius:16px;">
+      <div style="text-align:center;margin-bottom:24px;">
+        <h1 style="color:#1a3c34;font-size:22px;margin:0;">${safe(report.restaurantName)}</h1>
+        <p style="color:#6b7280;font-size:14px;margin-top:4px;">Daily Report — ${safe(report.dateLabel)}</p>
+      </div>
+
+      <!-- Summary -->
+      <div style="background:#fff;border-radius:12px;padding:24px;border:1px solid #e5e7eb;margin-bottom:16px;">
+        <h2 style="color:#1a3c34;font-size:15px;margin:0 0 16px;">Day Summary</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;color:#374151;">
+          <tr><td style="padding:6px 0;">Total Orders</td><td style="text-align:right;font-weight:600;">${report.totalOrders}</td></tr>
+          <tr><td style="padding:6px 0;">Total Revenue</td><td style="text-align:right;font-weight:600;">${fmt(report.totalRevenue)}</td></tr>
+          <tr><td style="padding:6px 0;">Tax Collected</td><td style="text-align:right;">${fmt(report.totalTax)}</td></tr>
+          <tr><td style="padding:6px 0;">Discounts Given</td><td style="text-align:right;">-${fmt(report.totalDiscount)}</td></tr>
+          <tr><td style="padding:6px 0;color:#ef4444;">Cancelled Orders</td><td style="text-align:right;color:#ef4444;">${report.cancelledCount}</td></tr>
+        </table>
+      </div>
+
+      <!-- By Order Type -->
+      <div style="background:#fff;border-radius:12px;padding:24px;border:1px solid #e5e7eb;margin-bottom:16px;">
+        <h2 style="color:#1a3c34;font-size:15px;margin:0 0 16px;">By Order Type</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;color:#374151;">
+          <thead><tr style="background:#f9fafb;">
+            <th style="padding:8px 12px;text-align:left;font-weight:600;">Type</th>
+            <th style="padding:8px 12px;text-align:center;font-weight:600;">Orders</th>
+            <th style="padding:8px 12px;text-align:right;font-weight:600;">Revenue</th>
+          </tr></thead>
+          <tbody>${typeRows}</tbody>
+        </table>
+      </div>
+
+      <!-- Payment Status -->
+      <div style="background:#fff;border-radius:12px;padding:24px;border:1px solid #e5e7eb;margin-bottom:16px;">
+        <h2 style="color:#1a3c34;font-size:15px;margin:0 0 16px;">Payment Status</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;color:#374151;">
+          <tr><td style="padding:6px 0;color:#16a34a;">✓ Settled</td><td style="text-align:right;font-weight:600;color:#16a34a;">${fmt(report.settled)}</td></tr>
+          <tr><td style="padding:6px 0;color:#d97706;">⏳ Pending</td><td style="text-align:right;font-weight:600;color:#d97706;">${fmt(report.pending)}</td></tr>
+        </table>
+      </div>
+
+      <!-- Top Items -->
+      ${report.topItems.length > 0 ? `
+      <div style="background:#fff;border-radius:12px;padding:24px;border:1px solid #e5e7eb;margin-bottom:16px;">
+        <h2 style="color:#1a3c34;font-size:15px;margin:0 0 16px;">Top Selling Items</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;color:#374151;">
+          <thead><tr style="background:#f9fafb;">
+            <th style="padding:8px 12px;text-align:left;font-weight:600;">#</th>
+            <th style="padding:8px 12px;text-align:left;font-weight:600;">Item</th>
+            <th style="padding:8px 12px;text-align:center;font-weight:600;">Qty</th>
+            <th style="padding:8px 12px;text-align:right;font-weight:600;">Revenue</th>
+          </tr></thead>
+          <tbody>${itemRows}</tbody>
+        </table>
+      </div>` : ''}
+
+      <p style="color:#9ca3af;font-size:12px;text-align:center;margin-top:20px;">Generated by Q Order • ${safe(report.dateLabel)}</p>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from: `"Q Order Reports" <${config.smtp.from}>`,
+    to: recipients.join(', '),
+    subject: `Daily Report — ${report.restaurantName} — ${report.dateLabel}`,
+    html,
+  });
+  logger.info({ recipients, restaurant: report.restaurantName }, 'Daily report email sent');
+}

@@ -72,6 +72,8 @@ interface FormState {
   printShowSpecialInstructions: boolean;
   printShowSubtotal: boolean;
   printShowTax: boolean;
+  // Daily report
+  reportEmails: string;
 }
 
 const DEFAULTS: FormState = {
@@ -123,6 +125,7 @@ const DEFAULTS: FormState = {
   printShowSpecialInstructions: true,
   printShowSubtotal: true,
   printShowTax: true,
+  reportEmails: '',
 };
 
 const CURRENCIES = [
@@ -479,6 +482,7 @@ export default function SettingsPage() {
       printShowSpecialInstructions: (s.printShowSpecialInstructions as boolean) ?? true,
       printShowSubtotal: (s.printShowSubtotal as boolean) ?? true,
       printShowTax: (s.printShowTax as boolean) ?? true,
+      reportEmails: ((s.reportEmails as string[] | undefined) ?? []).join(', '),
     });
   }, [restaurant]);
 
@@ -619,6 +623,7 @@ export default function SettingsPage() {
         printShowSpecialInstructions: form.printShowSpecialInstructions,
         printShowSubtotal: form.printShowSubtotal,
         printShowTax: form.printShowTax,
+        reportEmails: form.reportEmails.split(',').map(e => e.trim()).filter(Boolean),
       };
 
       // Include password when turning off accept orders
@@ -1541,6 +1546,25 @@ export default function SettingsPage() {
                   {form.requirePhoneVerification
                     ? '📱 Customers will receive a 6-digit SMS code to verify their number. Requires Twilio credentials in server configuration.'
                     : '📋 Customers enter their phone number with format validation. A message reminds them that order updates will be sent to this number.'}
+                </p>
+              </div>
+            </SectionCard>
+
+            {/* Daily Report Email */}
+            <SectionCard title="Daily Report Email" description="Receive an end-of-day summary at 11:00 PM IST with settlement totals and top-selling items.">
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-text-primary">
+                  Report Recipients
+                </label>
+                <input
+                  type="text"
+                  value={form.reportEmails}
+                  onChange={e => update('reportEmails', e.target.value)}
+                  placeholder="owner@cafe.com, manager@cafe.com"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                />
+                <p className="text-xs text-text-muted">
+                  Enter one or more email addresses separated by commas. Leave empty to send to the restaurant owner's account email.
                 </p>
               </div>
             </SectionCard>

@@ -1,7 +1,120 @@
 import { prisma } from '../lib/prisma.js';
 import { Prisma } from '@prisma/client';
 
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+function getTodayISTRange() {
+  const istNow = new Date(Date.now() + IST_OFFSET_MS);
+  const todayStartIST = new Date(Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate()));
+  const startUTC = new Date(todayStartIST.getTime() - IST_OFFSET_MS);
+  const endUTC = new Date(startUTC.getTime() + 24 * 60 * 60 * 1000);
+  const dateLabel = `${String(istNow.getUTCDate()).padStart(2, '0')} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][istNow.getUTCMonth()]} ${istNow.getUTCFullYear()}`;
+  return { startUTC, endUTC, dateLabel };
+}
+
 export const reportService = {
+
+  async generateDailyReport(restaurantId: string) {
+    const { startUTC, endUTC, dateLabel } = getTodayISTRange();
+
+    const restaurant = await prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: {
+        name: true,
+        currency: true,
+        settings: true,
+        users: { where: { role: 'OWNER', isActive: true }, select: { email: true }, take: 1 },
+      },
+    });
+    if (!restaurant) return null;
+
+    type OrderSummaryRow = { orderType: string; count: bigint; revenue: number; tax: number; discount: number };
+    type StatusRow = { isSettled: boolean; total: number };
+    type TopItemRow = { name: string; qty: bigint; revenue: number };
+    type CancelledRow = { count: bigint };
+
+    const [byType, bySettlement, topItems, cancelled] = await Promise.all([
+      prisma.$queryRaw<OrderSummaryRow[]>`
+        SELECT
+          o."orderType",
+          COUNT(*)::bigint as count,
+          COALESCE(SUM(o.total), 0)::float as revenue,
+          COALESCE(SUM(o.tax), 0)::float as tax,
+          COALESCE(SUM(o.discount), 0)::float as discount
+        FROM "Order" o
+        WHERE o."restaurantId" = ${restaurantId}
+          AND o."createdAt" >= ${startUTC}
+          AND o."createdAt" < ${endUTC}
+          AND o.status NOT IN ('CANCELLED')
+        GROUP BY o."orderType"
+      `,
+      prisma.$queryRaw<StatusRow[]>`
+        SELECT
+          (o."paymentStatus" = 'PAID') as "isSettled",
+          COALESCE(SUM(o.total), 0)::float as total
+        FROM "Order" o
+        WHERE o."restaurantId" = ${restaurantId}
+          AND o."createdAt" >= ${startUTC}
+          AND o."createdAt" < ${endUTC}
+          AND o.status NOT IN ('CANCELLED')
+        GROUP BY (o."paymentStatus" = 'PAID')
+      `,
+      prisma.$queryRaw<TopItemRow[]>`
+        SELECT
+          mi.name,
+          SUM(oi.quantity)::bigint as qty,
+          COALESCE(SUM(oi.quantity * oi.price), 0)::float as revenue
+        FROM "OrderItem" oi
+        JOIN "MenuItem" mi ON mi.id = oi."menuItemId"
+        JOIN "Order" o ON o.id = oi."orderId"
+        WHERE o."restaurantId" = ${restaurantId}
+          AND o."createdAt" >= ${startUTC}
+          AND o."createdAt" < ${endUTC}
+          AND o.status NOT IN ('CANCELLED')
+        GROUP BY mi.name
+        ORDER BY qty DESC
+        LIMIT 10
+      `,
+      prisma.$queryRaw<CancelledRow[]>`
+        SELECT COUNT(*)::bigint as count
+        FROM "Order" o
+        WHERE o."restaurantId" = ${restaurantId}
+          AND o."createdAt" >= ${startUTC}
+          AND o."createdAt" < ${endUTC}
+          AND o.status = 'CANCELLED'
+      `,
+    ]);
+
+    const totalOrders = byType.reduce((s, r) => s + Number(r.count), 0);
+    const totalRevenue = byType.reduce((s, r) => s + r.revenue, 0);
+    const totalTax = byType.reduce((s, r) => s + r.tax, 0);
+    const totalDiscount = byType.reduce((s, r) => s + r.discount, 0);
+    const settled = bySettlement.find(r => r.isSettled)?.total ?? 0;
+    const pending = bySettlement.find(r => !r.isSettled)?.total ?? 0;
+    const cancelledCount = Number(cancelled[0]?.count ?? 0);
+
+    const settings = (restaurant.settings ?? {}) as Record<string, unknown>;
+    const reportEmails = (settings.reportEmails as string[] | undefined)?.filter(Boolean) ?? [];
+    const fallbackEmail = restaurant.users[0]?.email;
+    const recipients = reportEmails.length > 0 ? reportEmails : (fallbackEmail ? [fallbackEmail] : []);
+
+    return {
+      restaurantName: restaurant.name,
+      currency: restaurant.currency || '₹',
+      dateLabel,
+      totalOrders,
+      totalRevenue,
+      totalTax,
+      totalDiscount,
+      settled,
+      pending,
+      cancelledCount,
+      byType,
+      topItems,
+      recipients,
+    };
+  },
+
 
   /* ─── Hourly Sales Breakdown ─── */
   async hourlySales(restaurantId: string, startDate: Date, endDate: Date, branchId?: string) {

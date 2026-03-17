@@ -49,6 +49,8 @@ interface SettingsPayload {
     /** Payment gateway settings */
     paymentGatewayEnabled?: boolean;
     paymentMode?: 'pay_before' | 'pay_after';
+    /** Daily report recipients */
+    reportEmails?: string[];
   };
 }
 

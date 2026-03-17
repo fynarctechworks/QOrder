@@ -116,6 +116,8 @@ export const updateRestaurantSettingsSchema = z.object({
   printShowSpecialInstructions: z.boolean().optional(),
   printShowSubtotal: z.boolean().optional(),
   printShowTax: z.boolean().optional(),
+  /** Daily report email recipients */
+  reportEmails: z.array(z.string().email()).optional(),
 });
 
 // ==================== MENU ====================
