@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { menuService, settingsService, orderService, tableService } from '../services';
+import { useSocket } from '../context/SocketContext';
 import { crmService } from '../services/crmService';
 import type { Customer } from '../services/crmService';
 import { reportService } from '../services/reportService';
@@ -167,6 +168,7 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
 export default function QSRPage() {
   const formatCurrency = useCurrency();
   const qc = useQueryClient();
+  const { socket } = useSocket();
 
   /* ── Data fetching ── */
   const { data: menuItems = [], isError: menuErr, refetch: refetchMenu } = useQuery({
@@ -253,10 +255,23 @@ export default function QSRPage() {
   const { data: qsrOrdersData, isLoading: qsrOrdersLoading, refetch: refetchQsrOrders } = useQuery({
     queryKey: ['qsr-board-orders'],
     queryFn: () => orderService.getAll({ limit: 500 }),
-    enabled: showOrderBoard,
-    refetchInterval: showOrderBoard ? 10_000 : false,
-    staleTime: 3_000,
+    refetchInterval: 5_000,
+    staleTime: 0,
   });
+
+  /* ── Real-time board updates via Socket.io ── */
+  useEffect(() => {
+    if (!socket) return;
+    const refresh = () => qc.invalidateQueries({ queryKey: ['qsr-board-orders'] });
+    socket.on('order:created', refresh);
+    socket.on('order:statusUpdate', refresh);
+    socket.on('order:itemKitchenReady', refresh);
+    return () => {
+      socket.off('order:created', refresh);
+      socket.off('order:statusUpdate', refresh);
+      socket.off('order:itemKitchenReady', refresh);
+    };
+  }, [socket, qc]);
 
   /* ── Board search filter ── */
   const matchesBoardSearch = useCallback((o: Order) => {
@@ -413,6 +428,13 @@ export default function QSRPage() {
       orderService.createQSROrder(data),
     onSuccess: (order) => {
       qc.invalidateQueries({ queryKey: ['orders'] });
+      // Optimistically insert the new order into the board cache immediately
+      qc.setQueryData<{ data: Order[]; pagination: unknown }>(['qsr-board-orders'], (prev) => {
+        if (!prev) return prev;
+        const already = prev.data.some(o => o.id === order.id);
+        if (already) return prev;
+        return { ...prev, data: [order, ...prev.data] };
+      });
       qc.invalidateQueries({ queryKey: ['qsr-board-orders'] });
       settledRef.current = true;
       setCompletedOrder(order);
