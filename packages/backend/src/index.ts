@@ -108,7 +108,7 @@ async function bootstrap() {
         // Keep set small
         if (lastReportSent.size > 7) {
           const oldest = [...lastReportSent][0];
-          lastReportSent.delete(oldest);
+          if (oldest) lastReportSent.delete(oldest);
         }
         const restaurants = await prisma.restaurant.findMany({
           where: { isActive: true },
