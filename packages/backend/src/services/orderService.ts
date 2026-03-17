@@ -738,7 +738,7 @@ export const orderService = {
     // Validate status transitions (bidirectional between active statuses)
     const validTransitions: Record<OrderStatus, OrderStatus[]> = {
       PENDING: ['PREPARING', 'CANCELLED'],
-      PREPARING: ['PENDING', 'READY', 'PAYMENT_PENDING', 'CANCELLED'],
+      PREPARING: ['PENDING', 'READY', 'PAYMENT_PENDING', 'COMPLETED', 'CANCELLED'],
       READY: ['PREPARING', 'PAYMENT_PENDING', 'CANCELLED'],
       PAYMENT_PENDING: ['PENDING', 'PREPARING', 'COMPLETED'],
       COMPLETED: [],
