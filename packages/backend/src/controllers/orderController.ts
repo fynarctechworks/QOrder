@@ -127,7 +127,7 @@ function transformOrder(raw: RawOrder) {
         totalPrice: Number(item.totalPrice),
         customizations: groupModifiers(item.modifiers),
         specialInstructions: item.notes ?? undefined,
-        preparedAt: item.preparedAt ? (item.preparedAt as Date).toISOString() : undefined,
+        preparedAt: item.preparedAt ? new Date(item.preparedAt as string | Date).toISOString() : undefined,
       };
     }),
     subtotal: Number(raw.subtotal),
