@@ -607,8 +607,10 @@ export const orderService = {
     });
 
     if (!order) throw AppError.notFound('Order');
-    if (order.status !== 'PREPARING') {
-      throw AppError.badRequest('Only orders in PREPARING status can have items marked ready');
+    // Allow PREPARING and COMPLETED (QSR orders are paid upfront so status is COMPLETED
+    // before kitchen has served the food)
+    if (order.status !== 'PREPARING' && order.status !== 'COMPLETED') {
+      throw AppError.badRequest('Only orders in PREPARING or COMPLETED status can have items marked ready');
     }
 
     const item = order.items.find(i => i.id === itemId);
