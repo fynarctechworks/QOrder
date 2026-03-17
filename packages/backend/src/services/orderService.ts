@@ -429,13 +429,18 @@ export const orderService = {
             );
           }
 
-          // Generate sequential token number (001-999, wraps around)
+          // Generate sequential token number (001-999, resets daily at IST midnight)
           const effectiveBranchId = table?.branchId ?? fallbackBranchId ?? null;
+          const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+          const istNow = new Date(Date.now() + IST_OFFSET_MS);
+          const todayStartIST = new Date(Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate()));
+          const todayStartUTC = new Date(todayStartIST.getTime() - IST_OFFSET_MS);
           const lastOrder = await tx.order.findFirst({
             where: {
               restaurantId,
               ...(effectiveBranchId ? { OR: [{ branchId: effectiveBranchId }, { branchId: null }] } : {}),
               tokenNumber: { not: null },
+              createdAt: { gte: todayStartUTC },
             },
             orderBy: { createdAt: 'desc' },
             select: { tokenNumber: true },
