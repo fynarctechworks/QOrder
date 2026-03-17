@@ -297,22 +297,19 @@ export default function QSRPage() {
       if (o.tableName !== 'QSR Order') continue;
       if (new Date(o.createdAt) < todayStart) continue;
       if (!matchesBoardSearch(o)) continue;
-      if (o.status === 'completed') {
+      if (o.status === 'cancelled') continue;
+      // Always use item-level serve state to determine column,
+      // not order status — QSR orders are paid upfront so status
+      // may already be 'completed' even before kitchen serves food.
+      const totalItems = o.items.length;
+      const servedItems = o.items.filter(i => !!i.preparedAt).length;
+      if (servedItems === totalItems && totalItems > 0) {
         completed.push(o);
-      } else if (o.status === 'pending' || o.status === 'preparing' || o.status === 'payment_pending') {
-        // Check item-level serve state
-        const totalItems = o.items.length;
-        const servedItems = o.items.filter(i => !!i.preparedAt).length;
-        if (servedItems === totalItems && totalItems > 0) {
-          // All served — treat as completed visually (will be auto-completed by mutation)
-          completed.push(o);
-        } else if (servedItems > 0) {
-          // Partially served — show in both columns
-          preparing.push(o); // still has unserved items
-          served.push(o);    // has some served items
-        } else {
-          preparing.push(o);
-        }
+      } else if (servedItems > 0) {
+        preparing.push(o);
+        served.push(o);
+      } else {
+        preparing.push(o);
       }
     }
     preparing.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
