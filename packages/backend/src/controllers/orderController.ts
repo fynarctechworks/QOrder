@@ -103,7 +103,8 @@ function transformOrder(raw: RawOrder) {
     tableId: raw.tableId ?? '',
     tableName: raw.table
       ? (raw.table.name ? `${raw.table.name} ${raw.table.number}` : `Table ${raw.table.number}`)
-      : raw.orderType === 'QSR' ? 'QSR Order' : 'Takeaway',
+      : raw.orderType === 'QSR' ? 'Counter' : raw.orderType === 'QSR_TAKEAWAY' ? 'Takeaway' : 'Takeaway',
+    orderType: raw.orderType ?? 'DINE_IN',
     sectionName: raw.table?.section?.name ?? null,
     status,
     items: raw.items.map((item) => {
@@ -302,7 +303,9 @@ export const orderController = {
     try {
       const restaurantId = req.restaurantId!;
       const restaurantData = (req as unknown as { restaurantData?: RestaurantMiddlewareData }).restaurantData;
-      const order = await orderService.createOrder(restaurantId, req.body, restaurantData, 'PREPARING', req.branchId, 'QSR');
+      const serviceType = (req.body as Record<string, unknown>).serviceType as string | undefined;
+      const orderType = serviceType === 'takeaway' ? 'QSR_TAKEAWAY' : 'QSR';
+      const order = await orderService.createOrder(restaurantId, req.body, restaurantData, 'PREPARING', req.branchId, orderType);
 
       // Fetch full order data for admin response + socket
       const fullOrderData = await orderService.getOrderById(order.id, restaurantId);

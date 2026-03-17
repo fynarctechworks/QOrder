@@ -125,7 +125,7 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
     return `<div class="k-item"><span class="k-qty">${item.quantity}x</span><div class="k-name">${escapeHtml(item.menuItemName)}${mods ? `<div class="k-mods">${escapeHtml(mods)}</div>` : ''}</div></div>`;
   }).join('');
 
-  const typeLabel = orderLabel || (order.tableName && order.tableName !== 'QSR Order' && order.tableName !== 'Takeaway' ? order.tableName : 'Counter');
+  const typeLabel = orderLabel || order.tableName || 'Counter';
 
   const buildKotHtmlBody = (title: string, items: typeof order.items) => `
       <p class="k-header center">${escapeHtml(title)}</p>
@@ -293,7 +293,7 @@ export default function QSRPage() {
     const served: Order[] = [];     // orders with at least one served item but not all
     const completed: Order[] = [];
     for (const o of all) {
-      if (o.tableName !== 'QSR Order') continue;
+      if (o.orderType !== 'QSR' && o.orderType !== 'QSR_TAKEAWAY') continue;
       if (new Date(o.createdAt) < todayStart) continue;
       if (!matchesBoardSearch(o)) continue;
       if (o.status === 'cancelled') continue;
@@ -764,6 +764,7 @@ export default function QSRPage() {
       customerName: customerName.trim() || undefined,
       customerPhone: customerPhone.trim() || undefined,
       notes: notes.trim() || undefined,
+      serviceType: selectedTable === 'takeaway' ? 'takeaway' : selectedTable ? 'table' : 'counter',
       ...(discountAmount > 0 ? { manualDiscount: discountNum, manualDiscountType: discountType } : {}),
     });
   };
@@ -795,6 +796,7 @@ export default function QSRPage() {
       customerName: customerName.trim() || undefined,
       customerPhone: customerPhone.trim() || undefined,
       notes: notes.trim() || undefined,
+      serviceType: selectedTable === 'takeaway' ? 'takeaway' : selectedTable ? 'table' : 'counter',
       ...(discountAmount > 0 ? { manualDiscount: discountNum, manualDiscountType: discountType } : {}),
     });
   };
@@ -2088,7 +2090,7 @@ function QSROrderCard({
           </div>
           <div className="min-w-0">
             <p className="text-sm font-bold text-gray-900 truncate">
-              {order.customerName || 'Walk-in'}
+              {order.customerName || order.tableName || 'Counter'}
             </p>
             <p className="text-[11px] text-gray-400 mt-0.5">
               {timeAgo(order.createdAt)}

@@ -29,6 +29,7 @@ function mapApiOrder(raw: Record<string, unknown>): Order {
     restaurantId: r.restaurantId as string,
     tableId: (r.tableId as string) || '',
     tableName: (r.tableName as string) || 'Unknown',
+    orderType: (r.orderType as string) || undefined,
     sectionName: (r.sectionName as string) || null,
     status: (r.status as string).toLowerCase() as OrderStatus,
     items: items.map((item: Record<string, unknown>) => ({
@@ -131,6 +132,7 @@ export const orderService = {
     customerName?: string;
     customerPhone?: string;
     notes?: string;
+    serviceType?: string;
   }): Promise<Order> {
     const raw = await apiClient.post<Record<string, unknown>>('/orders/qsr', data);
     return mapApiOrder(raw);

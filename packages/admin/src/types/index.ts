@@ -103,6 +103,7 @@ export interface Order {
   restaurantId: string;
   tableId: string;
   tableName: string;
+  orderType?: string;
   sectionName?: string | null;
   items: OrderItem[];
   status: OrderStatus;
