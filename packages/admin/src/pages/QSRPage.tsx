@@ -312,7 +312,7 @@ export default function QSRPage() {
         preparing.push(o);
       }
     }
-    preparing.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    preparing.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     served.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
     completed.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     return { preparing, served, completed };
