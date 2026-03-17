@@ -26,11 +26,7 @@ export default function LoginPage() {
 
     setIsLoading(true);
     try {
-      const result = await login(identifier, password);
-      if (result?.requires2FA) {
-        navigate('/2fa-verify', { state: { userId: result.userId }, replace: true });
-        return;
-      }
+      await login(identifier, password);
       toast.success('Welcome back!');
       navigate(from, { replace: true });
     } catch (error) {

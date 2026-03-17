@@ -95,52 +95,8 @@ export const authController = {
     try {
       const result = await authService.login(req.body);
 
-      // If 2FA is required, don't issue tokens yet
-      if (result.requires2FA) {
-        res.json({
-          success: true,
-          data: {
-            requires2FA: true,
-            userId: result.userId,
-          },
-        });
-        return;
-      }
-
       // Set refresh token as HttpOnly cookie
       res.cookie(REFRESH_TOKEN_COOKIE, result.refreshToken!, COOKIE_OPTIONS);
-
-      res.json({
-        success: true,
-        data: {
-          user: result.user,
-          restaurant: result.restaurant,
-          accessToken: result.accessToken,
-        },
-      });
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  async verifyTwoFactor(
-    req: Request,
-    res: Response<ApiResponse>,
-    next: NextFunction
-  ) {
-    try {
-      const { userId, code } = req.body;
-      if (!userId || !code) {
-        res.status(400).json({
-          success: false,
-          error: { code: 'BAD_REQUEST', message: 'userId and code are required' },
-        });
-        return;
-      }
-
-      const result = await authService.verifyTwoFactorLogin(userId, code);
-
-      res.cookie(REFRESH_TOKEN_COOKIE, result.refreshToken, COOKIE_OPTIONS);
 
       res.json({
         success: true,

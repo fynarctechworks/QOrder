@@ -12,7 +12,6 @@ import Toggle from '../components/Toggle';
 import StaffManagementTab from '../components/StaffManagementTab';
 import PermissionsTab from '../components/PermissionsTab';
 import SectionsTab from '../components/SectionsTab';
-import TwoFactorSetup from '../components/TwoFactorSetup';
 
 /* ═══════════════════════════ Types ════════════════════════════ */
 
@@ -2386,8 +2385,6 @@ export default function SettingsPage() {
               </motion.div>
             )}
 
-            {/* Two-Factor Authentication */}
-            <TwoFactorSetup />
           </motion.div>
         )}
       </AnimatePresence>

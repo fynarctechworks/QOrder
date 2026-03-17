@@ -32,7 +32,6 @@ const StaffManagementPage = lazy(() => import('./pages/StaffManagementPage'));
 const CreditPage = lazy(() => import('./pages/CreditPage'));
 const QSRPage = lazy(() => import('./pages/QSRPage'));
 const TVMenuPage = lazy(() => import('./pages/TVMenuPage'));
-const TwoFactorVerifyPage = lazy(() => import('./pages/TwoFactorVerifyPage'));
 
 function App() {
   return (
@@ -47,8 +46,6 @@ function App() {
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
-            <Route path="/2fa-verify" element={<TwoFactorVerifyPage />} />
-
 
             {/* Protected routes */}
             <Route
