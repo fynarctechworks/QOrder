@@ -875,24 +875,24 @@ export default function QSRPage() {
                   className="w-full pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 />
               </div>
+              <select
+                value={selectedTable}
+                onChange={e => setSelectedTable(e.target.value)}
+                className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary w-32 bg-white"
+              >
+                <option value="">Counter</option>
+                {tables
+                  .filter(t => t.status === 'available' || t.status === 'occupied')
+                  .sort((a, b) => Number(a.number) - Number(b.number))
+                  .map(t => (
+                    <option key={t.id} value={t.id} disabled={t.status === 'occupied'}>
+                      {t.name ? `${t.name} (${t.number})` : `Table ${t.number}`}
+                      {t.status === 'occupied' ? ' • Occupied' : ''}
+                    </option>
+                  ))}
+              </select>
             </>
           )}
-          <select
-            value={selectedTable}
-            onChange={e => setSelectedTable(e.target.value)}
-            className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary w-32 bg-white"
-          >
-            <option value="">Counter</option>
-            {tables
-              .filter(t => t.status === 'available' || t.status === 'occupied')
-              .sort((a, b) => Number(a.number) - Number(b.number))
-              .map(t => (
-                <option key={t.id} value={t.id} disabled={t.status === 'occupied'}>
-                  {t.name ? `${t.name} (${t.number})` : `Table ${t.number}`}
-                  {t.status === 'occupied' ? ' • Occupied' : ''}
-                </option>
-              ))}
-          </select>
           <button
             onClick={() => { setShowOrderBoard(!showOrderBoard); if (!showOrderBoard) refetchQsrOrders(); }}
             className={`relative rounded-xl text-sm px-4 py-2 shadow-sm active:scale-[0.97] flex items-center gap-2 transition-colors ${
