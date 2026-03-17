@@ -20,6 +20,8 @@ interface FormState {
   name: string;
   currency: string;
   taxRate: string;
+  kitchenParcelCharge: string;
+  beverageParcelCharge: string;
   minOrderAmount: string;
   prepTime: string;
   acceptsOrders: boolean;
@@ -77,6 +79,8 @@ const DEFAULTS: FormState = {
   name: '',
   currency: 'INR',
   taxRate: '10',
+  kitchenParcelCharge: '10',
+  beverageParcelCharge: '15',
   minOrderAmount: '0',
   prepTime: '15',
   acceptsOrders: true,
@@ -431,6 +435,8 @@ export default function SettingsPage() {
       name: restaurant.name ?? '',
       currency: restaurant.currency ?? 'USD',
       taxRate: String(restaurant.taxRate ?? 10),
+      kitchenParcelCharge: String(s.kitchenParcelCharge ?? 10),
+      beverageParcelCharge: String(s.beverageParcelCharge ?? 15),
       minOrderAmount: String(s.minimumOrderAmount ?? 0),
       prepTime: String(s.estimatedPrepTime ?? 15),
       acceptsOrders: (s.acceptsOrders as boolean) ?? true,
@@ -485,6 +491,8 @@ export default function SettingsPage() {
       name: restaurant.name ?? '',
       currency: restaurant.currency ?? 'USD',
       taxRate: String(restaurant.taxRate ?? 10),
+      kitchenParcelCharge: String(s.kitchenParcelCharge ?? 10),
+      beverageParcelCharge: String(s.beverageParcelCharge ?? 15),
       minOrderAmount: String(s.minimumOrderAmount ?? 0),
       prepTime: String(s.estimatedPrepTime ?? 15),
       acceptsOrders: (s.acceptsOrders as boolean) ?? true,
@@ -574,6 +582,9 @@ export default function SettingsPage() {
         printerType: form.printerType,
         printerWidth: parseInt(form.printerWidth, 10) || 48,
         autoPrintOnComplete: form.autoPrintOnComplete,
+        // Parcel charges
+        kitchenParcelCharge: parseFloat(form.kitchenParcelCharge) || 0,
+        beverageParcelCharge: parseFloat(form.beverageParcelCharge) || 0,
         // Auto-lock settings
         autoLockEnabled: form.autoLockEnabled,
         autoLockTimeout: parseInt(form.autoLockTimeout, 10) || 2,
@@ -1140,6 +1151,34 @@ export default function SettingsPage() {
                     step="0.1"
                   />
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-medium text-text-muted">%</span>
+                </div>
+              </Field>
+
+              <Field label="Kitchen Parcel Charge" hint="Per-item charge for takeaway kitchen orders">
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={form.kitchenParcelCharge}
+                    onChange={(e) => update('kitchenParcelCharge', e.target.value)}
+                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                    min="0"
+                    step="1"
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-medium text-text-muted">{form.currency === 'INR' ? '₹' : form.currency}</span>
+                </div>
+              </Field>
+
+              <Field label="Beverage Parcel Charge" hint="Per-item charge for takeaway beverage orders">
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={form.beverageParcelCharge}
+                    onChange={(e) => update('beverageParcelCharge', e.target.value)}
+                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 border border-gray-200 rounded-xl text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                    min="0"
+                    step="1"
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-medium text-text-muted">{form.currency === 'INR' ? '₹' : form.currency}</span>
                 </div>
               </Field>
             </SectionCard>

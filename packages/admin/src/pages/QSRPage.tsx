@@ -110,7 +110,7 @@ function firePrintJob(html: string, title: string) {
   setTimeout(() => { try { w.close(); } catch {} }, 5000);
 }
 
-function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrency: (n: number) => string, restaurantName: string, itemStationMap?: Map<string, string>, orderLabel?: string) {
+function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrency: (n: number) => string, restaurantName: string, itemStationMap?: Map<string, string>, orderLabel?: string, parcelCharge?: number) {
   const customerItemsHtml = order.items.map(item => {
     const mods = (item.customizations || []).flatMap(g => g.options.map(o => o.name)).join(', ');
     const displayName = mods ? `(${mods}) ${escapeHtml(item.menuItemName)}` : escapeHtml(item.menuItemName);
@@ -153,6 +153,7 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
       <div class="divider"></div>
       <div class="total-row"><span>Subtotal</span><span>${escapeHtml(formatCurrency(order.subtotal))}</span></div>
       ${order.tax > 0 ? `<div class="total-row"><span>Tax</span><span>${escapeHtml(formatCurrency(order.tax))}</span></div>` : ''}
+      ${parcelCharge && parcelCharge > 0 ? `<div class="total-row"><span>Parcel Charges</span><span>${escapeHtml(formatCurrency(parcelCharge))}</span></div>` : ''}
       <div class="total-row grand"><span>Total</span><span>${escapeHtml(formatCurrency(order.total))}</span></div>
       <div class="method">Paid via ${escapeHtml(paymentMethod)}</div>
       <div class="footer">Thank you! Please wait for your token to be called.</div>`;
@@ -200,6 +201,8 @@ export default function QSRPage() {
 
   const taxRate = settings?.taxRate ?? 0;
   const restaurantName = (settings?.name as string) || 'Restaurant';
+  const kitchenParcelRate = Number((settings?.settings as any)?.kitchenParcelCharge ?? 10);
+  const beverageParcelRate = Number((settings?.settings as any)?.beverageParcelCharge ?? 15);
 
   /* ── State ── */
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -442,7 +445,7 @@ export default function QSRPage() {
       // Auto-print customer token + station KOTs
       const stationMap = buildItemStationMap();
       const orderLabel = selectedTable === 'takeaway' ? 'Takeaway' : selectedTable ? (tables.find(t => t.id === selectedTable)?.name || `Table ${tables.find(t => t.id === selectedTable)?.number}`) : 'Counter';
-      setTimeout(() => printReceipts(order, selectedQuickMethod || 'CASH', formatCurrency, restaurantName, stationMap, orderLabel), 300);
+      setTimeout(() => printReceipts(order, selectedQuickMethod || 'CASH', formatCurrency, restaurantName, stationMap, orderLabel, parcelCharge), 300);
       // Auto-send WhatsApp invoice
       sendWhatsAppInvoice(order.id);
     },
@@ -724,7 +727,18 @@ export default function QSRPage() {
   const discountAmount = discountType === 'PERCENTAGE'
     ? Math.min(subtotal * (discountNum / 100), subtotal)
     : Math.min(discountNum, subtotal);
-  const total = subtotal - discountAmount + taxAmount;
+
+  /* ── Parcel charges (takeaway only) ── */
+  const parcelCharge = useMemo(() => {
+    if (selectedTable !== 'takeaway') return 0;
+    return cart.reduce((sum, c) => {
+      const station = catStationMap.get(c.menuItem.categoryId) || 'KITCHEN';
+      const rate = station === 'BEVERAGE' ? beverageParcelRate : kitchenParcelRate;
+      return sum + rate * c.quantity;
+    }, 0);
+  }, [cart, selectedTable, catStationMap, kitchenParcelRate, beverageParcelRate]);
+
+  const total = subtotal - discountAmount + taxAmount + parcelCharge;
 
   /* ── Split payment helpers ── */
   const splitsTotal = useMemo(() => splits.reduce((s, e) => s + e.amount, 0), [splits]);
@@ -1281,6 +1295,12 @@ export default function QSRPage() {
                 <span className="font-medium text-gray-900 tabular-nums">{formatCurrency(taxAmount)}</span>
               </div>
             )}
+            {parcelCharge > 0 && (
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>Parcel Charges</span>
+                <span className="font-medium text-gray-900 tabular-nums">{formatCurrency(parcelCharge)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-base font-bold text-gray-900 pt-1.5 border-t border-gray-200">
               <span>Total</span>
               <span className="tabular-nums">{formatCurrency(total)}</span>
@@ -1516,6 +1536,12 @@ export default function QSRPage() {
                   <span>{formatCurrency(completedOrder.tax)}</span>
                 </div>
               )}
+              {parcelCharge > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-text-secondary">Parcel Charges</span>
+                  <span>{formatCurrency(parcelCharge)}</span>
+                </div>
+              )}
               <div className="flex justify-between font-bold text-sm pt-1 border-t border-border-primary mt-1">
                 <span>Total</span>
                 <span>{formatCurrency(completedOrder.total)}</span>
@@ -1726,6 +1752,12 @@ export default function QSRPage() {
                       <div className="flex justify-between text-sm">
                         <span className="text-text-secondary">Tax</span>
                         <span>{formatCurrency(taxAmount)}</span>
+                      </div>
+                    )}
+                    {parcelCharge > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-text-secondary">Parcel Charges</span>
+                        <span>{formatCurrency(parcelCharge)}</span>
                       </div>
                     )}
                     <div className="flex justify-between font-bold text-sm pt-1 border-t border-border-primary mt-1">
