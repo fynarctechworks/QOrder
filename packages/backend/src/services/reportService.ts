@@ -95,8 +95,10 @@ export const reportService = {
 
     const settings = (restaurant.settings ?? {}) as Record<string, unknown>;
     const reportEmails = (settings.reportEmails as string[] | undefined)?.filter(Boolean) ?? [];
-    const fallbackEmail = restaurant.users[0]?.email;
-    const recipients = reportEmails.length > 0 ? reportEmails : (fallbackEmail ? [fallbackEmail] : []);
+    const fallbackEmail = restaurant.users[0]?.email ?? null;
+    const recipients: string[] = reportEmails.length > 0
+      ? reportEmails
+      : (fallbackEmail ? [fallbackEmail] : []);
 
     return {
       restaurantName: restaurant.name,
