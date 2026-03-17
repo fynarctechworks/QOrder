@@ -138,10 +138,10 @@ function transformOrder(raw: RawOrder) {
     estimatedReadyTime: raw.estimatedTime
       ? new Date(Date.now() + raw.estimatedTime * 60_000).toISOString()
       : undefined,
-    preparedAt: raw.preparedAt ? (raw.preparedAt as Date).toISOString() : undefined,
-    completedAt: raw.completedAt ? (raw.completedAt as Date).toISOString() : undefined,
-    createdAt: raw.createdAt.toISOString(),
-    updatedAt: raw.updatedAt.toISOString(),
+    preparedAt: raw.preparedAt ? new Date(raw.preparedAt as string | Date).toISOString() : undefined,
+    completedAt: raw.completedAt ? new Date(raw.completedAt as string | Date).toISOString() : undefined,
+    createdAt: new Date(raw.createdAt as string | Date).toISOString(),
+    updatedAt: new Date(raw.updatedAt as string | Date).toISOString(),
   };
 }
 
