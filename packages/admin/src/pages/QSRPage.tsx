@@ -254,14 +254,16 @@ export default function QSRPage() {
   const { data: qsrOrdersData, isLoading: qsrOrdersLoading, refetch: refetchQsrOrders } = useQuery({
     queryKey: ['qsr-board-orders'],
     queryFn: () => orderService.getAll({ limit: 500 }),
-    refetchInterval: 5_000,
+    refetchInterval: showSettlement ? false : 5_000,
     staleTime: 0,
   });
 
   /* ── Real-time board updates via Socket.io ── */
   useEffect(() => {
     if (!socket) return;
-    const refresh = () => qc.invalidateQueries({ queryKey: ['qsr-board-orders'] });
+    const refresh = () => {
+      if (!showSettlement) qc.invalidateQueries({ queryKey: ['qsr-board-orders'] });
+    };
     socket.on('order:created', refresh);
     socket.on('order:statusUpdate', refresh);
     socket.on('order:itemKitchenReady', refresh);
@@ -270,7 +272,7 @@ export default function QSRPage() {
       socket.off('order:statusUpdate', refresh);
       socket.off('order:itemKitchenReady', refresh);
     };
-  }, [socket, qc]);
+  }, [socket, qc, showSettlement]);
 
   /* ── Board search filter ── */
   const matchesBoardSearch = useCallback((o: Order) => {
