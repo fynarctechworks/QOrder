@@ -9,7 +9,7 @@ export const reportService = {
 
     return prisma.$queryRaw<{ hour: number; orders: bigint; revenue: number }[]>`
       SELECT
-        EXTRACT(HOUR FROM o."createdAt")::int as hour,
+        EXTRACT(HOUR FROM (o."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata')::int as hour,
         COUNT(*)::bigint as orders,
         COALESCE(SUM(o.total), 0)::float as revenue
       FROM "Order" o
@@ -29,7 +29,7 @@ export const reportService = {
 
     return prisma.$queryRaw<{ date: string; orders: bigint; revenue: number; avg_order: number }[]>`
       SELECT
-        DATE(o."createdAt") as date,
+        DATE((o."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata') as date,
         COUNT(*)::bigint as orders,
         COALESCE(SUM(o.total), 0)::float as revenue,
         COALESCE(AVG(o.total), 0)::float as avg_order
@@ -39,7 +39,7 @@ export const reportService = {
         AND o."createdAt" <= ${endDate}
         AND o.status NOT IN ('CANCELLED')
         ${branchFilter}
-      GROUP BY DATE(o."createdAt")
+      GROUP BY DATE((o."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata')
       ORDER BY date
     `;
   },
@@ -50,7 +50,7 @@ export const reportService = {
 
     return prisma.$queryRaw<{ week: string; orders: bigint; revenue: number }[]>`
       SELECT
-        TO_CHAR(DATE_TRUNC('week', o."createdAt"), 'YYYY-MM-DD') as week,
+        TO_CHAR(DATE_TRUNC('week', (o."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata'), 'YYYY-MM-DD') as week,
         COUNT(*)::bigint as orders,
         COALESCE(SUM(o.total), 0)::float as revenue
       FROM "Order" o
@@ -59,7 +59,7 @@ export const reportService = {
         AND o."createdAt" <= ${endDate}
         AND o.status NOT IN ('CANCELLED')
         ${branchFilter}
-      GROUP BY DATE_TRUNC('week', o."createdAt")
+      GROUP BY DATE_TRUNC('week', (o."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata')
       ORDER BY week
     `;
   },
@@ -70,7 +70,7 @@ export const reportService = {
 
     return prisma.$queryRaw<{ month: string; orders: bigint; revenue: number }[]>`
       SELECT
-        TO_CHAR(DATE_TRUNC('month', o."createdAt"), 'YYYY-MM') as month,
+        TO_CHAR(DATE_TRUNC('month', (o."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata'), 'YYYY-MM') as month,
         COUNT(*)::bigint as orders,
         COALESCE(SUM(o.total), 0)::float as revenue
       FROM "Order" o
@@ -79,7 +79,7 @@ export const reportService = {
         AND o."createdAt" <= ${endDate}
         AND o.status NOT IN ('CANCELLED')
         ${branchFilter}
-      GROUP BY DATE_TRUNC('month', o."createdAt")
+      GROUP BY DATE_TRUNC('month', (o."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata')
       ORDER BY month
     `;
   },
@@ -293,8 +293,8 @@ export const reportService = {
 
     return prisma.$queryRaw<{ day_of_week: number; day_name: string; avg_orders: number; avg_revenue: number }[]>`
       SELECT
-        EXTRACT(DOW FROM "createdAt")::int as day_of_week,
-        TO_CHAR("createdAt", 'Day') as day_name,
+        EXTRACT(DOW FROM ("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata')::int as day_of_week,
+        TO_CHAR(("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata', 'Day') as day_name,
         (COUNT(*)::float / GREATEST(EXTRACT(EPOCH FROM (${endDate}::timestamp - ${startDate}::timestamp)) / 604800, 1)) as avg_orders,
         (COALESCE(SUM(total), 0)::float / GREATEST(EXTRACT(EPOCH FROM (${endDate}::timestamp - ${startDate}::timestamp)) / 604800, 1)) as avg_revenue
       FROM "Order"
@@ -390,7 +390,7 @@ export const reportService = {
     const [revenueData, costData] = await Promise.all([
       prisma.$queryRaw<{ month: string; revenue: number; orders: bigint }[]>`
         SELECT
-          TO_CHAR(o."createdAt", 'YYYY-MM') as month,
+          TO_CHAR((o."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM') as month,
           COALESCE(SUM(o.total), 0)::float as revenue,
           COUNT(*)::bigint as orders
         FROM "Order" o
@@ -399,7 +399,7 @@ export const reportService = {
           AND o."createdAt" <= ${endDate}
           AND o.status NOT IN ('CANCELLED')
           ${branchFilter}
-        GROUP BY TO_CHAR(o."createdAt", 'YYYY-MM')
+        GROUP BY TO_CHAR((o."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM')
         ORDER BY month
       `,
       prisma.$queryRaw<{ month: string; cost: number }[]>`
@@ -785,7 +785,7 @@ export const reportService = {
 
     return prisma.$queryRaw<{ date: string; orders: bigint; subtotal: number; tax: number; total: number; effective_tax_rate: number }[]>`
       SELECT
-        TO_CHAR(o."createdAt", 'YYYY-MM-DD') AS date,
+        TO_CHAR((o."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD') AS date,
         COUNT(o.id) AS orders,
         SUM(o."subtotal"::numeric) AS subtotal,
         SUM(o."tax"::numeric) AS tax,
@@ -799,7 +799,7 @@ export const reportService = {
         AND o."createdAt" BETWEEN ${startDate} AND ${endDate}
         AND o.status NOT IN ('CANCELLED')
         ${branchFilter}
-      GROUP BY TO_CHAR(o."createdAt", 'YYYY-MM-DD')
+      GROUP BY TO_CHAR((o."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD')
       ORDER BY date ASC
     `;
   },
@@ -945,9 +945,9 @@ export const reportService = {
 
     return prisma.$queryRaw<{ hour: number; avg_orders: number; avg_revenue: number; total_orders: bigint; total_revenue: number }[]>`
       SELECT
-        EXTRACT(HOUR FROM o."createdAt") AS hour,
-        ROUND(COUNT(o.id)::numeric / GREATEST(COUNT(DISTINCT TO_CHAR(o."createdAt", 'YYYY-MM-DD')), 1), 1) AS avg_orders,
-        ROUND(SUM(o."total"::numeric) / GREATEST(COUNT(DISTINCT TO_CHAR(o."createdAt", 'YYYY-MM-DD')), 1), 2) AS avg_revenue,
+        EXTRACT(HOUR FROM (o."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata') AS hour,
+        ROUND(COUNT(o.id)::numeric / GREATEST(COUNT(DISTINCT TO_CHAR((o."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD')), 1), 1) AS avg_orders,
+        ROUND(SUM(o."total"::numeric) / GREATEST(COUNT(DISTINCT TO_CHAR((o."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD')), 1), 2) AS avg_revenue,
         COUNT(o.id) AS total_orders,
         SUM(o."total"::numeric) AS total_revenue
       FROM "Order" o
@@ -955,7 +955,7 @@ export const reportService = {
         AND o."createdAt" BETWEEN ${startDate} AND ${endDate}
         AND o.status NOT IN ('CANCELLED')
         ${branchFilter}
-      GROUP BY EXTRACT(HOUR FROM o."createdAt")
+      GROUP BY EXTRACT(HOUR FROM (o."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata')
       ORDER BY hour ASC
     `;
   },
@@ -1089,7 +1089,7 @@ export const reportService = {
 
     return prisma.$queryRaw<{ date: string; avg_order_value: number; orders: bigint; revenue: number }[]>`
       SELECT
-        TO_CHAR(o."createdAt", 'YYYY-MM-DD') AS date,
+        TO_CHAR((o."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD') AS date,
         COALESCE(AVG(o.total), 0)::float AS avg_order_value,
         COUNT(*)::bigint AS orders,
         COALESCE(SUM(o.total), 0)::float AS revenue

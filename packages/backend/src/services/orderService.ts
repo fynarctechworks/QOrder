@@ -972,7 +972,7 @@ export const orderService = {
       }),
       prisma.$queryRaw<Array<{ date: Date; revenue: number; orders: bigint }>>`
         SELECT
-          DATE("createdAt") AS date,
+          DATE(("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata') AS date,
           COALESCE(SUM("total"), 0)::float AS revenue,
           COUNT(*)::bigint AS orders
         FROM "Order"
@@ -980,7 +980,7 @@ export const orderService = {
           AND "createdAt" >= ${startDate}
           AND "status" IN ('COMPLETED')
           ${branchId ? Prisma.sql`AND ("branchId" = ${branchId} OR "branchId" IS NULL)` : Prisma.empty}
-        GROUP BY DATE("createdAt")
+        GROUP BY DATE(("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata')
         ORDER BY date ASC
       `,
       prisma.orderItem.groupBy({
@@ -999,7 +999,7 @@ export const orderService = {
       }),
       prisma.$queryRaw<Array<{ hour: number; orders: bigint; revenue: number }>>`
         SELECT
-          EXTRACT(HOUR FROM "createdAt" AT TIME ZONE 'Asia/Kolkata')::int AS hour,
+          EXTRACT(HOUR FROM ("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata')::int AS hour,
           COUNT(*)::bigint AS orders,
           COALESCE(SUM("total"), 0)::float AS revenue
         FROM "Order"
@@ -1008,7 +1008,7 @@ export const orderService = {
           AND "createdAt" <= ${now}
           AND "status" NOT IN ('CANCELLED')
           ${branchId ? Prisma.sql`AND ("branchId" = ${branchId} OR "branchId" IS NULL)` : Prisma.empty}
-        GROUP BY EXTRACT(HOUR FROM "createdAt" AT TIME ZONE 'Asia/Kolkata')
+        GROUP BY EXTRACT(HOUR FROM ("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata')
         ORDER BY hour ASC
       `,
     ]);
@@ -1067,7 +1067,7 @@ export const orderService = {
       Array<{ date: Date; revenue: number; orders: bigint }>
     >`
       SELECT
-        DATE("createdAt") AS date,
+        DATE(("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata') AS date,
         COALESCE(SUM("total"), 0)::float AS revenue,
         COUNT(*)::bigint AS orders
       FROM "Order"
@@ -1075,7 +1075,7 @@ export const orderService = {
         AND "createdAt" >= ${startDate}
         AND "status" IN ('COMPLETED')
         ${branchId ? Prisma.sql`AND ("branchId" = ${branchId} OR "branchId" IS NULL)` : Prisma.empty}
-      GROUP BY DATE("createdAt")
+      GROUP BY DATE(("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata')
       ORDER BY date ASC
     `;
 
