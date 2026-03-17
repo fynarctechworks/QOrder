@@ -893,19 +893,6 @@ export default function QSRPage() {
               </select>
             </>
           )}
-          <button
-            onClick={() => { setShowOrderBoard(!showOrderBoard); if (!showOrderBoard) refetchQsrOrders(); }}
-            className={`relative rounded-xl text-sm px-4 py-2 shadow-sm active:scale-[0.97] flex items-center gap-2 transition-colors ${
-              showOrderBoard
-                ? 'bg-violet-600 text-white hover:bg-violet-700'
-                : 'border border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100'
-            }`}
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-            </svg>
-            {showOrderBoard ? 'Back to QSR' : 'QSR Order Board'}
-          </button>
           {!showOrderBoard && (
           <>
           <button
@@ -933,6 +920,19 @@ export default function QSRPage() {
           </button>
           </>
           )}
+          <button
+            onClick={() => { setShowOrderBoard(!showOrderBoard); if (!showOrderBoard) refetchQsrOrders(); }}
+            className={`relative rounded-xl text-sm px-4 py-2 shadow-sm active:scale-[0.97] flex items-center gap-2 transition-colors ${
+              showOrderBoard
+                ? 'bg-violet-600 text-white hover:bg-violet-700'
+                : 'border border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+            </svg>
+            {showOrderBoard ? 'Back to QSR' : 'QSR Order Board'}
+          </button>
         </div>
       </div>
 
