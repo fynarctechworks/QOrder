@@ -18,5 +18,3 @@ export { reportService } from './reportService.js';
 export { staffManagementService } from './staffManagementService.js';
 export { dashboardService } from './dashboardService.js';
 export { twoFactorService } from './twoFactorService.js';
-export { subscriptionService } from './subscriptionService.js';
-export { onboardingService } from './onboardingService.js';
