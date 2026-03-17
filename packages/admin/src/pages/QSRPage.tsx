@@ -609,7 +609,6 @@ export default function QSRPage() {
   const cartItemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const lastAddedIdRef = useRef<string | null>(null);
   const cartIdCounter = useRef(0);
-  const categoryScrollRef = useRef<HTMLDivElement | null>(null);
   const categoryBtnRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
   useEffect(() => {
@@ -630,12 +629,6 @@ export default function QSRPage() {
     }
   }, [selectedCategory]);
 
-  const scrollCategoryRail = useCallback((direction: 'left' | 'right') => {
-    const rail = categoryScrollRef.current;
-    if (!rail) return;
-    const offset = Math.max(rail.clientWidth * 0.7, 220);
-    rail.scrollBy({ left: direction === 'left' ? -offset : offset, behavior: 'smooth' });
-  }, []);
 
   /* ── Cart helpers ── */
   const addToCart = useCallback((item: MenuItem) => {
