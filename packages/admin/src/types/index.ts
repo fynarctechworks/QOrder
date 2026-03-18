@@ -48,7 +48,7 @@ export interface Category {
   sortOrder: number;
   image?: string;
   isActive: boolean;
-  kotStation: 'KITCHEN' | 'BEVERAGE' | 'PAN_COUNTER';
+  kotStation: 'KITCHEN' | 'BEVERAGE';
   categoryGroup: 'RESTAURANT' | 'PAN_CORNER';
   translations?: TranslationsMap;
 }

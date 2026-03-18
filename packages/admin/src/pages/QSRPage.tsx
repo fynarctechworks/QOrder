@@ -562,7 +562,7 @@ export default function QSRPage() {
 
   /* ── Category station map ── */
   const categoryStationMap = useMemo(() => {
-    const map = new Map<string, 'KITCHEN' | 'BEVERAGE' | 'PAN_COUNTER'>();
+    const map = new Map<string, 'KITCHEN' | 'BEVERAGE'>();
     categories.forEach(c => map.set(c.id, c.kotStation));
     return map;
   }, [categories]);

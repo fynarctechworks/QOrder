@@ -8,7 +8,7 @@ export interface CategoryFormData {
   description: string;
   image: string;
   isActive: boolean;
-  kotStation: 'KITCHEN' | 'BEVERAGE' | 'PAN_COUNTER';
+  kotStation: 'KITCHEN' | 'BEVERAGE';
   categoryGroup: 'RESTAURANT' | 'PAN_CORNER';
   translations: TranslationsMap;
 }
@@ -41,7 +41,7 @@ function fromCategory(cat: Category): CategoryFormData {
     description: cat.description || '',
     image: cat.image || '',
     isActive: cat.isActive,
-    kotStation: cat.kotStation || 'KITCHEN',
+    kotStation: (cat.kotStation as string) === 'PAN_COUNTER' ? 'KITCHEN' : (cat.kotStation || 'KITCHEN'),
     categoryGroup: cat.categoryGroup || 'RESTAURANT',
     translations: cat.translations || {},
   };
@@ -241,11 +241,7 @@ export default function CategoryForm({
           value={form.categoryGroup}
           onChange={(e) => {
             const group = e.target.value as 'RESTAURANT' | 'PAN_CORNER';
-            setForm((f) => ({
-              ...f,
-              categoryGroup: group,
-              kotStation: group === 'PAN_CORNER' ? 'PAN_COUNTER' : f.kotStation === 'PAN_COUNTER' ? 'KITCHEN' : f.kotStation,
-            }));
+            setForm((f) => ({ ...f, categoryGroup: group }));
           }}
           className="input w-full"
         >
@@ -262,12 +258,11 @@ export default function CategoryForm({
         </label>
         <select
           value={form.kotStation}
-          onChange={(e) => setForm((f) => ({ ...f, kotStation: e.target.value as 'KITCHEN' | 'BEVERAGE' | 'PAN_COUNTER' }))}
+          onChange={(e) => setForm((f) => ({ ...f, kotStation: e.target.value as 'KITCHEN' | 'BEVERAGE' }))}
           className="input w-full"
         >
           <option value="KITCHEN">Kitchen</option>
           <option value="BEVERAGE">Beverage</option>
-          <option value="PAN_COUNTER">Pan Counter</option>
         </select>
         <p className="text-xs text-text-tertiary mt-1">Items in this category will be printed on the selected station's KOT</p>
       </div>

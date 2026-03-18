@@ -188,7 +188,7 @@ model Category {
   image         String?
   sortOrder     Int      @default(0)
   isActive      Boolean  @default(true)
-  kotStation    String   @default("KITCHEN") // KITCHEN, BEVERAGE, or PAN_COUNTER
+  kotStation    String   @default("KITCHEN") // KITCHEN or BEVERAGE
   categoryGroup String   @default("RESTAURANT") // RESTAURANT or PAN_CORNER
   translations  Json?    // {"hi":{"name":"...","description":"..."},"ta":{...},...}
   createdAt    DateTime @default(now())
