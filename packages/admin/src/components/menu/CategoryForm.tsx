@@ -8,7 +8,8 @@ export interface CategoryFormData {
   description: string;
   image: string;
   isActive: boolean;
-  kotStation: 'KITCHEN' | 'BEVERAGE';
+  kotStation: 'KITCHEN' | 'BEVERAGE' | 'PAN_COUNTER';
+  categoryGroup: 'RESTAURANT' | 'PAN_CORNER';
   translations: TranslationsMap;
 }
 
@@ -30,6 +31,7 @@ const EMPTY: CategoryFormData = {
   image: '',
   isActive: true,
   kotStation: 'KITCHEN',
+  categoryGroup: 'RESTAURANT',
   translations: {},
 };
 
@@ -40,6 +42,7 @@ function fromCategory(cat: Category): CategoryFormData {
     image: cat.image || '',
     isActive: cat.isActive,
     kotStation: cat.kotStation || 'KITCHEN',
+    categoryGroup: cat.categoryGroup || 'RESTAURANT',
     translations: cat.translations || {},
   };
 }
@@ -229,6 +232,29 @@ export default function CategoryForm({
         <span className="text-sm text-text-primary">Active</span>
       </label>
 
+      {/* Category Group */}
+      <div>
+        <label className="block text-sm font-medium text-text-secondary mb-1">
+          Category Group
+        </label>
+        <select
+          value={form.categoryGroup}
+          onChange={(e) => {
+            const group = e.target.value as 'RESTAURANT' | 'PAN_CORNER';
+            setForm((f) => ({
+              ...f,
+              categoryGroup: group,
+              kotStation: group === 'PAN_CORNER' ? 'PAN_COUNTER' : f.kotStation === 'PAN_COUNTER' ? 'KITCHEN' : f.kotStation,
+            }));
+          }}
+          className="input w-full"
+        >
+          <option value="RESTAURANT">Restaurant</option>
+          <option value="PAN_CORNER">Pan Corner</option>
+        </select>
+        <p className="text-xs text-text-tertiary mt-1">Pan Corner categories appear in a separate section for counter-side items (paan, tobacco, mukhwas, etc.)</p>
+      </div>
+
       {/* KOT Station */}
       <div>
         <label className="block text-sm font-medium text-text-secondary mb-1">
@@ -236,11 +262,12 @@ export default function CategoryForm({
         </label>
         <select
           value={form.kotStation}
-          onChange={(e) => setForm((f) => ({ ...f, kotStation: e.target.value as 'KITCHEN' | 'BEVERAGE' }))}
+          onChange={(e) => setForm((f) => ({ ...f, kotStation: e.target.value as 'KITCHEN' | 'BEVERAGE' | 'PAN_COUNTER' }))}
           className="input w-full"
         >
           <option value="KITCHEN">Kitchen</option>
           <option value="BEVERAGE">Beverage</option>
+          <option value="PAN_COUNTER">Pan Counter</option>
         </select>
         <p className="text-xs text-text-tertiary mt-1">Items in this category will be printed on the selected station's KOT</p>
       </div>

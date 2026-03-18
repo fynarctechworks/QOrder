@@ -211,6 +211,7 @@ export default function KitchenPage() {
       dashboard: '/dashboard',
       'create-order': '/create-order',
       qsr: '/qsr',
+      'pan-corner': '/pan-corner',
       orders: '/orders',
       menu: '/menu',
       tables: '/tables',

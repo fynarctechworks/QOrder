@@ -22,6 +22,8 @@ export interface MenuItemFormData {
   tags: string[];
   badge: string;
   dietType: DietType | null;
+  isAgeRestricted: boolean;
+  taxRate: number | null;
   allowSpecialInstructions: boolean;
   customizationGroups: CustomizationGroup[];
   translations: TranslationsMap;
@@ -60,6 +62,8 @@ const EMPTY: MenuItemFormData = {
   tags: [],
   badge: '',
   dietType: null,
+  isAgeRestricted: false,
+  taxRate: null,
   allowSpecialInstructions: true,
   customizationGroups: [],
   translations: {},
@@ -83,6 +87,8 @@ function fromItem(item: MenuItem): MenuItemFormData {
     tags: [...(item.tags || [])],
     badge: item.badge || '',
     dietType: item.dietType || null,
+    isAgeRestricted: item.isAgeRestricted ?? false,
+    taxRate: item.taxRate ?? null,
     allowSpecialInstructions: item.allowSpecialInstructions ?? true,
     customizationGroups: item.customizationGroups
       ? item.customizationGroups.map((g) => ({
@@ -595,6 +601,43 @@ export default function MenuItemForm({
           <span className="text-sm text-text-primary">Allow Special Instructions</span>
         </label>
         <span className="text-xs text-text-muted">(customer can type requests)</span>
+      </div>
+
+      {/* ───── Pan Corner: Age Restricted + Tax Rate override ────────────── */}
+      <div className="border border-amber-200 bg-amber-50 rounded-xl p-4 space-y-3">
+        <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">Pan Corner Settings</p>
+
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={form.isAgeRestricted}
+            onChange={(e) => set('isAgeRestricted', e.target.checked)}
+            className="checkbox checkbox-primary"
+          />
+          <div>
+            <span className="text-sm text-text-primary">Age Restricted (18+)</span>
+            <p className="text-xs text-text-muted">Tobacco, cigarettes — shows warning label on customer menu</p>
+          </div>
+        </label>
+
+        <div>
+          <label className="block text-sm font-medium text-text-secondary mb-1">
+            Item Tax Rate (%) <span className="text-text-muted font-normal">— overrides restaurant default</span>
+          </label>
+          <input
+            type="number"
+            step="0.1"
+            min="0"
+            max="100"
+            value={form.taxRate ?? ''}
+            onChange={(e) => {
+              const val = e.target.value;
+              set('taxRate', val === '' ? null : parseFloat(val) || 0);
+            }}
+            className="input w-full"
+            placeholder="Leave empty to use restaurant default"
+          />
+        </div>
       </div>
 
       {/* ───── Diet Type selector ───────────────────────────────── */}

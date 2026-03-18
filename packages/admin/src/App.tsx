@@ -31,6 +31,7 @@ const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const StaffManagementPage = lazy(() => import('./pages/StaffManagementPage'));
 const CreditPage = lazy(() => import('./pages/CreditPage'));
 const QSRPage = lazy(() => import('./pages/QSRPage'));
+const PanCornerPage = lazy(() => import('./pages/PanCornerPage'));
 const TVMenuPage = lazy(() => import('./pages/TVMenuPage'));
 
 function App() {
@@ -70,6 +71,11 @@ function App() {
               <Route path="qsr" element={
                 <ProtectedRoute pageKey="qsr">
                   <QSRPage />
+                </ProtectedRoute>
+              } />
+              <Route path="pan-corner" element={
+                <ProtectedRoute pageKey="pan-corner">
+                  <PanCornerPage />
                 </ProtectedRoute>
               } />
               <Route path="orders" element={

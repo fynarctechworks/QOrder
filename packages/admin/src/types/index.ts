@@ -48,7 +48,8 @@ export interface Category {
   sortOrder: number;
   image?: string;
   isActive: boolean;
-  kotStation: 'KITCHEN' | 'BEVERAGE';
+  kotStation: 'KITCHEN' | 'BEVERAGE' | 'PAN_COUNTER';
+  categoryGroup: 'RESTAURANT' | 'PAN_CORNER';
   translations?: TranslationsMap;
 }
 
@@ -72,6 +73,8 @@ export interface MenuItem {
   tags: string[];
   badge?: string;
   dietType?: DietType | null;
+  isAgeRestricted?: boolean;
+  taxRate?: number | null;
   allowSpecialInstructions?: boolean;
   translations?: TranslationsMap;
 }

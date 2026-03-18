@@ -128,7 +128,8 @@ export const createCategorySchema = z.object({
   image: z.string().optional().nullable(),
   sortOrder: z.number().int().default(0),
   isActive: z.boolean().default(true),
-  kotStation: z.enum(['KITCHEN', 'BEVERAGE']).default('KITCHEN'),
+  kotStation: z.enum(['KITCHEN', 'BEVERAGE', 'PAN_COUNTER']).default('KITCHEN'),
+  categoryGroup: z.enum(['RESTAURANT', 'PAN_CORNER']).default('RESTAURANT'),
   translations: z.record(z.string(), z.record(z.string(), z.string())).optional(),
 });
 
@@ -151,6 +152,8 @@ export const createMenuItemSchema = z.object({
   allergens: z.array(z.string()).default([]),
   badge: z.string().max(50).optional().nullable(),
   dietType: z.enum(['VEG', 'NON_VEG', 'EGG']).optional().nullable(),
+  isAgeRestricted: z.boolean().default(false),
+  taxRate: z.number().min(0).max(100).optional().nullable(),
   translations: z.record(z.string(), z.record(z.string(), z.string())).optional(),
   modifierGroupIds: z.array(z.string().uuid()).optional(),
   // Inline customization groups (from admin form)

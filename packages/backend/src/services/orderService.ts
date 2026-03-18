@@ -299,6 +299,7 @@ export const orderService = {
 
     // Calculate totals and prepare order items
     let subtotal = new Decimal(0);
+    let itemTax = new Decimal(0);
     const orderItems: Array<{
       menuItemId: string;
       quantity: number;
@@ -353,6 +354,12 @@ export const orderService = {
       const totalPrice = itemPrice.times(item.quantity);
       subtotal = subtotal.plus(totalPrice);
 
+      // Per-item tax: use item-level taxRate if set, else fall back to restaurant taxRate
+      const itemTaxRate = (menuItem as Record<string, unknown>).taxRate != null
+        ? new Decimal((menuItem as Record<string, unknown>).taxRate as string | number)
+        : new Decimal(restaurant.taxRate as string | number);
+      itemTax = itemTax.plus(totalPrice.times(itemTaxRate).dividedBy(100));
+
       orderItems.push({
         menuItemId: item.menuItemId,
         quantity: item.quantity,
@@ -369,9 +376,8 @@ export const orderService = {
       });
     }
 
-    // Calculate tax
-    const taxRate = new Decimal(restaurant.taxRate as string | number);
-    const tax = subtotal.times(taxRate).dividedBy(100).toDecimalPlaces(2);
+    // Use per-item accumulated tax (supports mixed tax rates e.g. restaurant food vs tobacco)
+    const tax = itemTax.toDecimalPlaces(2);
 
     // ─── Discount / Coupon logic ───
     let discountAmount = new Decimal(0);

@@ -7,7 +7,7 @@ import Toggle from './Toggle';
 
 /* ═══════════════════════ Types ══════════════════════════ */
 
-export type PageKey = 'dashboard' | 'create-order' | 'qsr' | 'orders' | 'menu' | 'tables' | 'analytics' | 'inventory' | 'kitchen' | 'crm' | 'credit' | 'reports' | 'staff-management' | 'tv-menu';
+export type PageKey = 'dashboard' | 'create-order' | 'qsr' | 'pan-corner' | 'orders' | 'menu' | 'tables' | 'analytics' | 'inventory' | 'kitchen' | 'crm' | 'credit' | 'reports' | 'staff-management' | 'tv-menu';
 
 /** Base roles always present + optional custom roleTitle keys */
 export interface RolePermissions {
@@ -35,6 +35,12 @@ export const ALL_PAGES: { key: PageKey; label: string; description: string; icon
     label: 'QSR',
     description: 'Quick service restaurant cashier order entry',
     icon: 'M13 10V3L4 14h7v7l9-11h-7z',
+  },
+  {
+    key: 'pan-corner',
+    label: 'Pan Corner',
+    description: 'Counter billing for paan, tobacco, mukhwas and beverages',
+    icon: 'M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z',
   },
   {
     key: 'orders',
@@ -106,9 +112,9 @@ export const ALL_PAGES: { key: PageKey; label: string; description: string; icon
 
 /** Default permissions for each role */
 export const DEFAULT_PERMISSIONS: RolePermissions = {
-  ADMIN: ['dashboard', 'create-order', 'qsr', 'orders', 'menu', 'tables', 'analytics', 'inventory', 'kitchen', 'crm', 'credit', 'reports', 'staff-management', 'tv-menu'],
-  MANAGER: ['dashboard', 'create-order', 'qsr', 'orders', 'menu', 'tables', 'analytics', 'inventory', 'kitchen', 'crm', 'credit', 'reports', 'tv-menu'],
-  STAFF: ['create-order', 'qsr', 'orders', 'tables', 'kitchen'],
+  ADMIN: ['dashboard', 'create-order', 'qsr', 'pan-corner', 'orders', 'menu', 'tables', 'analytics', 'inventory', 'kitchen', 'crm', 'credit', 'reports', 'staff-management', 'tv-menu'],
+  MANAGER: ['dashboard', 'create-order', 'qsr', 'pan-corner', 'orders', 'menu', 'tables', 'analytics', 'inventory', 'kitchen', 'crm', 'credit', 'reports', 'tv-menu'],
+  STAFF: ['create-order', 'qsr', 'pan-corner', 'orders', 'tables', 'kitchen'],
 };
 
 const ROLE_LABELS: Record<string, string> = {

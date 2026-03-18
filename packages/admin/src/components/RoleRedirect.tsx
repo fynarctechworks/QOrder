@@ -9,6 +9,7 @@ const PAGE_TO_PATH: Record<PageKey, string> = {
   dashboard: '/dashboard',
   'create-order': '/create-order',
   qsr: '/qsr',
+  'pan-corner': '/pan-corner',
   orders: '/orders',
   menu: '/menu',
   tables: '/tables',

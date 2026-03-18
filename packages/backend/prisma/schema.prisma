@@ -182,14 +182,15 @@ model RefreshToken {
 // ==================== MENU ====================
 
 model Category {
-  id           String   @id @default(uuid())
-  name         String
-  description  String?
-  image        String?
-  sortOrder    Int      @default(0)
-  isActive     Boolean  @default(true)
-  kotStation   String   @default("KITCHEN") // KITCHEN or BEVERAGE
-  translations Json?    // {"hi":{"name":"...","description":"..."},"ta":{...},...}
+  id            String   @id @default(uuid())
+  name          String
+  description   String?
+  image         String?
+  sortOrder     Int      @default(0)
+  isActive      Boolean  @default(true)
+  kotStation    String   @default("KITCHEN") // KITCHEN, BEVERAGE, or PAN_COUNTER
+  categoryGroup String   @default("RESTAURANT") // RESTAURANT or PAN_CORNER
+  translations  Json?    // {"hi":{"name":"...","description":"..."},"ta":{...},...}
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -223,17 +224,19 @@ model MenuItem {
   price         Decimal   @db.Decimal(10, 2)
   discountPrice Decimal?  @db.Decimal(10, 2)
   image         String?
-  badge         String?
-  dietType      DietType?
-  isAvailable   Boolean   @default(true)
-  isActive      Boolean   @default(true)
-  sortOrder     Int       @default(0)
-  prepTime      Int?      // minutes
-  calories      Int?
-  tags          String[] @default([])
-  ingredients   String[] @default([])
-  allergens     String[] @default([])
-  translations  Json?    // {"hi":{"name":"...","description":"...","badge":"..."},"ta":{...},...}
+  badge            String?
+  dietType         DietType?
+  isAvailable      Boolean   @default(true)
+  isActive         Boolean   @default(true)
+  isAgeRestricted  Boolean   @default(false) // true for tobacco/cigarette items
+  sortOrder        Int       @default(0)
+  prepTime         Int?      // minutes
+  calories         Int?
+  taxRate          Decimal?  @db.Decimal(5, 2) // item-level tax override; null = use restaurant default
+  tags             String[]  @default([])
+  ingredients      String[]  @default([])
+  allergens        String[]  @default([])
+  translations     Json?     // {"hi":{"name":"...","description":"...","badge":"..."},"ta":{...},...}
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
