@@ -206,15 +206,29 @@ export default function MenuPage() {
   const [deleteItemTarget, setDeleteItemTarget] = useState<{ id: string; name: string } | null>(null);
 
   // ── Queries ──
-  const { data: categories = [], isError: catError } = useQuery({
+  const { data: allCategories = [], isError: catError } = useQuery({
     queryKey: ['categories', activeBranchId],
     queryFn: menuService.getCategories,
   });
 
-  const { data: menuItems = [], isLoading, isError: menuError } = useQuery({
+  const { data: allMenuItems = [], isLoading, isError: menuError } = useQuery({
     queryKey: ['menu', activeBranchId],
     queryFn: menuService.getItems,
   });
+
+  // Exclude Pan Corner categories and their items from this page
+  const panCornerCatIds = useMemo(
+    () => new Set(allCategories.filter((c) => c.categoryGroup === 'PAN_CORNER').map((c) => c.id)),
+    [allCategories]
+  );
+  const categories = useMemo(
+    () => allCategories.filter((c) => c.categoryGroup !== 'PAN_CORNER'),
+    [allCategories]
+  );
+  const menuItems = useMemo(
+    () => allMenuItems.filter((i) => !panCornerCatIds.has(i.categoryId)),
+    [allMenuItems, panCornerCatIds]
+  );
 
   const isError = catError || menuError;
 
