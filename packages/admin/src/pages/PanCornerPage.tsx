@@ -5,6 +5,8 @@ import { menuService } from '../services/menuService';
 import { orderService } from '../services/orderService';
 import type { Category, MenuItem } from '../types';
 import { resolveImg } from '../utils/resolveImg';
+import Modal from '../components/Modal';
+import CategoryForm, { type CategoryFormData } from '../components/menu/CategoryForm';
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 interface CartItem {
@@ -190,6 +192,8 @@ export default function PanCornerPage() {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [catModalOpen, setCatModalOpen] = useState(false);
+  const [editingCat, setEditingCat] = useState<Category | null>(null);
 
   /* ── Data ── */
   const { data: allCategories = [] } = useQuery<Category[]>({
@@ -245,6 +249,39 @@ export default function PanCornerPage() {
     });
   };
 
+  /* ── Category mutations ── */
+  const createCatMutation = useMutation({
+    mutationFn: (data: CategoryFormData) => menuService.createCategory(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      toast.success('Category created');
+      setCatModalOpen(false);
+    },
+    onError: (err: Error) => toast.error(err.message || 'Failed to create category'),
+  });
+
+  const updateCatMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: CategoryFormData }) =>
+      menuService.updateCategory(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      toast.success('Category updated');
+      setCatModalOpen(false);
+      setEditingCat(null);
+    },
+    onError: (err: Error) => toast.error(err.message || 'Failed to update category'),
+  });
+
+  const isCatMutating = createCatMutation.isPending || updateCatMutation.isPending;
+
+  const handleCatSubmit = (data: CategoryFormData) => {
+    if (editingCat) {
+      updateCatMutation.mutate({ id: editingCat.id, data });
+    } else {
+      createCatMutation.mutate(data);
+    }
+  };
+
   /* ── Checkout ── */
   const checkoutMutation = useMutation({
     mutationFn: () =>
@@ -268,19 +305,25 @@ export default function PanCornerPage() {
   /* ── Empty state ── */
   if (panCategories.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center px-4">
-        <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center">
-          <svg className="w-8 h-8 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
+      <>
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center px-4">
+          <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center">
+            <svg className="w-8 h-8 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <div>
+            <p className="font-semibold text-text-primary">No Pan Corner categories yet</p>
+            <p className="text-sm text-text-muted mt-1">Create your first category to get started</p>
+          </div>
+          <button onClick={() => { setEditingCat(null); setCatModalOpen(true); }} className="btn-primary px-6">
+            + New Category
+          </button>
         </div>
-        <div>
-          <p className="font-semibold text-text-primary">No Pan Corner categories yet</p>
-          <p className="text-sm text-text-muted mt-1">
-            Go to <strong>Menu</strong> and create a category with <strong>Category Group = Pan Corner</strong>
-          </p>
-        </div>
-      </div>
+        <Modal open={catModalOpen} title="New Pan Corner Category" onClose={() => { setCatModalOpen(false); setEditingCat(null); }}>
+          <CategoryForm initial={editingCat} isLoading={isCatMutating} onSubmit={handleCatSubmit} onCancel={() => { setCatModalOpen(false); setEditingCat(null); }} forcedGroup="PAN_CORNER" />
+        </Modal>
+      </>
     );
   }
 
@@ -291,7 +334,7 @@ export default function PanCornerPage() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {/* Category tabs */}
-        <div className="flex gap-2 px-4 py-3 border-b border-border overflow-x-auto shrink-0 bg-white">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-border overflow-x-auto shrink-0 bg-white">
           {panCategories.map((cat) => (
             <button
               key={cat.id}
@@ -308,6 +351,12 @@ export default function PanCornerPage() {
               </span>
             </button>
           ))}
+          <button
+            onClick={() => { setEditingCat(null); setCatModalOpen(true); }}
+            className="shrink-0 px-3 py-1.5 rounded-full text-sm font-medium text-primary border border-primary/40 hover:bg-primary/10 transition-colors whitespace-nowrap"
+          >
+            + Category
+          </button>
         </div>
 
         {/* Items grid */}
@@ -363,6 +412,21 @@ export default function PanCornerPage() {
           isCheckingOut={checkoutMutation.isPending}
         />
       </div>
+
+      {/* Category modal */}
+      <Modal
+        open={catModalOpen}
+        title={editingCat ? 'Edit Pan Corner Category' : 'New Pan Corner Category'}
+        onClose={() => { setCatModalOpen(false); setEditingCat(null); }}
+      >
+        <CategoryForm
+          initial={editingCat}
+          isLoading={isCatMutating}
+          onSubmit={handleCatSubmit}
+          onCancel={() => { setCatModalOpen(false); setEditingCat(null); }}
+          forcedGroup="PAN_CORNER"
+        />
+      </Modal>
     </div>
   );
 }

@@ -892,7 +892,7 @@ export default function MenuPage() {
 
       {/* ── Category Modal ─────────────────────────────────────── */}
       <Modal open={catModalOpen} title={editingCat ? 'Edit Category' : 'New Category'} onClose={closeCatModal}>
-        <CategoryForm initial={editingCat} isLoading={isCatMutating} onSubmit={handleCatSubmit} onCancel={closeCatModal} />
+        <CategoryForm initial={editingCat} isLoading={isCatMutating} onSubmit={handleCatSubmit} onCancel={closeCatModal} forcedGroup="RESTAURANT" />
       </Modal>
 
       {/* ── Delete Category Confirmation ─────────────────── */}

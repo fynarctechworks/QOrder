@@ -18,6 +18,8 @@ interface CategoryFormProps {
   isLoading: boolean;
   onSubmit: (data: CategoryFormData) => void;
   onCancel: () => void;
+  /** When set, locks categoryGroup to this value and hides the selector */
+  forcedGroup?: 'RESTAURANT' | 'PAN_CORNER';
 }
 
 interface FieldErrors {
@@ -52,9 +54,15 @@ export default function CategoryForm({
   isLoading,
   onSubmit,
   onCancel,
+  forcedGroup,
 }: CategoryFormProps) {
+  const makeDefault = (): CategoryFormData => ({
+    ...EMPTY,
+    categoryGroup: forcedGroup ?? 'RESTAURANT',
+  });
+
   const [form, setForm] = useState<CategoryFormData>(
-    initial ? fromCategory(initial) : EMPTY
+    initial ? fromCategory(initial) : makeDefault()
   );
   const [errors, setErrors] = useState<FieldErrors>({});
   const [uploading, setUploading] = useState(false);
@@ -62,7 +70,7 @@ export default function CategoryForm({
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setForm(initial ? fromCategory(initial) : EMPTY);
+    setForm(initial ? fromCategory(initial) : makeDefault());
     setPreview(initial?.image || '');
     setErrors({});
   }, [initial]);
@@ -232,24 +240,26 @@ export default function CategoryForm({
         <span className="text-sm text-text-primary">Active</span>
       </label>
 
-      {/* Category Group */}
-      <div>
-        <label className="block text-sm font-medium text-text-secondary mb-1">
-          Category Group
-        </label>
-        <select
-          value={form.categoryGroup}
-          onChange={(e) => {
-            const group = e.target.value as 'RESTAURANT' | 'PAN_CORNER';
-            setForm((f) => ({ ...f, categoryGroup: group }));
-          }}
-          className="input w-full"
-        >
-          <option value="RESTAURANT">Restaurant</option>
-          <option value="PAN_CORNER">Pan Corner</option>
-        </select>
-        <p className="text-xs text-text-tertiary mt-1">Pan Corner categories appear in a separate section for counter-side items (paan, tobacco, mukhwas, etc.)</p>
-      </div>
+      {/* Category Group — hidden when forcedGroup is set */}
+      {!forcedGroup && (
+        <div>
+          <label className="block text-sm font-medium text-text-secondary mb-1">
+            Category Group
+          </label>
+          <select
+            value={form.categoryGroup}
+            onChange={(e) => {
+              const group = e.target.value as 'RESTAURANT' | 'PAN_CORNER';
+              setForm((f) => ({ ...f, categoryGroup: group }));
+            }}
+            className="input w-full"
+          >
+            <option value="RESTAURANT">Restaurant</option>
+            <option value="PAN_CORNER">Pan Corner</option>
+          </select>
+          <p className="text-xs text-text-tertiary mt-1">Pan Corner categories appear in a separate section for counter-side items (paan, tobacco, mukhwas, etc.)</p>
+        </div>
+      )}
 
       {/* KOT Station */}
       <div>
