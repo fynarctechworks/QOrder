@@ -42,8 +42,10 @@ model Restaurant {
   subscriptions  Subscription[]
   branches       Branch[]
   categories     Category[]
-  menuItems      MenuItem[]
-  sections       Section[]
+  menuItems           MenuItem[]
+  sections            Section[]
+  panCornerCategories PanCornerCategory[]
+  panCornerItems      PanCornerItem[]
   tables         Table[]
   orders         Order[]
   modifierGroups ModifierGroup[]
@@ -189,7 +191,6 @@ model Category {
   sortOrder     Int      @default(0)
   isActive      Boolean  @default(true)
   kotStation    String   @default("KITCHEN") // KITCHEN or BEVERAGE
-  categoryGroup String   @default("RESTAURANT") // RESTAURANT or PAN_CORNER
   translations  Json?    // {"hi":{"name":"...","description":"..."},"ta":{...},...}
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -228,7 +229,6 @@ model MenuItem {
   dietType         DietType?
   isAvailable      Boolean   @default(true)
   isActive         Boolean   @default(true)
-  isAgeRestricted  Boolean   @default(false) // true for tobacco/cigarette items
   sortOrder        Int       @default(0)
   prepTime         Int?      // minutes
   calories         Int?
@@ -263,6 +263,52 @@ model MenuItem {
   @@index([branchId])
   @@index([categoryId])
   @@index([isAvailable, isActive])
+}
+
+// ==================== PAN CORNER ====================
+
+model PanCornerCategory {
+  id           String   @id @default(uuid())
+  restaurantId String
+  name         String
+  description  String?
+  image        String?
+  sortOrder    Int      @default(0)
+  isActive     Boolean  @default(true)
+  translations Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  restaurant Restaurant      @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  items      PanCornerItem[]
+
+  @@unique([restaurantId, name])
+  @@index([restaurantId])
+}
+
+model PanCornerItem {
+  id                  String   @id @default(uuid())
+  restaurantId        String
+  panCornerCategoryId String
+  name                String
+  description         String?
+  price               Decimal  @db.Decimal(10, 2)
+  discountPrice       Decimal? @db.Decimal(10, 2)
+  image               String?
+  isAvailable         Boolean  @default(true)
+  isAgeRestricted     Boolean  @default(false)
+  taxRate             Decimal? @db.Decimal(5, 2)
+  sortOrder           Int      @default(0)
+  translations        Json?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  restaurant        Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  panCornerCategory PanCornerCategory @relation(fields: [panCornerCategoryId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, name, panCornerCategoryId])
+  @@index([restaurantId])
+  @@index([panCornerCategoryId])
 }
 
 model ModifierGroup {

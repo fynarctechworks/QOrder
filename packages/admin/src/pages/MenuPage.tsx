@@ -216,19 +216,8 @@ export default function MenuPage() {
     queryFn: menuService.getItems,
   });
 
-  // Exclude Pan Corner categories and their items from this page
-  const panCornerCatIds = useMemo(
-    () => new Set(allCategories.filter((c) => c.categoryGroup === 'PAN_CORNER').map((c) => c.id)),
-    [allCategories]
-  );
-  const categories = useMemo(
-    () => allCategories.filter((c) => c.categoryGroup !== 'PAN_CORNER'),
-    [allCategories]
-  );
-  const menuItems = useMemo(
-    () => allMenuItems.filter((i) => !panCornerCatIds.has(i.categoryId)),
-    [allMenuItems, panCornerCatIds]
-  );
+  const categories = allCategories;
+  const menuItems = allMenuItems;
 
   const isError = catError || menuError;
 
@@ -892,7 +881,7 @@ export default function MenuPage() {
 
       {/* ── Category Modal ─────────────────────────────────────── */}
       <Modal open={catModalOpen} title={editingCat ? 'Edit Category' : 'New Category'} onClose={closeCatModal}>
-        <CategoryForm initial={editingCat} isLoading={isCatMutating} onSubmit={handleCatSubmit} onCancel={closeCatModal} forcedGroup="RESTAURANT" />
+        <CategoryForm initial={editingCat} isLoading={isCatMutating} onSubmit={handleCatSubmit} onCancel={closeCatModal} />
       </Modal>
 
       {/* ── Delete Category Confirmation ─────────────────── */}

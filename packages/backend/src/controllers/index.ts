@@ -15,3 +15,4 @@ export { receiptController } from './receiptController.js';
 export { crmController } from './crmController.js';
 export { reportController } from './reportController.js';
 export { staffManagementController } from './staffManagementController.js';
+export { panCornerController } from './panCornerController.js';

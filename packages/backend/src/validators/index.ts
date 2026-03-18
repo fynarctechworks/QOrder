@@ -129,7 +129,6 @@ export const createCategorySchema = z.object({
   sortOrder: z.number().int().default(0),
   isActive: z.boolean().default(true),
   kotStation: z.enum(['KITCHEN', 'BEVERAGE']).default('KITCHEN'),
-  categoryGroup: z.enum(['RESTAURANT', 'PAN_CORNER']).default('RESTAURANT'),
   translations: z.record(z.string(), z.record(z.string(), z.string())).optional(),
 });
 
@@ -152,7 +151,6 @@ export const createMenuItemSchema = z.object({
   allergens: z.array(z.string()).default([]),
   badge: z.string().max(50).optional().nullable(),
   dietType: z.enum(['VEG', 'NON_VEG', 'EGG']).optional().nullable(),
-  isAgeRestricted: z.boolean().default(false),
   taxRate: z.number().min(0).max(100).optional().nullable(),
   translations: z.record(z.string(), z.record(z.string(), z.string())).optional(),
   modifierGroupIds: z.array(z.string().uuid()).optional(),
@@ -527,6 +525,35 @@ export const changeProfilePasswordSchema = z.object({
 });
 
 // Type exports
+// ==================== PAN CORNER ====================
+
+export const createPanCornerCategorySchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters').max(100),
+  description: z.string().max(500).optional(),
+  image: z.string().optional().nullable(),
+  sortOrder: z.number().int().default(0),
+  isActive: z.boolean().default(true),
+  translations: z.record(z.string(), z.record(z.string(), z.string())).optional(),
+});
+
+export const updatePanCornerCategorySchema = createPanCornerCategorySchema.partial();
+
+export const createPanCornerItemSchema = z.object({
+  panCornerCategoryId: z.string().uuid('Invalid category ID'),
+  name: z.string().min(2, 'Item name must be at least 2 characters').max(200),
+  description: z.string().max(500).optional(),
+  price: z.number().nonnegative('Price must be 0 or more'),
+  discountPrice: z.number().nonnegative().optional().nullable(),
+  image: z.string().optional().nullable(),
+  isAvailable: z.boolean().default(true),
+  isAgeRestricted: z.boolean().default(false),
+  taxRate: z.number().min(0).max(100).optional().nullable(),
+  sortOrder: z.number().int().default(0),
+  translations: z.record(z.string(), z.record(z.string(), z.string())).optional(),
+});
+
+export const updatePanCornerItemSchema = createPanCornerItemSchema.partial();
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type UpdateRestaurantInput = z.infer<typeof updateRestaurantSchema>;
@@ -564,3 +591,7 @@ export type CreateDiscountInput = z.infer<typeof createDiscountSchema>;
 export type UpdateDiscountInput = z.infer<typeof updateDiscountSchema>;
 export type CreateCouponInput = z.infer<typeof createCouponSchema>;
 export type UpdateCouponInput = z.infer<typeof updateCouponSchema>;
+export type CreatePanCornerCategoryInput = z.infer<typeof createPanCornerCategorySchema>;
+export type UpdatePanCornerCategoryInput = z.infer<typeof updatePanCornerCategorySchema>;
+export type CreatePanCornerItemInput = z.infer<typeof createPanCornerItemSchema>;
+export type UpdatePanCornerItemInput = z.infer<typeof updatePanCornerItemSchema>;

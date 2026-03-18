@@ -1,16 +1,17 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { menuService } from '../services/menuService';
+import { panCornerService, type PanCornerCategoryData, type PanCornerItemData } from '../services/panCornerService';
 import { orderService } from '../services/orderService';
-import type { Category, MenuItem } from '../types';
+import type { PanCornerCategory, PanCornerItem } from '../types';
 import { resolveImg } from '../utils/resolveImg';
 import Modal from '../components/Modal';
-import CategoryForm, { type CategoryFormData } from '../components/menu/CategoryForm';
+import PanCornerCategoryForm from '../components/pan-corner/PanCornerCategoryForm';
+import PanCornerItemForm from '../components/pan-corner/PanCornerItemForm';
 
-/* ─── Types ──────────────────────────────────────────────────────────────── */
+/* ─── Cart ───────────────────────────────────────────────────────────────── */
 interface CartItem {
-  menuItem: MenuItem;
+  item: PanCornerItem;
   quantity: number;
 }
 
@@ -24,27 +25,23 @@ function BillPanel({
   isCheckingOut,
 }: {
   cart: CartItem[];
-  onAdd: (item: MenuItem) => void;
-  onRemove: (itemId: string) => void;  // decrease qty by 1 (removes if qty reaches 0)
+  onAdd: (item: PanCornerItem) => void;
+  onRemove: (itemId: string) => void;
   onClear: () => void;
   onCheckout: () => void;
   isCheckingOut: boolean;
 }) {
-  const subtotal = cart.reduce((sum, c) => sum + (c.menuItem.discountPrice ?? c.menuItem.price) * c.quantity, 0);
+  const subtotal = cart.reduce((sum, c) => sum + (c.item.discountPrice ?? c.item.price) * c.quantity, 0);
 
   return (
     <div className="flex flex-col h-full bg-white border-l border-border">
-      {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <h2 className="font-semibold text-text-primary">Current Bill</h2>
         {cart.length > 0 && (
-          <button onClick={onClear} className="text-xs text-error hover:underline">
-            Clear
-          </button>
+          <button onClick={onClear} className="text-xs text-error hover:underline">Clear</button>
         )}
       </div>
 
-      {/* Items */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
         {cart.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-center py-8">
@@ -55,21 +52,21 @@ function BillPanel({
           </div>
         ) : (
           cart.map((c) => (
-            <div key={c.menuItem.id} className="flex items-center gap-2 py-1.5">
+            <div key={c.item.id} className="flex items-center gap-2 py-1.5">
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-text-primary truncate">
-                  {c.menuItem.isAgeRestricted && (
+                  {c.item.isAgeRestricted && (
                     <span className="inline-flex items-center mr-1 px-1 py-0 bg-red-100 text-red-600 rounded text-[10px] font-semibold">18+</span>
                   )}
-                  {c.menuItem.name}
+                  {c.item.name}
                 </p>
                 <p className="text-xs text-text-muted">
-                  ₹{(c.menuItem.discountPrice ?? c.menuItem.price).toFixed(2)} × {c.quantity}
+                  ₹{(c.item.discountPrice ?? c.item.price).toFixed(2)} × {c.quantity}
                 </p>
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <button
-                  onClick={() => onRemove(c.menuItem.id)}
+                  onClick={() => onRemove(c.item.id)}
                   className="w-6 h-6 rounded-full border border-border flex items-center justify-center hover:bg-surface-elevated text-text-secondary hover:text-error transition-colors"
                 >
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -78,7 +75,7 @@ function BillPanel({
                 </button>
                 <span className="text-sm font-semibold text-text-primary w-5 text-center">{c.quantity}</span>
                 <button
-                  onClick={() => onAdd(c.menuItem)}
+                  onClick={() => onAdd(c.item)}
                   className="w-6 h-6 rounded-full border border-primary flex items-center justify-center hover:bg-primary/10 text-primary transition-colors"
                 >
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -87,14 +84,13 @@ function BillPanel({
                 </button>
               </div>
               <span className="text-sm font-semibold text-text-primary w-14 text-right shrink-0">
-                ₹{((c.menuItem.discountPrice ?? c.menuItem.price) * c.quantity).toFixed(2)}
+                ₹{((c.item.discountPrice ?? c.item.price) * c.quantity).toFixed(2)}
               </span>
             </div>
           ))
         )}
       </div>
 
-      {/* Footer */}
       {cart.length > 0 && (
         <div className="px-4 py-3 border-t border-border space-y-3">
           <div className="flex justify-between text-sm">
@@ -106,7 +102,7 @@ function BillPanel({
             disabled={isCheckingOut}
             className="w-full py-3 bg-primary text-white rounded-xl font-semibold text-sm hover:bg-primary/90 transition-colors disabled:opacity-60"
           >
-            {isCheckingOut ? 'Processing…' : `Bill  ₹${subtotal.toFixed(2)}`}
+            {isCheckingOut ? 'Processing…' : `Bill ₹${subtotal.toFixed(2)}`}
           </button>
         </div>
       )}
@@ -116,7 +112,7 @@ function BillPanel({
 
 /* ─── Item Card ──────────────────────────────────────────────────────────── */
 function ItemCard({ item, qty, onAdd }: {
-  item: MenuItem;
+  item: PanCornerItem;
   qty: number;
   onAdd: () => void;
 }) {
@@ -129,7 +125,6 @@ function ItemCard({ item, qty, onAdd }: {
       } ${!item.isAvailable ? 'opacity-50' : 'cursor-pointer'}`}
       onClick={() => item.isAvailable && onAdd()}
     >
-      {/* Image */}
       {item.image ? (
         <img src={resolveImg(item.image)} alt={item.name} className="w-full h-24 object-cover" />
       ) : (
@@ -140,24 +135,16 @@ function ItemCard({ item, qty, onAdd }: {
         </div>
       )}
 
-      {/* Badges */}
       {item.isAgeRestricted && (
-        <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded">
-          18+
-        </span>
+        <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded">18+</span>
       )}
       {!item.isAvailable && (
-        <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 bg-gray-700 text-white text-[10px] font-semibold rounded">
-          N/A
-        </span>
+        <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 bg-gray-700 text-white text-[10px] font-semibold rounded">N/A</span>
       )}
       {qty > 0 && (
-        <span className="absolute top-1.5 right-1.5 w-5 h-5 bg-primary text-white text-xs font-bold rounded-full flex items-center justify-center">
-          {qty}
-        </span>
+        <span className="absolute top-1.5 right-1.5 w-5 h-5 bg-primary text-white text-xs font-bold rounded-full flex items-center justify-center">{qty}</span>
       )}
 
-      {/* Info */}
       <div className="p-2.5">
         <p className="text-xs font-semibold text-text-primary leading-tight truncate">{item.name}</p>
         <div className="flex items-center justify-between mt-1">
@@ -192,68 +179,59 @@ export default function PanCornerPage() {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+
   const [catModalOpen, setCatModalOpen] = useState(false);
-  const [editingCat, setEditingCat] = useState<Category | null>(null);
+  const [editingCat, setEditingCat] = useState<PanCornerCategory | null>(null);
+
+  const [itemModalOpen, setItemModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<PanCornerItem | null>(null);
 
   /* ── Data ── */
-  const { data: allCategories = [] } = useQuery<Category[]>({
-    queryKey: ['categories'],
-    queryFn: menuService.getCategories,
+  const { data: categories = [] } = useQuery<PanCornerCategory[]>({
+    queryKey: ['panCornerCategories'],
+    queryFn: panCornerService.getCategories,
     staleTime: 60_000,
   });
 
-  const { data: allItems = [] } = useQuery<MenuItem[]>({
-    queryKey: ['menuItems'],
-    queryFn: menuService.getItems,
+  const { data: allItems = [] } = useQuery<PanCornerItem[]>({
+    queryKey: ['panCornerItems'],
+    queryFn: () => panCornerService.getItems(),
     staleTime: 60_000,
   });
 
-  /* ── Filtered pan corner data ── */
-  const panCategories = useMemo(
-    () => allCategories.filter((c) => c.categoryGroup === 'PAN_CORNER' && c.isActive),
-    [allCategories]
-  );
-
-  const panItems = useMemo(
-    () => allItems.filter((item) => {
-      const cat = allCategories.find((c) => c.id === item.categoryId);
-      return cat?.categoryGroup === 'PAN_CORNER';
-    }),
-    [allItems, allCategories]
-  );
-
-  const selectedCategoryId = activeCategory ?? panCategories[0]?.id ?? null;
+  const activeCategories = useMemo(() => categories.filter((c) => c.isActive), [categories]);
+  const selectedCategoryId = activeCategory ?? activeCategories[0]?.id ?? null;
 
   const visibleItems = useMemo(
-    () => panItems.filter((item) => item.categoryId === selectedCategoryId),
-    [panItems, selectedCategoryId]
+    () => allItems.filter((i) => i.panCornerCategoryId === selectedCategoryId),
+    [allItems, selectedCategoryId]
   );
 
   /* ── Cart helpers ── */
-  const cartQty = (itemId: string) => cart.find((c) => c.menuItem.id === itemId)?.quantity ?? 0;
+  const cartQty = (itemId: string) => cart.find((c) => c.item.id === itemId)?.quantity ?? 0;
 
-  const addToCart = (item: MenuItem) => {
+  const addToCart = (item: PanCornerItem) => {
     setCart((prev) => {
-      const existing = prev.find((c) => c.menuItem.id === item.id);
-      if (existing) return prev.map((c) => c.menuItem.id === item.id ? { ...c, quantity: c.quantity + 1 } : c);
-      return [...prev, { menuItem: item, quantity: 1 }];
+      const existing = prev.find((c) => c.item.id === item.id);
+      if (existing) return prev.map((c) => c.item.id === item.id ? { ...c, quantity: c.quantity + 1 } : c);
+      return [...prev, { item, quantity: 1 }];
     });
   };
 
   const removeFromCart = (itemId: string) => {
     setCart((prev) => {
-      const existing = prev.find((c) => c.menuItem.id === itemId);
+      const existing = prev.find((c) => c.item.id === itemId);
       if (!existing) return prev;
-      if (existing.quantity === 1) return prev.filter((c) => c.menuItem.id !== itemId);
-      return prev.map((c) => c.menuItem.id === itemId ? { ...c, quantity: c.quantity - 1 } : c);
+      if (existing.quantity === 1) return prev.filter((c) => c.item.id !== itemId);
+      return prev.map((c) => c.item.id === itemId ? { ...c, quantity: c.quantity - 1 } : c);
     });
   };
 
   /* ── Category mutations ── */
   const createCatMutation = useMutation({
-    mutationFn: (data: CategoryFormData) => menuService.createCategory(data),
+    mutationFn: (data: PanCornerCategoryData) => panCornerService.createCategory(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      queryClient.invalidateQueries({ queryKey: ['panCornerCategories'] });
       toast.success('Category created');
       setCatModalOpen(false);
     },
@@ -261,10 +239,10 @@ export default function PanCornerPage() {
   });
 
   const updateCatMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: CategoryFormData }) =>
-      menuService.updateCategory(id, data),
+    mutationFn: ({ id, data }: { id: string; data: PanCornerCategoryData }) =>
+      panCornerService.updateCategory(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      queryClient.invalidateQueries({ queryKey: ['panCornerCategories'] });
       toast.success('Category updated');
       setCatModalOpen(false);
       setEditingCat(null);
@@ -274,19 +252,46 @@ export default function PanCornerPage() {
 
   const isCatMutating = createCatMutation.isPending || updateCatMutation.isPending;
 
-  const handleCatSubmit = (data: CategoryFormData) => {
-    if (editingCat) {
-      updateCatMutation.mutate({ id: editingCat.id, data });
-    } else {
-      createCatMutation.mutate(data);
-    }
+  const handleCatSubmit = (data: PanCornerCategoryData) => {
+    if (editingCat) updateCatMutation.mutate({ id: editingCat.id, data });
+    else createCatMutation.mutate(data);
+  };
+
+  /* ── Item mutations ── */
+  const createItemMutation = useMutation({
+    mutationFn: (data: PanCornerItemData) => panCornerService.createItem(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['panCornerItems'] });
+      toast.success('Item added');
+      setItemModalOpen(false);
+    },
+    onError: (err: Error) => toast.error(err.message || 'Failed to add item'),
+  });
+
+  const updateItemMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: PanCornerItemData }) =>
+      panCornerService.updateItem(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['panCornerItems'] });
+      toast.success('Item updated');
+      setItemModalOpen(false);
+      setEditingItem(null);
+    },
+    onError: (err: Error) => toast.error(err.message || 'Failed to update item'),
+  });
+
+  const isItemMutating = createItemMutation.isPending || updateItemMutation.isPending;
+
+  const handleItemSubmit = (data: PanCornerItemData) => {
+    if (editingItem) updateItemMutation.mutate({ id: editingItem.id, data });
+    else createItemMutation.mutate(data);
   };
 
   /* ── Checkout ── */
   const checkoutMutation = useMutation({
     mutationFn: () =>
       orderService.createQSROrder({
-        items: cart.map((c) => ({ menuItemId: c.menuItem.id, quantity: c.quantity })),
+        items: cart.map((c) => ({ menuItemId: c.item.id, quantity: c.quantity })),
         customerName: customerName.trim() || undefined,
         customerPhone: customerPhone.trim() || undefined,
         serviceType: 'takeaway',
@@ -303,7 +308,7 @@ export default function PanCornerPage() {
   });
 
   /* ── Empty state ── */
-  if (panCategories.length === 0) {
+  if (activeCategories.length === 0) {
     return (
       <>
         <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center px-4">
@@ -321,7 +326,7 @@ export default function PanCornerPage() {
           </button>
         </div>
         <Modal open={catModalOpen} title="New Pan Corner Category" onClose={() => { setCatModalOpen(false); setEditingCat(null); }}>
-          <CategoryForm initial={editingCat} isLoading={isCatMutating} onSubmit={handleCatSubmit} onCancel={() => { setCatModalOpen(false); setEditingCat(null); }} forcedGroup="PAN_CORNER" />
+          <PanCornerCategoryForm initial={editingCat} isLoading={isCatMutating} onSubmit={handleCatSubmit} onCancel={() => { setCatModalOpen(false); setEditingCat(null); }} />
         </Modal>
       </>
     );
@@ -330,15 +335,17 @@ export default function PanCornerPage() {
   return (
     <div className="flex h-[calc(100vh-4rem)] -m-3 md:-m-6 overflow-hidden">
 
-      {/* ── Left: Menu ───────────────────────────────────────────────────── */}
+      {/* ── Left: Menu ── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {/* Category tabs */}
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border overflow-x-auto shrink-0 bg-white">
-          {panCategories.map((cat) => (
+          {activeCategories.map((cat) => (
             <button
               key={cat.id}
               onClick={() => setActiveCategory(cat.id)}
+              onDoubleClick={() => { setEditingCat(cat); setCatModalOpen(true); }}
+              title="Double-click to edit"
               className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors shrink-0 ${
                 selectedCategoryId === cat.id
                   ? 'bg-primary text-white'
@@ -347,7 +354,7 @@ export default function PanCornerPage() {
             >
               {cat.name}
               <span className="ml-1.5 text-xs opacity-70">
-                ({panItems.filter((i) => i.categoryId === cat.id).length})
+                ({allItems.filter((i) => i.panCornerCategoryId === cat.id).length})
               </span>
             </button>
           ))}
@@ -362,27 +369,42 @@ export default function PanCornerPage() {
         {/* Items grid */}
         <div className="flex-1 overflow-y-auto p-4">
           {visibleItems.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full gap-2 text-center">
+            <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
               <svg className="w-10 h-10 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
               </svg>
               <p className="text-sm text-text-muted">No items in this category</p>
+              <button onClick={() => { setEditingItem(null); setItemModalOpen(true); }} className="btn-primary px-5 text-sm">
+                + Add Item
+              </button>
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
               {visibleItems.map((item) => (
-                <ItemCard
-                  key={item.id}
-                  item={item}
-                  qty={cartQty(item.id)}
-                  onAdd={() => addToCart(item)}
-                />
+                <div key={item.id} className="relative group">
+                  <ItemCard item={item} qty={cartQty(item.id)} onAdd={() => addToCart(item)} />
+                  <button
+                    onClick={() => { setEditingItem(item); setItemModalOpen(true); }}
+                    className="absolute bottom-2 left-2 opacity-0 group-hover:opacity-100 px-2 py-0.5 bg-black/60 hover:bg-black/80 text-white text-[10px] rounded transition-opacity"
+                  >
+                    Edit
+                  </button>
+                </div>
               ))}
+              <button
+                onClick={() => { setEditingItem(null); setItemModalOpen(true); }}
+                className="h-full min-h-[9rem] rounded-xl border-2 border-dashed border-surface-border hover:border-primary/50 bg-surface flex flex-col items-center justify-center gap-1 text-text-muted hover:text-primary transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
+                <span className="text-xs font-medium">Add Item</span>
+              </button>
             </div>
           )}
         </div>
 
-        {/* Optional customer info bar */}
+        {/* Customer info */}
         <div className="flex gap-3 px-4 py-2.5 border-t border-border bg-white shrink-0">
           <input
             type="text"
@@ -401,7 +423,7 @@ export default function PanCornerPage() {
         </div>
       </div>
 
-      {/* ── Right: Bill ──────────────────────────────────────────────────── */}
+      {/* ── Right: Bill ── */}
       <div className="w-72 shrink-0 flex flex-col">
         <BillPanel
           cart={cart}
@@ -416,15 +438,29 @@ export default function PanCornerPage() {
       {/* Category modal */}
       <Modal
         open={catModalOpen}
-        title={editingCat ? 'Edit Pan Corner Category' : 'New Pan Corner Category'}
+        title={editingCat ? 'Edit Category' : 'New Pan Corner Category'}
         onClose={() => { setCatModalOpen(false); setEditingCat(null); }}
       >
-        <CategoryForm
+        <PanCornerCategoryForm
           initial={editingCat}
           isLoading={isCatMutating}
           onSubmit={handleCatSubmit}
           onCancel={() => { setCatModalOpen(false); setEditingCat(null); }}
-          forcedGroup="PAN_CORNER"
+        />
+      </Modal>
+
+      {/* Item modal */}
+      <Modal
+        open={itemModalOpen}
+        title={editingItem ? 'Edit Item' : 'Add Pan Corner Item'}
+        onClose={() => { setItemModalOpen(false); setEditingItem(null); }}
+      >
+        <PanCornerItemForm
+          initial={editingItem}
+          categories={categories}
+          isLoading={isItemMutating}
+          onSubmit={handleItemSubmit}
+          onCancel={() => { setItemModalOpen(false); setEditingItem(null); }}
         />
       </Modal>
     </div>

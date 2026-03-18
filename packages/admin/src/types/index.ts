@@ -49,7 +49,34 @@ export interface Category {
   image?: string;
   isActive: boolean;
   kotStation: 'KITCHEN' | 'BEVERAGE';
-  categoryGroup: 'RESTAURANT' | 'PAN_CORNER';
+  translations?: TranslationsMap;
+}
+
+export interface PanCornerCategory {
+  id: string;
+  restaurantId: string;
+  name: string;
+  description?: string;
+  image?: string;
+  sortOrder: number;
+  isActive: boolean;
+  translations?: TranslationsMap;
+  _count?: { items: number };
+}
+
+export interface PanCornerItem {
+  id: string;
+  restaurantId: string;
+  panCornerCategoryId: string;
+  name: string;
+  description?: string;
+  price: number;
+  discountPrice?: number;
+  image?: string;
+  isAvailable: boolean;
+  isAgeRestricted: boolean;
+  taxRate?: number | null;
+  sortOrder: number;
   translations?: TranslationsMap;
 }
 
@@ -73,7 +100,6 @@ export interface MenuItem {
   tags: string[];
   badge?: string;
   dietType?: DietType | null;
-  isAgeRestricted?: boolean;
   taxRate?: number | null;
   allowSpecialInstructions?: boolean;
   translations?: TranslationsMap;

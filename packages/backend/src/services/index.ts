@@ -17,3 +17,4 @@ export { crmService } from './crmService.js';
 export { reportService } from './reportService.js';
 export { staffManagementService } from './staffManagementService.js';
 export { dashboardService } from './dashboardService.js';
+export { panCornerService } from './panCornerService.js';

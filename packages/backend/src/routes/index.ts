@@ -21,6 +21,7 @@ import chatbotRoutes from './chatbot.js';
 import creditRoutes from './credit.js';
 import biometricRoutes from './biometric.js';
 import tvSlideRoutes from './tvSlides.js';
+import panCornerRoutes from './panCorner.js';
 
 const router = Router();
 
@@ -56,6 +57,7 @@ router.use('/chatbot', chatbotRoutes);
 router.use('/credit', creditRoutes);
 router.use('/biometric', biometricRoutes);
 router.use('/tv-slides', tvSlideRoutes);
+router.use('/pan-corner', panCornerRoutes);
 
 // Public routes (no /api prefix in practice, but grouped here)
 router.use('/public', publicRoutes);
