@@ -64,6 +64,17 @@ export const panCornerService = {
     return apiClient.patch<PanCornerItem>(`/pan-corner/items/${id}/availability`, { isAvailable });
   },
 
+  async checkout(input: {
+    items: { panCornerItemId: string; quantity: number }[];
+    customerName?: string;
+    customerPhone?: string;
+    notes?: string;
+    manualDiscount?: number;
+    manualDiscountType?: 'PERCENTAGE' | 'FLAT';
+  }): Promise<{ id: string; orderNumber: string; total: number; tokenNumber: number }> {
+    return apiClient.post('/pan-corner/checkout', input);
+  },
+
   async uploadImage(file: File): Promise<{ imageUrl: string }> {
     const formData = new FormData();
     formData.append('image', file);

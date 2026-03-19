@@ -498,8 +498,8 @@ export default function CreateOrderPage() {
           <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={() => setShowCart(false)} />
         )}
 
-        {/* ── LEFT: Current Ticket ── */}
-        <div className={`fixed inset-y-0 left-0 z-40 w-[300px] md:static md:z-auto xl:w-[340px] flex flex-col bg-white border-r border-gray-200 shrink-0 transform transition-transform duration-200 ${showCart ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
+        {/* ── RIGHT: Current Ticket ── */}
+        <div className={`fixed inset-y-0 right-0 z-40 w-[300px] md:static md:z-auto md:w-[40%] flex flex-col bg-white border-l border-gray-200 shrink-0 transform transition-transform duration-200 order-last ${showCart ? 'translate-x-0' : 'translate-x-full'} md:translate-x-0`}>
           <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
             <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Current Ticket</h2>
             <div className="flex items-center gap-2">
@@ -533,7 +533,7 @@ export default function CreateOrderPage() {
                 <p className="text-xs text-gray-300 mt-0.5">Click menu items to add</p>
               </div>
             ) : (
-              <div className="space-y-1.5">
+              <div className="grid grid-cols-3 gap-2">
                 {cart.map((c) => {
                   const basePrice = c.menuItem.discountPrice ?? c.menuItem.price;
                   const modTotal = c.selectedModifiers.reduce((s, m) => s + m.price, 0);
@@ -545,33 +545,31 @@ export default function CreateOrderPage() {
                       key={c.cartId}
                       ref={(el) => { if (el) cartItemRefs.current.set(c.cartId, el); else cartItemRefs.current.delete(c.cartId); }}
                       onClick={() => setActiveCartItemId(isActive ? null : c.cartId)}
-                      className={`border rounded-lg px-2.5 py-2 relative cursor-pointer transition-all ${
-                        isActive
-                          ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
+                      className={`border rounded-lg p-2 cursor-pointer transition-all flex flex-col gap-1 ${
+                        isActive && hasGroups ? 'col-span-3 border-primary bg-primary/5 ring-1 ring-primary/20'
+                          : isActive ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
                           : 'border-gray-200 hover:border-gray-300'
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-gray-900 truncate">{c.menuItem.name}</p>
-                          <p className="text-xs text-gray-400">{formatCurrency(basePrice)}</p>
-                        </div>
+                      <div className="flex items-start justify-between gap-1">
+                        <p className="text-xs font-semibold text-gray-900 leading-tight line-clamp-2 flex-1 min-w-0">{c.menuItem.name}</p>
                         <button
                           onClick={(e) => { e.stopPropagation(); removeFromCart(c.cartId); if (isActive) setActiveCartItemId(null); }}
-                          className="text-red-400 hover:text-red-600 transition-colors shrink-0 mt-0.5"
+                          className="text-red-400 hover:text-red-600 transition-colors shrink-0"
                         >
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                           </svg>
                         </button>
                       </div>
+                      <p className="text-[10px] text-gray-400">{formatCurrency(basePrice)}</p>
 
                       {/* Selected modifiers as text lines */}
                       {c.selectedModifiers.length > 0 && !isActive && (
-                        <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
+                        <div className="flex flex-wrap gap-x-1 gap-y-0.5">
                           {c.selectedModifiers.map(m => (
-                            <span key={m.modifierId} className="text-[11px] text-primary">
-                              +{m.name}{m.price > 0 ? ` (${formatCurrency(m.price)})` : ''}
+                            <span key={m.modifierId} className="text-[10px] text-primary leading-tight">
+                              +{m.name}
                             </span>
                           ))}
                         </div>
@@ -579,7 +577,7 @@ export default function CreateOrderPage() {
 
                       {/* Modifier buttons — only on active/focused item */}
                       {hasGroups && isActive && (
-                        <div className="mt-2 space-y-1.5">
+                        <div className="mt-1 space-y-1.5">
                           {c.menuItem.customizationGroups.map(group => {
                             const selectedIds = new Set(c.selectedModifiers.map(m => m.modifierId));
                             return (
@@ -611,29 +609,27 @@ export default function CreateOrderPage() {
                       )}
 
                       {/* Total row with quantity controls */}
-                      <div className="flex items-center justify-between mt-1.5">
-                        <div className="flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center justify-between mt-auto pt-1" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center gap-0.5">
                           <button
                             onClick={() => updateQuantity(c.cartId, -1)}
-                            className="w-6 h-6 rounded-md bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 transition-colors active:scale-90"
+                            className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 transition-colors active:scale-90"
                           >
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4" />
                             </svg>
                           </button>
-                          <span className="w-7 text-center text-xs font-bold text-gray-900 tabular-nums">{c.quantity}</span>
+                          <span className="w-5 text-center text-xs font-bold text-gray-900 tabular-nums">{c.quantity}</span>
                           <button
                             onClick={() => updateQuantity(c.cartId, 1)}
-                            className="w-6 h-6 rounded-md bg-primary/10 hover:bg-primary/20 flex items-center justify-center text-primary transition-colors active:scale-90"
+                            className="w-5 h-5 rounded bg-primary/10 hover:bg-primary/20 flex items-center justify-center text-primary transition-colors active:scale-90"
                           >
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                             </svg>
                           </button>
                         </div>
-                        <span className="text-sm font-bold text-gray-900 tabular-nums">
-                          {formatCurrency(lineTotal)}
-                        </span>
+                        <span className="text-xs font-bold text-gray-900 tabular-nums">{formatCurrency(lineTotal)}</span>
                       </div>
                     </div>
                   );
@@ -695,44 +691,46 @@ export default function CreateOrderPage() {
               <span>Total</span>
               <span className="tabular-nums">{formatCurrency(total)}</span>
             </div>
-            <button
-              onClick={handleSubmit}
-              disabled={cart.length === 0 || createOrderMut.isPending}
-              className="w-full mt-2 py-3 bg-primary hover:bg-primary-hover text-white rounded-xl font-semibold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] shadow-sm flex items-center justify-center gap-2"
-            >
-              {createOrderMut.isPending ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Placing Order…
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                  Place Order • {formatCurrency(total)}
-                </>
-              )}
-            </button>
-            <button
-              onClick={handleHold}
-              disabled={cart.length === 0}
-              className="w-full mt-1.5 py-2.5 border-2 border-amber-400 text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-xl font-semibold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] flex items-center justify-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Hold Ticket
-            </button>
+            <div className="flex gap-2 mt-2">
+              <button
+                onClick={handleHold}
+                disabled={cart.length === 0}
+                className="flex-1 py-3 border-2 border-amber-400 text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-xl font-semibold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] flex items-center justify-center gap-1.5"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Hold
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={cart.length === 0 || createOrderMut.isPending}
+                className="flex-1 py-3 bg-primary hover:bg-primary-hover text-white rounded-xl font-semibold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] shadow-sm flex items-center justify-center gap-1.5"
+              >
+                {createOrderMut.isPending ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Placing…
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Place • {formatCurrency(total)}
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* ── RIGHT: Menu grid ── */}
+        {/* ── LEFT: Menu grid ── */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Mobile cart toggle FAB */}
           <button
             onClick={() => setShowCart(true)}
-            className="md:hidden fixed bottom-6 right-6 z-30 w-14 h-14 rounded-full bg-primary text-white shadow-lg flex items-center justify-center active:scale-95 transition-transform"
+            className="md:hidden fixed bottom-6 left-6 z-30 w-14 h-14 rounded-full bg-primary text-white shadow-lg flex items-center justify-center active:scale-95 transition-transform"
           >
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z" />

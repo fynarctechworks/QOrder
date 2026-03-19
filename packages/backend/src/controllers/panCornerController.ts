@@ -127,4 +127,19 @@ export const panCornerController = {
       res.json({ success: true, data: transformItem(item as unknown as Record<string, unknown>) });
     } catch (error) { next(error); }
   },
+
+  async checkout(req: Request, res: Response<ApiResponse>, next: NextFunction) {
+    try {
+      const { items, customerName, customerPhone, notes, manualDiscount, manualDiscountType } = req.body as {
+        items: { panCornerItemId: string; quantity: number }[];
+        customerName?: string;
+        customerPhone?: string;
+        notes?: string;
+        manualDiscount?: number;
+        manualDiscountType?: 'PERCENTAGE' | 'FLAT';
+      };
+      const order = await panCornerService.checkout(req.restaurantId!, { items, customerName, customerPhone, notes, manualDiscount, manualDiscountType });
+      res.status(201).json({ success: true, data: order });
+    } catch (error) { next(error); }
+  },
 };

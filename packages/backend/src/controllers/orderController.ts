@@ -103,7 +103,7 @@ function transformOrder(raw: RawOrder) {
     tableId: raw.tableId ?? '',
     tableName: raw.table
       ? (raw.table.name ? `${raw.table.name} ${raw.table.number}` : `Table ${raw.table.number}`)
-      : raw.orderType === 'QSR' ? 'Counter' : raw.orderType === 'QSR_TAKEAWAY' ? 'Takeaway' : 'Takeaway',
+      : raw.orderType === 'QSR' ? 'Counter' : raw.orderType === 'QSR_TAKEAWAY' ? 'Takeaway' : raw.orderType === 'PAN_CORNER' ? 'Pan Corner' : 'Takeaway',
     orderType: raw.orderType ?? 'DINE_IN',
     sectionName: raw.table?.section?.name ?? null,
     status,

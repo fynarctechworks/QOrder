@@ -85,4 +85,12 @@ router.delete(
   panCornerController.deleteItem
 );
 
+// ==================== CHECKOUT ====================
+
+router.post(
+  '/checkout',
+  authorize('OWNER', 'ADMIN', 'MANAGER', 'STAFF'),
+  panCornerController.checkout
+);
+
 export default router;

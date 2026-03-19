@@ -30,11 +30,35 @@ function formatPhoneNumber(phone: string): string {
   if (cleaned.startsWith('+')) {
     cleaned = cleaned.substring(1);
   }
-  // If it's a 10-digit Indian number, prepend 91
-  if (cleaned.length === 10 && !cleaned.startsWith('0')) {
+  // Strip leading 0 from 11-digit numbers (e.g. 09876543210 → 9876543210)
+  if (cleaned.length === 11 && cleaned.startsWith('0')) {
+    cleaned = cleaned.substring(1);
+  }
+  // If it's a 10-digit number, assume Indian — prepend 91
+  if (cleaned.length === 10) {
     cleaned = '91' + cleaned;
   }
   return cleaned;
+}
+
+/**
+ * Truncate a Twilio template variable value to stay within the 1024-char limit.
+ */
+function truncateVar(value: string, max = 1000): string {
+  return value.length <= max ? value : value.slice(0, max - 1) + '…';
+}
+
+/**
+ * fetch() with an AbortController timeout (default 15 s).
+ */
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 15_000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -97,37 +121,53 @@ async function sendWhatsAppMessage(to: string, message: string): Promise<boolean
 
   const formattedPhone = formatPhoneNumber(to);
 
-  try {
-    const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
+  const authHeader = 'Basic ' + Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+  const bodyParams = new URLSearchParams({
+    From: `whatsapp:${whatsappFrom.startsWith('+') ? whatsappFrom : '+' + whatsappFrom}`,
+    To: `whatsapp:+${formattedPhone}`,
+    Body: message,
+  });
 
-    const body = new URLSearchParams({
-      From: `whatsapp:${whatsappFrom.startsWith('+') ? whatsappFrom : '+' + whatsappFrom}`,
-      To: `whatsapp:+${formattedPhone}`,
-      Body: message,
-    });
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const response = await fetchWithTimeout(url, {
+        method: 'POST',
+        headers: { 'Authorization': authHeader, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: bodyParams.toString(),
+      });
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Basic ' + Buffer.from(`${accountSid}:${authToken}`).toString('base64'),
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: body.toString(),
-    });
+      if (response.status === 429 && attempt === 1) {
+        logger.warn({ to: formattedPhone }, 'Twilio rate-limited (429) — retrying after 2 s');
+        await new Promise(r => setTimeout(r, 2000));
+        continue;
+      }
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      logger.error({ status: response.status, error: errorData }, 'Twilio WhatsApp API error');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        logger.error({ status: response.status, error: errorData }, 'Twilio WhatsApp API error');
+        if (response.status >= 500 && attempt === 1) {
+          logger.warn({ to: formattedPhone }, 'Twilio 5xx — retrying after 3 s');
+          await new Promise(r => setTimeout(r, 3000));
+          continue;
+        }
+        return false;
+      }
+
+      const data = await response.json() as { sid?: string };
+      logger.info({ messageSid: data.sid, to: formattedPhone }, 'WhatsApp message sent via Twilio');
+      return true;
+    } catch (error) {
+      const isTimeout = error instanceof Error && error.name === 'AbortError';
+      logger.error({ error, to: formattedPhone, attempt, isTimeout }, 'Failed to send Twilio WhatsApp message');
+      if (attempt === 1) {
+        await new Promise(r => setTimeout(r, 2000));
+        continue;
+      }
       return false;
     }
-
-    const data = await response.json() as { sid?: string };
-    logger.info({ messageSid: data.sid, to: formattedPhone }, 'WhatsApp message sent via Twilio');
-    return true;
-  } catch (error) {
-    logger.error({ error, to: formattedPhone }, 'Failed to send Twilio WhatsApp message');
-    return false;
   }
+  return false;
 }
 
 /**
@@ -156,50 +196,65 @@ async function sendWhatsAppTemplate(
 
   const formattedPhone = formatPhoneNumber(to);
 
-  try {
-    const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
+  // Sanitize: Twilio does not support newlines in ContentVariables; also truncate to 1000 chars each
+  const sanitized: Record<string, string> = {};
+  for (const [key, value] of Object.entries(variables)) {
+    sanitized[key] = truncateVar(value.replace(/\n/g, ', '));
+  }
 
-    // Twilio Content Variables do not support newline characters in values.
-    // Sanitize by replacing any newlines with comma-space.
-    const sanitized: Record<string, string> = {};
-    for (const [key, value] of Object.entries(variables)) {
-      sanitized[key] = value.replace(/\n/g, ', ');
-    }
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
+  const authHeader = 'Basic ' + Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+  const bodyParams = new URLSearchParams({
+    From: `whatsapp:${whatsappFrom.startsWith('+') ? whatsappFrom : '+' + whatsappFrom}`,
+    To: `whatsapp:+${formattedPhone}`,
+    ContentSid: contentSid,
+    ContentVariables: JSON.stringify(sanitized),
+  });
 
-    const body = new URLSearchParams({
-      From: `whatsapp:${whatsappFrom.startsWith('+') ? whatsappFrom : '+' + whatsappFrom}`,
-      To: `whatsapp:+${formattedPhone}`,
-      ContentSid: contentSid,
-      ContentVariables: JSON.stringify(sanitized),
-    });
+  logger.info({ to: formattedPhone, contentSid }, 'Sending WhatsApp template message');
 
-    logger.info({ to: formattedPhone, contentSid }, 'Sending WhatsApp template message');
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const response = await fetchWithTimeout(url, {
+        method: 'POST',
+        headers: { 'Authorization': authHeader, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: bodyParams.toString(),
+      });
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Basic ' + Buffer.from(`${accountSid}:${authToken}`).toString('base64'),
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: body.toString(),
-    });
+      const data = await response.json().catch(() => ({})) as Record<string, unknown>;
 
-    const data = await response.json().catch(() => ({})) as Record<string, unknown>;
+      if (response.status === 429 && attempt === 1) {
+        logger.warn({ to: formattedPhone, contentSid }, 'Twilio rate-limited (429) — retrying after 2 s');
+        await new Promise(r => setTimeout(r, 2000));
+        continue;
+      }
 
-    if (!response.ok) {
-      logger.error(
-        { status: response.status, errorCode: data.code, errorMessage: data.message, contentSid, to: formattedPhone },
-        'Twilio WhatsApp template API error — NOT falling back to plain text (template required for business-initiated messages)'
-      );
+      if (!response.ok) {
+        logger.error(
+          { status: response.status, errorCode: data.code, errorMessage: data.message, contentSid, to: formattedPhone, attempt },
+          'Twilio WhatsApp template API error'
+        );
+        if (response.status >= 500 && attempt === 1) {
+          logger.warn({ to: formattedPhone, contentSid }, 'Twilio 5xx — retrying after 3 s');
+          await new Promise(r => setTimeout(r, 3000));
+          continue;
+        }
+        return false;
+      }
+
+      logger.info({ messageSid: data.sid, to: formattedPhone, contentSid }, 'WhatsApp template message sent via Twilio');
+      return true;
+    } catch (error) {
+      const isTimeout = error instanceof Error && error.name === 'AbortError';
+      logger.error({ error, to: formattedPhone, contentSid, attempt, isTimeout }, 'Failed to send Twilio WhatsApp template');
+      if (attempt === 1) {
+        await new Promise(r => setTimeout(r, 2000));
+        continue;
+      }
       return false;
     }
-
-    logger.info({ messageSid: data.sid, to: formattedPhone, contentSid }, 'WhatsApp template message sent via Twilio');
-    return true;
-  } catch (error) {
-    logger.error({ error, to: formattedPhone, contentSid }, 'Failed to send Twilio WhatsApp template');
-    return false;
   }
+  return false;
 }
 
 export const whatsappService = {

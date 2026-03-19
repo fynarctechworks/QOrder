@@ -1,13 +1,100 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { panCornerService, type PanCornerCategoryData, type PanCornerItemData } from '../services/panCornerService';
-import { orderService } from '../services/orderService';
+import { settingsService } from '../services';
 import type { PanCornerCategory, PanCornerItem } from '../types';
 import { resolveImg } from '../utils/resolveImg';
 import Modal from '../components/Modal';
 import PanCornerCategoryForm from '../components/pan-corner/PanCornerCategoryForm';
 import PanCornerItemForm from '../components/pan-corner/PanCornerItemForm';
+
+/* ─── Print ──────────────────────────────────────────────────────────────── */
+function escapeHtml(text: string) {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+const PRINT_CSS = `
+  *{color:#000!important;font-weight:bold!important}
+  body{font-family:'Courier New',monospace;max-width:300px;margin:0 auto;padding:0;font-size:14px;-webkit-print-color-adjust:exact}
+  .center{text-align:center}
+  .restaurant{font-size:18px;font-weight:bold;margin:0 0 4px}
+  .divider{border-top:2px dashed #000;margin:10px 0}
+  .token-box{text-align:center;border:3px solid #000;border-radius:8px;padding:12px;margin:12px 0}
+  .token-label{font-size:13px;text-transform:uppercase;letter-spacing:0.1em;font-weight:bold}
+  .token-num{font-size:36px;font-weight:bold;line-height:1.1}
+  .item{display:flex;gap:6px;padding:6px 0;align-items:flex-start;font-size:14px}
+  .qty{min-width:28px;font-weight:bold;font-size:15px}
+  .name{flex:1;font-size:14px;font-weight:bold}
+  .price{text-align:right;white-space:nowrap;font-weight:bold;font-size:14px}
+  .total-row{display:flex;justify-content:space-between;padding:3px 0;font-size:14px}
+  .total-row.grand{font-size:16px;font-weight:bold;border-top:2px solid #000;padding-top:6px;margin-top:4px}
+  .method{text-align:center;font-size:13px;margin-top:8px;font-weight:bold}
+  .footer{text-align:center;font-size:12px;margin-top:12px;font-weight:bold}
+  @page{size:80mm auto;margin:0}
+  @media print{html,body{width:80mm;margin:0;padding:0;overflow:hidden}*{color:#000!important;font-weight:bold!important}}`;
+
+function firePrintJob(html: string) {
+  const w = window.open('', '_blank', 'width=420,height=650');
+  if (!w) return;
+  w.document.write(`<!DOCTYPE html><html><head><title>Pan Corner Receipt</title><style>${PRINT_CSS}</style></head><body style="padding:16px">${html}</body></html>`);
+  w.document.close();
+  w.print();
+  w.onafterprint = () => w.close();
+}
+
+function printPanCornerReceipt(
+  order: { orderNumber: string; total: number; tokenNumber: number },
+  cartItems: CartItem[],
+  paymentMethod: string,
+  restaurantName: string,
+  discountAmount: number,
+  notes: string
+) {
+  const itemsHtml = cartItems.map(c => {
+    const price = c.item.discountPrice ?? c.item.price;
+    return `<div class="item"><span class="qty">${c.quantity}x</span><div class="name">${escapeHtml(c.item.name)}</div><span class="price">&#8377;${(price * c.quantity).toFixed(2)}</span></div>`;
+  }).join('');
+
+  const subtotal = cartItems.reduce((s, c) => s + (c.item.discountPrice ?? c.item.price) * c.quantity, 0);
+  const tokenLabel = String(order.tokenNumber).padStart(3, '0');
+
+  const html = `
+    <p class="restaurant center">${escapeHtml(restaurantName)}</p>
+    <div class="token-box">
+      <div class="token-label">Token Number</div>
+      <div class="token-num">${tokenLabel}</div>
+    </div>
+    <p class="center" style="font-size:16px;margin:4px 0;font-weight:bold">Pan Corner</p>
+    <div class="divider"></div>
+    ${itemsHtml}
+    <div class="divider"></div>
+    <div class="total-row"><span>Subtotal</span><span>&#8377;${subtotal.toFixed(2)}</span></div>
+    ${discountAmount > 0 ? `<div class="total-row"><span>Discount</span><span>-&#8377;${discountAmount.toFixed(2)}</span></div>` : ''}
+    <div class="total-row grand"><span>Total</span><span>&#8377;${Number(order.total).toFixed(2)}</span></div>
+    <div class="method">Paid via ${escapeHtml(paymentMethod)}</div>
+    ${notes ? `<div class="divider"></div><p style="font-size:12px;text-align:center;font-weight:bold">${escapeHtml(notes)}</p>` : ''}
+    <div class="footer">Thank you! Please wait for your token to be called.</div>`;
+
+  firePrintJob(html);
+}
+
+/* ─── Hold & Recall ──────────────────────────────────────────────────────── */
+interface HeldTicket {
+  id: string;
+  cart: CartItem[];
+  customerName: string;
+  customerPhone: string;
+  notes: string;
+  heldAt: number;
+}
+const PC_HELD_KEY = 'pc_held_tickets';
+function loadHeld(): HeldTicket[] {
+  try { return JSON.parse(localStorage.getItem(PC_HELD_KEY) || '[]'); } catch { return []; }
+}
+function saveHeld(tickets: HeldTicket[]) {
+  localStorage.setItem(PC_HELD_KEY, JSON.stringify(tickets));
+}
 
 /* ─── Payment Methods ──────────────────────────────────────────────────────── */
 type PaymentMethod = 'CASH' | 'CARD' | 'UPI';
@@ -49,17 +136,40 @@ export default function PanCornerPage() {
   const [showSettlement, setShowSettlement] = useState(false);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
-  const [selectedPayMethod, setSelectedPayMethod] = useState<PaymentMethod>('CASH');
+  const [notes, setNotes] = useState('');
+  const [selectedPayMethod, setSelectedPayMethod] = useState<PaymentMethod | null>(null);
   const [settled, setSettled] = useState(false);
+
+  /* ── Discount ── */
+  const [discountType, setDiscountType] = useState<'PERCENTAGE' | 'FLAT'>('PERCENTAGE');
+  const [discountValue, setDiscountValue] = useState('');
+
+  /* ── Print toggle ── */
+  const [autoPrint, setAutoPrint] = useState(true);
+  const pendingPrintRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    if (settled && pendingPrintRef.current) {
+      const fn = pendingPrintRef.current;
+      pendingPrintRef.current = null;
+      fn();
+    }
+  }, [settled]);
+
+  /* ── Hold & Recall ── */
+  const [heldTickets, setHeldTickets] = useState<HeldTicket[]>(loadHeld);
+  const [showRecall, setShowRecall] = useState(false);
 
   /* ── Manage modals ── */
   const [catModalOpen, setCatModalOpen] = useState(false);
   const [editingCat, setEditingCat] = useState<PanCornerCategory | null>(null);
   const [itemModalOpen, setItemModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<PanCornerItem | null>(null);
+  const [menuDropdownOpen, setMenuDropdownOpen] = useState(false);
+  const [manageModal, setManageModal] = useState<'categories' | 'items' | null>(null);
 
   /* ── Data ── */
-  const { data: categories = [] } = useQuery<PanCornerCategory[]>({
+  const { data: categories = [], isLoading: catsLoading } = useQuery<PanCornerCategory[]>({
     queryKey: ['panCornerCategories'],
     queryFn: panCornerService.getCategories,
     staleTime: 60_000,
@@ -70,6 +180,13 @@ export default function PanCornerPage() {
     queryFn: () => panCornerService.getItems(),
     staleTime: 60_000,
   });
+
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: settingsService.get,
+    staleTime: 5 * 60_000,
+  });
+  const restaurantName = (settings?.name as string) || 'Pan Corner';
 
   const activeCategories = useMemo(() => categories.filter((c) => c.isActive), [categories]);
   const selectedCategoryId = activeCategory ?? activeCategories[0]?.id ?? null;
@@ -86,6 +203,15 @@ export default function PanCornerPage() {
   const cartQty = (itemId: string) => cart.find((c) => c.item.id === itemId)?.quantity ?? 0;
   const totalItems = cart.reduce((s, c) => s + c.quantity, 0);
   const subtotal = cart.reduce((sum, c) => sum + (c.item.discountPrice ?? c.item.price) * c.quantity, 0);
+
+  const discountAmount = useMemo(() => {
+    const val = parseFloat(discountValue);
+    if (!val || val <= 0) return 0;
+    if (discountType === 'PERCENTAGE') return Math.min(subtotal * val / 100, subtotal);
+    return Math.min(val, subtotal);
+  }, [discountValue, discountType, subtotal]);
+
+  const displayTotal = subtotal - discountAmount;
 
   const addToCart = (item: PanCornerItem) => {
     if (!item.isAvailable) return;
@@ -164,6 +290,25 @@ export default function PanCornerPage() {
 
   const isItemMutating = createItemMutation.isPending || updateItemMutation.isPending;
 
+  /* ── Delete mutations ── */
+  const deleteCatMutation = useMutation({
+    mutationFn: (id: string) => panCornerService.deleteCategory(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['panCornerCategories'] });
+      toast.success('Category deleted');
+    },
+    onError: (err: Error) => toast.error(err.message || 'Failed to delete category'),
+  });
+
+  const deleteItemMutation = useMutation({
+    mutationFn: (id: string) => panCornerService.deleteItem(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['panCornerItems'] });
+      toast.success('Item deleted');
+    },
+    onError: (err: Error) => toast.error(err.message || 'Failed to delete item'),
+  });
+
   const handleItemSubmit = (data: PanCornerItemData) => {
     if (editingItem) updateItemMutation.mutate({ id: editingItem.id, data });
     else createItemMutation.mutate(data);
@@ -172,16 +317,26 @@ export default function PanCornerPage() {
   /* ── Checkout ── */
   const checkoutMutation = useMutation({
     mutationFn: () =>
-      orderService.createQSROrder({
-        items: cart.map((c) => ({ menuItemId: c.item.id, quantity: c.quantity })),
+      panCornerService.checkout({
+        items: cart.map((c) => ({ panCornerItemId: c.item.id, quantity: c.quantity })),
         customerName: customerName.trim() || undefined,
         customerPhone: customerPhone.trim() || undefined,
-        serviceType: 'takeaway',
-        notes: 'Pan Corner',
+        notes: notes.trim() || undefined,
+        manualDiscount: discountAmount > 0 ? discountAmount : undefined,
+        manualDiscountType: discountAmount > 0 ? 'FLAT' : undefined,
       }),
-    onSuccess: () => {
+    onSuccess: (order) => {
+      if (autoPrint) {
+        const cartSnap = [...cart];
+        const method = selectedPayMethod ?? 'CASH';
+        const discount = discountAmount;
+        const notesSnap = notes.trim();
+        const name = restaurantName;
+        pendingPrintRef.current = () => printPanCornerReceipt(order, cartSnap, method, name, discount, notesSnap);
+      }
       setSettled(true);
       queryClient.invalidateQueries({ queryKey: ['orders'] });
+      toast.success(`PC-${String(order.tokenNumber).padStart(3, '0')} — Settled!`);
     },
     onError: (err: Error) => toast.error(err.message || 'Failed to create bill'),
   });
@@ -193,18 +348,69 @@ export default function PanCornerPage() {
     setShowSettlement(true);
   };
 
-  const handleCloseSettlement = () => {
+  const resetCart = () => {
+    setCart([]);
+    setCustomerName('');
+    setCustomerPhone('');
+    setNotes('');
+    setDiscountValue('');
+    setDiscountType('PERCENTAGE');
+    setSettled(false);
     setShowSettlement(false);
-    if (settled) {
-      setCart([]);
-      setCustomerName('');
-      setCustomerPhone('');
-      setSettled(false);
+  };
+
+  const handleCloseSettlement = () => {
+    if (settled) resetCart();
+    else setShowSettlement(false);
+  };
+
+  /* ── Hold & Recall ── */
+  const handleHold = () => {
+    if (cart.length === 0) return;
+    const ticket: HeldTicket = {
+      id: `pc-held-${Date.now()}`,
+      cart: [...cart],
+      customerName,
+      customerPhone,
+      notes,
+      heldAt: Date.now(),
+    };
+    const updated = [...heldTickets, ticket];
+    setHeldTickets(updated);
+    saveHeld(updated);
+    resetCart();
+    toast.success('Ticket held');
+  };
+
+  const handleRecall = (ticketId: string) => {
+    const ticket = heldTickets.find((t) => t.id === ticketId);
+    if (!ticket) return;
+    if (cart.length > 0) {
+      const current: HeldTicket = { id: `pc-held-${Date.now()}`, cart: [...cart], customerName, customerPhone, notes, heldAt: Date.now() };
+      const updated = [...heldTickets.filter((t) => t.id !== ticketId), current];
+      setHeldTickets(updated);
+      saveHeld(updated);
+    } else {
+      const updated = heldTickets.filter((t) => t.id !== ticketId);
+      setHeldTickets(updated);
+      saveHeld(updated);
     }
+    setCart(ticket.cart);
+    setCustomerName(ticket.customerName);
+    setCustomerPhone(ticket.customerPhone);
+    setNotes(ticket.notes);
+    setShowRecall(false);
+    toast.success('Ticket recalled');
+  };
+
+  const handleDeleteHeld = (ticketId: string) => {
+    const updated = heldTickets.filter((t) => t.id !== ticketId);
+    setHeldTickets(updated);
+    saveHeld(updated);
   };
 
   /* ── Empty state ── */
-  if (activeCategories.length === 0) {
+  if (!catsLoading && activeCategories.length === 0) {
     return (
       <>
         <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center px-4">
@@ -254,6 +460,22 @@ export default function PanCornerPage() {
         <div className="flex-1" />
 
         <div className="flex items-center gap-2">
+          {/* Print toggle */}
+          <button
+            onClick={() => setAutoPrint((v) => !v)}
+            title={autoPrint ? 'Auto-print ON — click to disable' : 'Auto-print OFF — click to enable'}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+              autoPrint
+                ? 'bg-blue-50 border-blue-300 text-blue-700 hover:bg-blue-100'
+                : 'bg-gray-100 border-gray-200 text-gray-400 hover:bg-gray-200'
+            }`}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+            </svg>
+            Print {autoPrint ? 'ON' : 'OFF'}
+          </button>
+
           {/* Search */}
           <div className="relative w-44 shrink-0">
             <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -268,27 +490,58 @@ export default function PanCornerPage() {
             />
           </div>
 
-          {/* + Category */}
+          {/* Recall button */}
           <button
-            onClick={() => { setEditingCat(null); setCatModalOpen(true); }}
-            className="rounded-xl text-sm px-4 py-2 shadow-sm active:scale-[0.97] flex items-center gap-1.5 border border-gray-200 bg-white text-text-primary hover:bg-gray-50 transition-colors"
+            onClick={() => setShowRecall(true)}
+            className="relative rounded-xl text-sm px-4 py-2 shadow-sm active:scale-[0.97] flex items-center gap-2 border border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            Category
+            Recall
+            {heldTickets.length > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">{heldTickets.length}</span>
+            )}
           </button>
 
-          {/* + Item */}
-          <button
-            onClick={() => { setEditingItem(null); setItemModalOpen(true); }}
-            className="btn-primary rounded-xl text-sm px-4 py-2 shadow-sm active:scale-[0.97] flex items-center gap-1.5"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
-            Add Item
-          </button>
+          {/* Menu dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setMenuDropdownOpen((v) => !v)}
+              className="btn-primary rounded-xl text-sm px-4 py-2 shadow-sm active:scale-[0.97] flex items-center gap-1.5"
+            >
+              Menu
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {menuDropdownOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setMenuDropdownOpen(false)} />
+                <div className="absolute right-0 top-full mt-1 w-52 bg-white rounded-xl shadow-lg border border-gray-200 z-20 py-1 overflow-hidden">
+                  <button
+                    onClick={() => { setMenuDropdownOpen(false); setManageModal('categories'); }}
+                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2.5 text-text-primary"
+                  >
+                    <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                    </svg>
+                    Manage Categories
+                  </button>
+                  <button
+                    onClick={() => { setMenuDropdownOpen(false); setManageModal('items'); }}
+                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2.5 text-text-primary"
+                  >
+                    <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    Manage Items
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -300,8 +553,8 @@ export default function PanCornerPage() {
           <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={() => setShowCart(false)} />
         )}
 
-        {/* ── LEFT: Current Ticket ── */}
-        <div className={`fixed inset-y-0 left-0 z-40 w-[300px] md:static md:z-auto xl:w-[340px] flex flex-col bg-white border-r border-gray-200 shrink-0 transform transition-transform duration-200 ${showCart ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
+        {/* ── RIGHT: Current Ticket ── */}
+        <div className={`fixed inset-y-0 right-0 z-40 w-[300px] md:static md:z-auto md:w-[40%] flex flex-col bg-white border-l border-gray-200 shrink-0 transform transition-transform duration-200 order-last ${showCart ? 'translate-x-0' : 'translate-x-full'} md:translate-x-0`}>
           <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
             <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Current Ticket</h2>
             <div className="flex items-center gap-2">
@@ -311,10 +564,7 @@ export default function PanCornerPage() {
                 </svg>
               </button>
               {cart.length > 0 && (
-                <button
-                  onClick={() => setCart([])}
-                  className="text-xs text-red-500 hover:text-red-700 font-medium transition-colors"
-                >
+                <button onClick={() => setCart([])} className="text-xs text-red-500 hover:text-red-700 font-medium transition-colors">
                   Clear All
                 </button>
               )}
@@ -337,56 +587,53 @@ export default function PanCornerPage() {
                 <p className="text-xs text-gray-300 mt-0.5">Tap menu items to add</p>
               </div>
             ) : (
-              <div className="space-y-1.5">
+              <div className="grid grid-cols-3 gap-2">
                 {cart.map((c) => {
                   const price = c.item.discountPrice ?? c.item.price;
                   const lineTotal = price * c.quantity;
                   return (
                     <div
                       key={c.item.id}
-                      className="border rounded-lg px-2.5 py-2 border-gray-200 hover:border-gray-300 transition-colors"
+                      className="border rounded-lg p-2 border-gray-200 hover:border-gray-300 transition-colors flex flex-col gap-1"
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-gray-900 truncate">
-                            {c.item.isAgeRestricted && (
-                              <span className="inline-flex items-center mr-1 px-1 py-0 bg-red-100 text-red-600 rounded text-[10px] font-semibold">18+</span>
-                            )}
-                            {c.item.name}
-                          </p>
-                          <p className="text-xs text-gray-400">₹{price.toFixed(2)}</p>
-                        </div>
+                      <div className="flex items-start justify-between gap-1">
+                        <p className="text-xs font-semibold text-gray-900 leading-tight line-clamp-2 flex-1 min-w-0">
+                          {c.item.isAgeRestricted && (
+                            <span className="inline-flex items-center mr-1 px-1 py-0 bg-red-100 text-red-600 rounded text-[10px] font-semibold">18+</span>
+                          )}
+                          {c.item.name}
+                        </p>
                         <button
                           onClick={() => removeFromCart(c.item.id)}
-                          className="text-red-400 hover:text-red-600 transition-colors shrink-0 mt-0.5"
+                          className="text-red-400 hover:text-red-600 transition-colors shrink-0"
                         >
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                           </svg>
                         </button>
                       </div>
-
-                      <div className="flex items-center justify-between mt-1.5">
+                      <p className="text-[10px] text-gray-400">₹{price.toFixed(2)}</p>
+                      <div className="flex items-center justify-between mt-auto pt-1">
                         <div className="flex items-center gap-0.5">
                           <button
                             onClick={() => updateQty(c.item.id, -1)}
-                            className="w-6 h-6 rounded-md bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 transition-colors active:scale-90"
+                            className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 transition-colors active:scale-90"
                           >
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4" />
                             </svg>
                           </button>
-                          <span className="w-7 text-center text-xs font-bold text-gray-900 tabular-nums">{c.quantity}</span>
+                          <span className="w-5 text-center text-xs font-bold text-gray-900 tabular-nums">{c.quantity}</span>
                           <button
                             onClick={() => updateQty(c.item.id, 1)}
-                            className="w-6 h-6 rounded-md bg-primary/10 hover:bg-primary/20 flex items-center justify-center text-primary transition-colors active:scale-90"
+                            className="w-5 h-5 rounded bg-primary/10 hover:bg-primary/20 flex items-center justify-center text-primary transition-colors active:scale-90"
                           >
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                             </svg>
                           </button>
                         </div>
-                        <span className="text-sm font-bold text-gray-900 tabular-nums">₹{lineTotal.toFixed(2)}</span>
+                        <span className="text-xs font-bold text-gray-900 tabular-nums">₹{lineTotal.toFixed(2)}</span>
                       </div>
                     </div>
                   );
@@ -395,36 +642,84 @@ export default function PanCornerPage() {
             )}
           </div>
 
+          {/* Notes */}
+          {cart.length > 0 && (
+            <div className="px-3 py-2 border-t border-gray-100">
+              <textarea
+                rows={2}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs resize-none focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                placeholder="Order notes (optional)…"
+              />
+            </div>
+          )}
+
           {/* Totals + Settle */}
           <div className="px-4 py-3 border-t-2 border-gray-200 bg-gray-50/50 shrink-0 space-y-1.5">
             <div className="flex justify-between text-sm text-gray-600">
               <span>Subtotal</span>
               <span className="font-medium text-gray-900 tabular-nums">₹{subtotal.toFixed(2)}</span>
             </div>
+
+            {/* Discount */}
+            <div className="flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5 text-orange-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z" /></svg>
+              <select
+                value={discountType}
+                onChange={(e) => setDiscountType(e.target.value as 'PERCENTAGE' | 'FLAT')}
+                className="text-xs border border-gray-200 rounded-md px-1.5 py-1 bg-white focus:outline-none focus:border-primary"
+              >
+                <option value="PERCENTAGE">%</option>
+                <option value="FLAT">Flat</option>
+              </select>
+              <input
+                type="number" min="0" step="0.01" value={discountValue}
+                onChange={(e) => setDiscountValue(e.target.value)}
+                placeholder="0"
+                className="w-16 text-xs border border-gray-200 rounded-md px-2 py-1 text-center bg-white focus:outline-none focus:border-primary"
+              />
+              {discountAmount > 0 && (
+                <span className="ml-auto text-xs font-medium text-orange-600 tabular-nums">-₹{discountAmount.toFixed(2)}</span>
+              )}
+            </div>
+
             <div className="flex justify-between text-base font-bold text-gray-900 pt-1.5 border-t border-gray-200">
               <span>Total</span>
-              <span className="tabular-nums">₹{subtotal.toFixed(2)}</span>
+              <span className="tabular-nums">₹{displayTotal.toFixed(2)}</span>
             </div>
-            <button
-              onClick={handleOpenSettle}
-              disabled={cart.length === 0}
-              className="w-full mt-2 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] shadow-sm flex items-center justify-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-              Settle Payment • ₹{subtotal.toFixed(2)}
-            </button>
+            <div className="flex gap-2 mt-2">
+              <button
+                onClick={handleHold}
+                disabled={cart.length === 0}
+                className="flex-1 py-3 border-2 border-amber-400 text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-xl font-semibold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] flex items-center justify-center gap-1.5"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Hold
+              </button>
+              <button
+                onClick={handleOpenSettle}
+                disabled={cart.length === 0}
+                className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] shadow-sm flex items-center justify-center gap-1.5"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                Settle • ₹{displayTotal.toFixed(2)}
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* ── RIGHT: Menu grid ── */}
+        {/* ── LEFT: Menu grid ── */}
         <div className="flex-1 flex flex-col overflow-hidden">
 
           {/* Mobile cart toggle FAB */}
           <button
             onClick={() => setShowCart(true)}
-            className="md:hidden fixed bottom-6 right-6 z-30 w-14 h-14 rounded-full bg-primary text-white shadow-lg flex items-center justify-center active:scale-95 transition-transform"
+            className="md:hidden fixed bottom-6 left-6 z-30 w-14 h-14 rounded-full bg-primary text-white shadow-lg flex items-center justify-center active:scale-95 transition-transform"
           >
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z" />
@@ -526,27 +821,10 @@ export default function PanCornerPage() {
                         </div>
                       </button>
 
-                      <button
-                        onClick={() => { setEditingItem(item); setItemModalOpen(true); }}
-                        className="absolute bottom-2 left-2 opacity-0 group-hover:opacity-100 px-2 py-0.5 bg-black/60 hover:bg-black/80 text-white text-[10px] rounded transition-opacity"
-                      >
-                        Edit
-                      </button>
                     </div>
                   );
                 })}
 
-                {!menuSearch.trim() && (
-                  <button
-                    onClick={() => { setEditingItem(null); setItemModalOpen(true); }}
-                    className="h-full min-h-[8rem] rounded-xl border-2 border-dashed border-gray-200 hover:border-primary/50 bg-gray-50 flex flex-col items-center justify-center gap-1 text-gray-400 hover:text-primary transition-colors"
-                  >
-                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                    </svg>
-                    <span className="text-xs font-medium">Add Item</span>
-                  </button>
-                )}
               </div>
             )}
           </div>
@@ -573,31 +851,29 @@ export default function PanCornerPage() {
               {cart.map((c) => (
                 <div key={c.item.id} className="py-1 text-sm flex justify-between">
                   <span className="text-text-secondary">
-                    {c.item.isAgeRestricted && (
-                      <span className="inline-flex items-center mr-1 px-1 py-0 bg-red-100 text-red-600 rounded text-[10px] font-semibold">18+</span>
-                    )}
+                    {c.item.isAgeRestricted && <span className="inline-flex items-center mr-1 px-1 py-0 bg-red-100 text-red-600 rounded text-[10px] font-semibold">18+</span>}
                     {c.quantity}× {c.item.name}
                   </span>
                   <span className="text-text-primary">₹{((c.item.discountPrice ?? c.item.price) * c.quantity).toFixed(2)}</span>
                 </div>
               ))}
               <div className="border-t border-border-primary my-2" />
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-sm text-orange-600 mb-1">
+                  <span>Discount</span><span>-₹{discountAmount.toFixed(2)}</span>
+                </div>
+              )}
               <div className="flex justify-between font-bold text-sm">
-                <span>Total</span>
-                <span>₹{subtotal.toFixed(2)}</span>
+                <span>Total</span><span>₹{displayTotal.toFixed(2)}</span>
               </div>
               <div className="border-t border-border-primary mt-3 pt-3">
                 <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-1">Paid via</p>
-                <p className={`text-sm font-semibold ${PAYMENT_METHODS.find((m) => m.value === selectedPayMethod)?.color}`}>
-                  {selectedPayMethod}
-                </p>
+                <p className={`text-sm font-semibold ${PAYMENT_METHODS.find((m) => m.value === selectedPayMethod)?.color}`}>{selectedPayMethod ?? 'CASH'}</p>
               </div>
             </div>
 
-            <button
-              onClick={handleCloseSettlement}
-              className="w-full max-w-sm mx-auto px-5 py-3 bg-primary hover:bg-primary/90 text-white rounded-xl font-semibold transition-colors text-sm block"
-            >
+            <button onClick={handleCloseSettlement}
+              className="w-full max-w-sm mx-auto px-5 py-3 bg-primary hover:bg-primary/90 text-white rounded-xl font-semibold transition-colors text-sm block">
               Done — New Order
             </button>
           </div>
@@ -610,7 +886,7 @@ export default function PanCornerPage() {
                 <p className="text-sm text-text-secondary">Pan Corner</p>
               </div>
               <div className="text-right">
-                <p className="text-2xl font-bold text-text-primary">₹{subtotal.toFixed(2)}</p>
+                <p className="text-2xl font-bold text-text-primary">₹{displayTotal.toFixed(2)}</p>
                 <p className="text-xs text-text-muted">{totalItems} item{totalItems !== 1 ? 's' : ''}</p>
               </div>
             </div>
@@ -618,45 +894,28 @@ export default function PanCornerPage() {
             {/* Customer details */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1.5">
-                  Customer Name
-                </label>
-                <input
-                  type="text"
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="Optional"
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                />
+                <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1.5">Customer Name</label>
+                <input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Optional"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1.5">
-                  Phone Number
-                </label>
-                <input
-                  type="tel"
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                  placeholder="Optional"
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                />
+                <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1.5">Phone Number</label>
+                <input type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="Optional"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
               </div>
             </div>
 
-            {/* Payment method */}
-            <div>
-              <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Payment Method</p>
-              <div className="grid grid-cols-3 gap-3">
+            {/* Pay via — QSR style */}
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Pay via</p>
+              <div className="grid grid-cols-3 gap-2.5">
                 {PAYMENT_METHODS.map((m) => (
-                  <button
-                    key={m.value}
-                    onClick={() => setSelectedPayMethod(m.value)}
-                    className={`flex flex-col items-center justify-center gap-2 py-4 rounded-xl border-2 transition-all ${
+                  <button key={m.value} onClick={() => setSelectedPayMethod(m.value)}
+                    className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
                       selectedPayMethod === m.value
                         ? `${m.bg} ${m.color} border-current shadow-sm`
-                        : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:bg-gray-50'
-                    }`}
-                  >
+                        : 'border-gray-200 text-gray-500 hover:border-primary hover:bg-primary/5'
+                    }`}>
                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d={m.icon} />
                     </svg>
@@ -664,44 +923,52 @@ export default function PanCornerPage() {
                   </button>
                 ))}
               </div>
-            </div>
 
-            {/* Order summary */}
-            <div className="bg-gray-50 rounded-xl p-3 space-y-1 max-h-40 overflow-y-auto">
-              {cart.map((c) => (
-                <div key={c.item.id} className="flex justify-between text-sm">
-                  <span className="text-text-secondary truncate">
-                    {c.quantity}× {c.item.name}
-                  </span>
-                  <span className="text-text-primary shrink-0 ml-2">
-                    ₹{((c.item.discountPrice ?? c.item.price) * c.quantity).toFixed(2)}
-                  </span>
+              {/* Bill summary + settle — appears after method selected */}
+              {selectedPayMethod && (
+                <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
+                  <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Bill Summary</p>
+                  <div className="space-y-1">
+                    {cart.map((c) => (
+                      <div key={c.item.id} className="flex justify-between text-sm">
+                        <span className="text-text-secondary truncate">{c.quantity}× {c.item.name}</span>
+                        <span className="text-text-primary shrink-0 ml-2">₹{((c.item.discountPrice ?? c.item.price) * c.quantity).toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="border-t border-gray-200 pt-2 space-y-1">
+                    <div className="flex justify-between text-sm text-text-secondary">
+                      <span>Subtotal</span><span>₹{subtotal.toFixed(2)}</span>
+                    </div>
+                    {discountAmount > 0 && (
+                      <div className="flex justify-between text-sm text-orange-600">
+                        <span>Discount</span><span>-₹{discountAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-bold text-sm pt-1 border-t border-gray-200 mt-1">
+                      <span>Total</span><span>₹{displayTotal.toFixed(2)}</span>
+                    </div>
+                  </div>
+                  <div className="flex justify-between text-sm pt-1">
+                    <span className={PAYMENT_METHODS.find((m) => m.value === selectedPayMethod)?.color}>
+                      Paying via {selectedPayMethod}
+                    </span>
+                    <span className="font-semibold text-text-primary">₹{displayTotal.toFixed(2)}</span>
+                  </div>
+                  <button
+                    onClick={() => checkoutMutation.mutate()}
+                    disabled={checkoutMutation.isPending}
+                    className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm transition-all disabled:opacity-60 active:scale-[0.98] flex items-center justify-center gap-2"
+                  >
+                    {checkoutMutation.isPending ? (
+                      <><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>Settling…</>
+                    ) : (
+                      <>Settle Bill — ₹{displayTotal.toFixed(2)}</>
+                    )}
+                  </button>
                 </div>
-              ))}
-            </div>
-
-            <button
-              onClick={() => checkoutMutation.mutate()}
-              disabled={checkoutMutation.isPending}
-              className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold text-sm transition-all disabled:opacity-60 active:scale-[0.98] shadow-sm flex items-center justify-center gap-2"
-            >
-              {checkoutMutation.isPending ? (
-                <>
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Processing…
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                  Confirm & Settle • ₹{subtotal.toFixed(2)}
-                </>
               )}
-            </button>
+            </div>
           </div>
         )}
       </Modal>
@@ -733,6 +1000,120 @@ export default function PanCornerPage() {
           onSubmit={handleItemSubmit}
           onCancel={() => { setItemModalOpen(false); setEditingItem(null); }}
         />
+      </Modal>
+
+      {/* Recall Modal */}
+      <Modal open={showRecall} title="Held Tickets" onClose={() => setShowRecall(false)} maxWidth="max-w-2xl">
+        {heldTickets.length === 0 ? (
+          <p className="text-sm text-text-muted text-center py-8">No held tickets</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[75vh] overflow-y-auto">
+            {heldTickets.map((ticket) => {
+              const ticketTotal = ticket.cart.reduce((s, c) => s + (c.item.discountPrice ?? c.item.price) * c.quantity, 0);
+              return (
+                <div key={ticket.id} className="border border-gray-200 rounded-xl p-4 hover:border-amber-300 hover:bg-amber-50/30 transition-all">
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <p className="font-semibold text-gray-900 text-sm">{ticket.customerName || 'Guest'}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {ticket.cart.length} item{ticket.cart.length !== 1 ? 's' : ''} · ₹{ticketTotal.toFixed(2)} · {new Date(ticket.heldAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                    <button onClick={() => handleDeleteHeld(ticket.id)} className="text-gray-400 hover:text-red-500 p-1 transition-colors">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="text-xs text-gray-500 space-y-0.5 mb-3">
+                    {ticket.cart.slice(0, 4).map((c, i) => (
+                      <div key={i}>{c.quantity}× {c.item.name}</div>
+                    ))}
+                    {ticket.cart.length > 4 && <div className="text-gray-400">+{ticket.cart.length - 4} more…</div>}
+                  </div>
+                  <button onClick={() => handleRecall(ticket.id)}
+                    className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-semibold text-sm transition-colors">
+                    Recall Ticket
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Modal>
+
+      {/* Manage Categories modal */}
+      <Modal
+        open={manageModal === 'categories'}
+        title="Manage Categories"
+        onClose={() => setManageModal(null)}
+      >
+        <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+          {categories.length === 0 ? (
+            <p className="text-sm text-text-muted text-center py-8">No categories yet</p>
+          ) : (
+            categories.map((cat) => (
+              <div key={cat.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-white">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-text-primary truncate">{cat.name}</p>
+                  <p className="text-xs text-text-muted">{cat._count?.items ?? 0} items · {cat.isActive ? 'Active' : 'Inactive'}</p>
+                </div>
+                <button
+                  onClick={() => { setManageModal(null); setEditingCat(cat); setCatModalOpen(true); }}
+                  className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors shrink-0"
+                >Edit</button>
+                <button
+                  onClick={() => deleteCatMutation.mutate(cat.id)}
+                  disabled={deleteCatMutation.isPending}
+                  className="text-xs px-2.5 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 shrink-0"
+                >Delete</button>
+              </div>
+            ))
+          )}
+          <div className="pt-2">
+            <button
+              onClick={() => { setManageModal(null); setEditingCat(null); setCatModalOpen(true); }}
+              className="btn-primary w-full text-sm"
+            >+ Add Category</button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Manage Items modal */}
+      <Modal
+        open={manageModal === 'items'}
+        title="Manage Items"
+        onClose={() => setManageModal(null)}
+      >
+        <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+          {allItems.length === 0 ? (
+            <p className="text-sm text-text-muted text-center py-8">No items yet</p>
+          ) : (
+            allItems.map((item) => (
+              <div key={item.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-white">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-text-primary truncate">{item.name}</p>
+                  <p className="text-xs text-text-muted">₹{item.price.toFixed(2)} · {categories.find((c) => c.id === item.panCornerCategoryId)?.name ?? '—'}</p>
+                </div>
+                <button
+                  onClick={() => { setManageModal(null); setEditingItem(item); setItemModalOpen(true); }}
+                  className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors shrink-0"
+                >Edit</button>
+                <button
+                  onClick={() => deleteItemMutation.mutate(item.id)}
+                  disabled={deleteItemMutation.isPending}
+                  className="text-xs px-2.5 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 shrink-0"
+                >Delete</button>
+              </div>
+            ))
+          )}
+          <div className="pt-2">
+            <button
+              onClick={() => { setManageModal(null); setEditingItem(null); setItemModalOpen(true); }}
+              className="btn-primary w-full text-sm"
+            >+ Add Item</button>
+          </div>
+        </div>
       </Modal>
     </div>
   );
