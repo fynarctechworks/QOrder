@@ -469,8 +469,6 @@ export default function OrdersPage() {
 
   const gridData = view === 'completed' ? completedGrid : cancelledGrid;
 
-  const pending = counts['pending'] || 0;
-
   /* ── Download CSV ── */
   const handleDownloadCsv = useCallback(async (preset: string) => {
     setShowExportMenu(false);
