@@ -204,7 +204,6 @@ export default function DiscountsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-text-primary">Discounts & Coupons</h1>
-          <p className="text-sm text-text-muted mt-1">Manage your offers, discounts, and coupon codes</p>
         </div>
         <button onClick={() => tab === 'discounts' ? setShowDiscountModal(true) : setShowCouponModal(true)} className="btn-primary flex items-center gap-2 self-start sm:self-auto">
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>

@@ -454,7 +454,6 @@ export default function PanCornerPage() {
       <div className="bg-white border-b border-gray-200 px-3 md:px-6 py-2.5 flex items-center gap-3 shrink-0">
         <div className="shrink-0">
           <h1 className="text-lg md:text-xl font-bold text-text-primary tracking-tight">Pan Corner</h1>
-          <p className="text-xs text-text-muted hidden sm:block leading-none mt-0.5">Counter billing — add &amp; settle</p>
         </div>
 
         <div className="flex-1" />

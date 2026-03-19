@@ -380,9 +380,6 @@ const revenueTrend = useMemo(() => {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-text-primary tracking-tight">Analytics</h1>
-          <p className="text-sm text-text-muted mt-0.5">
-            Track your restaurant performance and trends
-          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">

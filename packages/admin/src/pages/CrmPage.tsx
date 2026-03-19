@@ -83,7 +83,6 @@ export default function CrmPage() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-text-primary tracking-tight">Customer CRM</h1>
-        <p className="text-sm text-text-muted mt-0.5">Manage customer profiles, track behavior, and identify your best customers</p>
       </div>
 
       {/* Insight Cards */}

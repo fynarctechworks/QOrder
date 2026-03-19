@@ -412,9 +412,6 @@ export default function MenuPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-text-primary tracking-tight">Menu Management</h1>
-          <p className="text-sm text-text-muted mt-0.5">
-            Manage your menu items and categories
-          </p>
         </div>
         <div className="flex items-center gap-2.5">
           <button

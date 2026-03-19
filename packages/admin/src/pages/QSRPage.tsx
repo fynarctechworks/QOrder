@@ -845,7 +845,6 @@ export default function QSRPage() {
         {/* Title */}
         <div className="shrink-0">
           <h1 className="text-lg md:text-xl font-bold text-text-primary tracking-tight">QSR</h1>
-          <p className="text-xs text-text-muted hidden sm:block leading-none mt-0.5">Quick service — counter order &amp; settle</p>
         </div>
 
         {/* Spacer */}

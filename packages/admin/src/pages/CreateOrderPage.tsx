@@ -395,7 +395,6 @@ export default function CreateOrderPage() {
       <div className="bg-white border-b border-gray-200 px-3 md:px-6 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3 shrink-0">
         <div>
           <h1 className="text-lg md:text-xl font-bold text-text-primary tracking-tight">Create Order</h1>
-          <p className="text-xs md:text-sm text-text-muted hidden sm:block">Build and place orders for walk-in or dine-in customers</p>
         </div>
 
         <div className="flex items-center gap-2 md:gap-3 flex-wrap">

@@ -41,7 +41,6 @@ export default function FeedbackPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-text-primary">Customer Feedback</h1>
-        <p className="text-sm text-text-muted mt-1">Monitor ratings and reviews from your customers</p>
       </div>
 
       {/* Stats Overview */}

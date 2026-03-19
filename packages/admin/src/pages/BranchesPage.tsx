@@ -80,9 +80,6 @@ export default function BranchesPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-text-primary">Branches</h1>
-          <p className="text-sm text-text-muted mt-1">
-            Manage your restaurant branches and locations
-          </p>
         </div>
         <button
           onClick={() => setIsCreateOpen(true)}
