@@ -885,9 +885,6 @@ export default function SettingsPage() {
       {/* ── Header ──────────────────────────────────────────── */}
       <div>
         <h1 className="text-2xl font-bold text-text-primary tracking-tight">Settings</h1>
-        <p className="text-sm text-text-muted mt-0.5">
-          Configure your restaurant preferences
-        </p>
       </div>
 
       {/* ── Tab Navigation ──────────────────────────────────── */}

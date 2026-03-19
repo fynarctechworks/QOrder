@@ -60,9 +60,6 @@ export default function StaffManagementPage() {
         <h1 className="text-2xl font-bold text-text-primary tracking-tight">
           {isAdmin ? 'Staff Management' : 'Leave Management'}
         </h1>
-        <p className="text-sm text-text-muted mt-0.5">
-          {isAdmin ? 'Manage shifts, attendance, leave, and payroll' : 'View your attendance and manage leave requests'}
-        </p>
       </div>
 
       {/* Tab Bar — only show if more than 1 tab */}
