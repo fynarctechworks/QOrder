@@ -7,6 +7,8 @@ import { useSocket } from '../context/SocketContext';
 import { crmService } from '../services/crmService';
 import type { Customer } from '../services/crmService';
 import { reportService } from '../services/reportService';
+import { creditService } from '../services/creditService';
+import type { CreditAccount } from '../services/creditService';
 import { useCurrency } from '../hooks/useCurrency';
 import { timeAgo } from '../utils/timeAgo';
 import DietBadge from '../components/DietBadge';
@@ -28,7 +30,7 @@ interface CartItem {
   selectedModifiers: SelectedModifier[];
 }
 
-type PaymentMethod = 'CASH' | 'CARD' | 'UPI';
+type PaymentMethod = 'CASH' | 'CARD' | 'UPI' | 'CREDIT';
 
 interface SplitEntry {
   id: number;
@@ -49,6 +51,7 @@ const PAYMENT_METHODS: Array<{ value: PaymentMethod; label: string; icon: string
   { value: 'CASH', label: 'Cash', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', icon: 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z' },
   { value: 'CARD', label: 'Card', color: 'text-blue-700', bg: 'bg-blue-50 border-blue-200', icon: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' },
   { value: 'UPI', label: 'UPI', color: 'text-violet-700', bg: 'bg-violet-50 border-violet-200', icon: 'M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z' },
+  { value: 'CREDIT', label: 'Credit', color: 'text-orange-700', bg: 'bg-orange-50 border-orange-200', icon: 'M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z' },
 ];
 
 const METHOD_MAP = Object.fromEntries(PAYMENT_METHODS.map((m) => [m.value, m]));
@@ -226,6 +229,24 @@ export default function QSRPage() {
   const [completedOrder, setCompletedOrder] = useState<Order | null>(null);
   const settledRef = useRef(false);
 
+  // Pay Later / Collect payment state
+  const [collectingOrder, setCollectingOrder] = useState<Order | null>(null);
+  const [collectMethod, setCollectMethod] = useState<PaymentMethod>('CASH');
+  const [collectCreditAccount, setCollectCreditAccount] = useState<CreditAccount | null>(null);
+  const [collectCreditSearch, setCollectCreditSearch] = useState('');
+  const [collectCreditResults, setCollectCreditResults] = useState<CreditAccount[]>([]);
+  const [showCollectCreditResults, setShowCollectCreditResults] = useState(false);
+  const [collecting, setCollecting] = useState(false);
+  const isPayLaterRef = useRef(false);
+
+  // Credit account state
+  const [selectedCreditAccount, setSelectedCreditAccount] = useState<CreditAccount | null>(null);
+  const [creditSearch, setCreditSearch] = useState('');
+  const [creditSearchResults, setCreditSearchResults] = useState<CreditAccount[]>([]);
+  const [showCreditResults, setShowCreditResults] = useState(false);
+  const creditSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingCreditRef = useRef<{ accountId: string; amount: number } | null>(null);
+
   // Table selection state
   const [selectedTable, setSelectedTable] = useState('');
 
@@ -252,6 +273,7 @@ export default function QSRPage() {
   // QSR Order Board state
   const [showOrderBoard, setShowOrderBoard] = useState(false);
   const [boardSearch, setBoardSearch] = useState('');
+  const [showUnpaidPanel, setShowUnpaidPanel] = useState(false);
 
   /* ── Fetch orders for the QSR board ── */
   const { data: qsrOrdersData, isLoading: qsrOrdersLoading, refetch: refetchQsrOrders } = useQuery({
@@ -308,7 +330,12 @@ export default function QSRPage() {
       const totalItems = o.items.length;
       const servedItems = o.items.filter(i => !!i.preparedAt).length;
       if (servedItems === totalItems && totalItems > 0) {
-        completed.push(o);
+        // Unpaid orders stay in Served until payment is collected
+        if (o.isPaid === false) {
+          served.push(o);
+        } else {
+          completed.push(o);
+        }
       } else if (servedItems > 0) {
         preparing.push(o);
         served.push(o);
@@ -333,6 +360,19 @@ export default function QSRPage() {
     boardColumns.completed.reduce((s, o) => s + o.total, 0),
     [boardColumns]
   );
+
+  /* ── Today's unpaid QSR orders ── */
+  const unpaidOrders = useMemo(() => {
+    const all = qsrOrdersData?.data ?? [];
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    return all.filter(o =>
+      (o.orderType === 'QSR' || o.orderType === 'QSR_TAKEAWAY') &&
+      o.isPaid === false &&
+      o.status !== 'cancelled' &&
+      new Date(o.createdAt) >= todayStart
+    ).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  }, [qsrOrdersData]);
 
   /* ── Per-item serve mutation ── */
   const markItemServedMut = useMutation({
@@ -359,7 +399,13 @@ export default function QSRPage() {
     },
     onSuccess: (result) => {
       if (result.allItemsReady) {
-        // Auto-complete the order
+        // Only auto-complete if the order is paid — unpaid orders must collect payment first
+        const cached = qc.getQueryData<{ data: Order[] }>(['qsr-board-orders']);
+        const order = cached?.data.find(o => o.id === result.orderId);
+        if (order?.isPaid === false) {
+          toast.success('All items served — collect payment to complete!');
+          return;
+        }
         boardAdvanceMut.mutate({ id: result.orderId, status: 'completed' as OrderStatus });
         toast.success('All items served — order completed!');
       }
@@ -427,7 +473,7 @@ export default function QSRPage() {
   const createOrderMut = useMutation({
     mutationFn: (data: Parameters<typeof orderService.createQSROrder>[0]) =>
       orderService.createQSROrder(data),
-    onSuccess: (order) => {
+    onSuccess: async (order) => {
       qc.invalidateQueries({ queryKey: ['orders'] });
       // Optimistically insert the new order into the board cache immediately
       qc.setQueryData<{ data: Order[]; pagination: unknown }>(['qsr-board-orders'], (prev) => {
@@ -437,11 +483,28 @@ export default function QSRPage() {
         return { ...prev, data: [order, ...prev.data] };
       });
       qc.invalidateQueries({ queryKey: ['qsr-board-orders'] });
+      // Charge to credit account if applicable
+      if (pendingCreditRef.current) {
+        try {
+          await creditService.chargeToAccount(pendingCreditRef.current.accountId, {
+            amount: pendingCreditRef.current.amount,
+            orderId: order.id,
+            notes: `QSR order #${order.orderNumber}`,
+          });
+        } catch {
+          toast.error('Order placed but failed to charge credit account');
+        }
+        pendingCreditRef.current = null;
+      }
       settledRef.current = true;
       setCompletedOrder(order);
       setSettled(true);
       setSettling(false);
-      toast.success(`Token #${order.tokenNumber ? String(order.tokenNumber).padStart(3, '0') : order.orderNumber} — Order placed!`);
+      const tokenLabel = order.tokenNumber ? String(order.tokenNumber).padStart(3, '0') : order.orderNumber;
+      toast.success(isPayLaterRef.current
+        ? `Token #${tokenLabel} — Order placed (payment pending)`
+        : `Token #${tokenLabel} — Order placed!`);
+      isPayLaterRef.current = false;
       // Auto-print customer token + station KOTs
       const stationMap = buildItemStationMap();
       const orderLabel = selectedTable === 'takeaway' ? 'Takeaway' : selectedTable ? (tables.find(t => t.id === selectedTable)?.name || `Table ${tables.find(t => t.id === selectedTable)?.number}`) : 'Counter';
@@ -473,6 +536,12 @@ export default function QSRPage() {
     setDiscountValue('');
     setWhatsappStatus('idle');
     setSelectedTable('');
+    setSelectedCreditAccount(null);
+    setCreditSearch('');
+    setCreditSearchResults([]);
+    setShowCreditResults(false);
+    pendingCreditRef.current = null;
+    isPayLaterRef.current = false;
     settledRef.current = false;
   };
 
@@ -766,6 +835,17 @@ export default function QSRPage() {
 
   const handleSplitSettle = () => {
     if (settledRef.current || !splitsReady) return;
+    const creditSplits = splits.filter(s => s.method === 'CREDIT');
+    if (creditSplits.length > 0) {
+      if (!selectedCreditAccount) {
+        toast.error('Please select a credit account for the credit payment');
+        return;
+      }
+      pendingCreditRef.current = {
+        accountId: selectedCreditAccount.id,
+        amount: creditSplits.reduce((s, c) => s + c.amount, 0),
+      };
+    }
     setSettling(true);
     createOrderMut.mutate({
       items: cart.map(c => ({
@@ -794,10 +874,98 @@ export default function QSRPage() {
 
   const handleQuickPay = (method: PaymentMethod) => {
     setSelectedQuickMethod(method);
+    if (method !== 'CREDIT') {
+      setSelectedCreditAccount(null);
+      setCreditSearch('');
+      setCreditSearchResults([]);
+    }
+  };
+
+  const handlePayLater = () => {
+    if (settledRef.current) return;
+    isPayLaterRef.current = true;
+    setSettling(true);
+    createOrderMut.mutate({
+      items: cart.map(c => ({
+        menuItemId: c.menuItem.id,
+        quantity: c.quantity,
+        notes: c.notes,
+        modifiers: c.selectedModifiers.length > 0
+          ? c.selectedModifiers.map(m => ({ modifierId: m.modifierId }))
+          : undefined,
+      })),
+      tableId: selectedTable && selectedTable !== 'takeaway' ? selectedTable : undefined,
+      customerName: customerName.trim() || undefined,
+      customerPhone: customerPhone.trim() || undefined,
+      notes: notes.trim() || undefined,
+      serviceType: selectedTable === 'takeaway' ? 'takeaway' : selectedTable ? 'table' : 'counter',
+      isPaid: false,
+      ...(discountAmount > 0 ? { manualDiscount: discountNum, manualDiscountType: discountType } : {}),
+    });
+  };
+
+  const handleCollectPayment = async () => {
+    if (!collectingOrder || collecting) return;
+    if (collectMethod === 'CREDIT' && !collectCreditAccount) {
+      toast.error('Please select a credit account');
+      return;
+    }
+    setCollecting(true);
+    try {
+      await orderService.settleOrder(collectingOrder.id);
+      if (collectMethod === 'CREDIT' && collectCreditAccount) {
+        await creditService.chargeToAccount(collectCreditAccount.id, {
+          amount: collectingOrder.total,
+          orderId: collectingOrder.id,
+          notes: `QSR order #${collectingOrder.orderNumber}`,
+        });
+      }
+      // If all items were already served, move order to completed now that it's paid
+      const allServed = collectingOrder.items.length > 0 &&
+        collectingOrder.items.every(i => !!i.preparedAt);
+      if (allServed) {
+        await orderService.updateStatus(collectingOrder.id, 'completed');
+      }
+      qc.invalidateQueries({ queryKey: ['qsr-board-orders'] });
+      toast.success(`Payment collected for Token #${collectingOrder.tokenNumber ? String(collectingOrder.tokenNumber).padStart(3, '0') : collectingOrder.orderNumber}`);
+      setCollectingOrder(null);
+      setCollectMethod('CASH');
+      setCollectCreditAccount(null);
+      setCollectCreditSearch('');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to collect payment');
+    } finally {
+      setCollecting(false);
+    }
+  };
+
+  const handleCreditSearch = (val: string) => {
+    setCreditSearch(val);
+    setSelectedCreditAccount(null);
+    if (creditSearchTimer.current) clearTimeout(creditSearchTimer.current);
+    if (val.trim().length >= 1) {
+      creditSearchTimer.current = setTimeout(async () => {
+        try {
+          const results = await creditService.getAccounts({ search: val.trim(), active: true });
+          setCreditSearchResults(results);
+          setShowCreditResults(true);
+        } catch { setShowCreditResults(false); }
+      }, 300);
+    } else {
+      setCreditSearchResults([]);
+      setShowCreditResults(false);
+    }
   };
 
   const handleQuickSettle = () => {
     if (settledRef.current || !selectedQuickMethod) return;
+    if (selectedQuickMethod === 'CREDIT' && !selectedCreditAccount) {
+      toast.error('Please select a credit account');
+      return;
+    }
+    if (selectedQuickMethod === 'CREDIT' && selectedCreditAccount) {
+      pendingCreditRef.current = { accountId: selectedCreditAccount.id, amount: total };
+    }
     setSettling(true);
     createOrderMut.mutate({
       items: cart.map(c => ({
@@ -842,11 +1010,6 @@ export default function QSRPage() {
       )}
       {/* ═══ Top bar ═══ */}
       <div className="bg-white border-b border-gray-200 px-3 md:px-6 py-2.5 flex items-center gap-3 shrink-0">
-        {/* Title */}
-        <div className="shrink-0">
-          <h1 className="text-lg md:text-xl font-bold text-text-primary tracking-tight">QSR</h1>
-        </div>
-
         {/* Spacer */}
         <div className="flex-1" />
 
@@ -938,6 +1101,20 @@ export default function QSRPage() {
           </button>
           </>
           )}
+          <button
+            onClick={() => { setShowUnpaidPanel(true); refetchQsrOrders(); }}
+            className="relative rounded-xl text-sm px-4 py-2 shadow-sm active:scale-[0.97] flex items-center gap-2 border border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            Collect Payment
+            {unpaidOrders.length > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">
+                {unpaidOrders.length}
+              </span>
+            )}
+          </button>
           <button
             onClick={() => { setShowOrderBoard(!showOrderBoard); if (!showOrderBoard) refetchQsrOrders(); }}
             className={`relative rounded-xl text-sm px-4 py-2 shadow-sm active:scale-[0.97] flex items-center gap-2 transition-colors ${
@@ -1059,6 +1236,7 @@ export default function QSRPage() {
                             order={order}
                             formatCurrency={formatCurrency}
                             mode="served"
+                            onCollectPayment={setCollectingOrder}
                           />
                         ))}
                       </AnimatePresence>
@@ -1086,6 +1264,7 @@ export default function QSRPage() {
                             order={order}
                             formatCurrency={formatCurrency}
                             mode="completed"
+                            onCollectPayment={setCollectingOrder}
                           />
                         ))}
                       </AnimatePresence>
@@ -1694,6 +1873,7 @@ export default function QSRPage() {
             {!showSplitMode && (
             <div className="space-y-3">
               <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Pay via</p>
+
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                 {PAYMENT_METHODS.map((method) => (
                   <button
@@ -1711,10 +1891,89 @@ export default function QSRPage() {
                     <span className={`text-sm font-semibold ${selectedQuickMethod === method.value ? method.color : 'text-text-primary'}`}>{method.label}</span>
                   </button>
                 ))}
+                <button
+                  onClick={() => { setSelectedQuickMethod('UNPAID' as PaymentMethod); setSelectedCreditAccount(null); setCreditSearch(''); }}
+                  className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all active:scale-95 ${
+                    selectedQuickMethod === ('UNPAID' as PaymentMethod)
+                      ? 'bg-amber-50 border-amber-400 text-amber-700 shadow-sm'
+                      : 'border-border-primary bg-white hover:border-amber-300 hover:bg-amber-50/50'
+                  }`}
+                >
+                  <svg className={`w-6 h-6 ${selectedQuickMethod === ('UNPAID' as PaymentMethod) ? 'text-amber-600' : 'text-text-secondary'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className={`text-sm font-semibold ${selectedQuickMethod === ('UNPAID' as PaymentMethod) ? 'text-amber-700' : 'text-text-primary'}`}>Unpaid</span>
+                </button>
               </div>
 
+              {/* Credit account selector */}
+              {selectedQuickMethod === 'CREDIT' && (
+                <div className="relative">
+                  <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-1.5">Credit Account</label>
+                  {selectedCreditAccount ? (
+                    <div className="flex items-center justify-between px-3 py-2.5 bg-orange-50 border border-orange-200 rounded-xl">
+                      <div>
+                        <p className="text-sm font-semibold text-orange-800">{selectedCreditAccount.name}</p>
+                        <p className="text-xs text-orange-600">{selectedCreditAccount.phone || ''} · Balance: {selectedCreditAccount.balance > 0 ? `+₹${selectedCreditAccount.balance.toFixed(2)}` : `-₹${Math.abs(selectedCreditAccount.balance).toFixed(2)}`}</p>
+                      </div>
+                      <button
+                        onClick={() => { setSelectedCreditAccount(null); setCreditSearch(''); }}
+                        className="p-1 rounded-lg hover:bg-orange-100 text-orange-400 hover:text-orange-700 transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                  ) : (
+                    <div>
+                      <input
+                        type="text"
+                        value={creditSearch}
+                        onChange={e => handleCreditSearch(e.target.value)}
+                        onBlur={() => setTimeout(() => setShowCreditResults(false), 150)}
+                        onFocus={() => { if (creditSearchResults.length > 0) setShowCreditResults(true); }}
+                        placeholder="Search by name or phone…"
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-300"
+                        autoComplete="off"
+                      />
+                      {showCreditResults && creditSearchResults.length > 0 && (
+                        <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                          {creditSearchResults.map(acc => (
+                            <button
+                              key={acc.id}
+                              type="button"
+                              onMouseDown={e => e.preventDefault()}
+                              onClick={() => { setSelectedCreditAccount(acc); setCreditSearch(acc.name); setShowCreditResults(false); }}
+                              className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 transition-colors text-left"
+                            >
+                              <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center shrink-0 text-xs font-bold">
+                                {acc.name.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-semibold text-gray-900 truncate">{acc.name}</p>
+                                <p className="text-xs text-gray-500">{acc.phone || ''}</p>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className={`text-xs font-semibold ${acc.balance < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                  {acc.balance < 0 ? `-₹${Math.abs(acc.balance).toFixed(2)}` : `+₹${acc.balance.toFixed(2)}`}
+                                </p>
+                                <p className="text-xs text-gray-400">balance</p>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {showCreditResults && creditSearchResults.length === 0 && creditSearch.length >= 1 && (
+                        <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg px-4 py-3 text-sm text-text-muted">
+                          No credit accounts found
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Bill details + Settle */}
-              {selectedQuickMethod && (
+              {selectedQuickMethod && selectedQuickMethod !== ('UNPAID' as PaymentMethod) && (
                 <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
                   <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Bill Summary</p>
 
@@ -1792,8 +2051,29 @@ export default function QSRPage() {
                 </div>
               )}
 
+              {/* Unpaid confirm block */}
+              {selectedQuickMethod === ('UNPAID' as PaymentMethod) && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
+                  <div className="flex justify-between text-sm font-bold">
+                    <span className="text-amber-800">Total to collect later</span>
+                    <span className="text-amber-900">{formatCurrency(total)}</span>
+                  </div>
+                  <button
+                    onClick={handlePayLater}
+                    disabled={settling}
+                    className="w-full py-3.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold transition-colors disabled:opacity-60 flex items-center justify-center gap-2 text-base"
+                  >
+                    {settling ? (
+                      <><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />Placing...</>
+                    ) : (
+                      <><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>Place Order — Collect {formatCurrency(total)} Later</>
+                    )}
+                  </button>
+                </div>
+              )}
+
               {/* Split Payment toggle button */}
-              {!showSplitMode && (
+              {!showSplitMode && selectedQuickMethod !== ('UNPAID' as PaymentMethod) && (
                 <button
                   onClick={() => { setShowSplitMode(true); setSelectedQuickMethod(null); setCurrentSplitAmount(total.toFixed(2)); }}
                   className="w-full py-2.5 text-sm font-medium text-primary hover:text-primary-hover transition-colors flex items-center justify-center gap-2 border border-dashed border-primary/30 rounded-xl hover:border-primary/60 hover:bg-primary/5"
@@ -1804,6 +2084,7 @@ export default function QSRPage() {
                   Split Payment
                 </button>
               )}
+
             </div>
             )}
 
@@ -1887,6 +2168,63 @@ export default function QSRPage() {
                     </button>
                   ))}
                 </div>
+
+                {/* Credit account picker (only shown for CREDIT split) */}
+                {currentSplitMethod === 'CREDIT' && (
+                  <div className="relative">
+                    {selectedCreditAccount ? (
+                      <div className="flex items-center justify-between px-3 py-2 bg-orange-50 border border-orange-200 rounded-xl">
+                        <div>
+                          <p className="text-sm font-semibold text-orange-800">{selectedCreditAccount.name}</p>
+                          <p className="text-xs text-orange-600">{selectedCreditAccount.phone || ''}</p>
+                        </div>
+                        <button
+                          onClick={() => { setSelectedCreditAccount(null); setCreditSearch(''); }}
+                          className="p-1 rounded-lg hover:bg-orange-100 text-orange-400 hover:text-orange-700 transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      </div>
+                    ) : (
+                      <div>
+                        <input
+                          type="text"
+                          value={creditSearch}
+                          onChange={e => handleCreditSearch(e.target.value)}
+                          onBlur={() => setTimeout(() => setShowCreditResults(false), 150)}
+                          onFocus={() => { if (creditSearchResults.length > 0) setShowCreditResults(true); }}
+                          placeholder="Search credit account…"
+                          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-300"
+                          autoComplete="off"
+                        />
+                        {showCreditResults && creditSearchResults.length > 0 && (
+                          <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                            {creditSearchResults.map(acc => (
+                              <button
+                                key={acc.id}
+                                type="button"
+                                onMouseDown={e => e.preventDefault()}
+                                onClick={() => { setSelectedCreditAccount(acc); setCreditSearch(acc.name); setShowCreditResults(false); }}
+                                className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 transition-colors text-left"
+                              >
+                                <div className="w-7 h-7 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center shrink-0 text-xs font-bold">
+                                  {acc.name.charAt(0).toUpperCase()}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm font-semibold text-gray-900 truncate">{acc.name}</p>
+                                  <p className="text-xs text-gray-500">{acc.phone || ''}</p>
+                                </div>
+                                <p className={`text-xs font-semibold ${acc.balance < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                  {acc.balance < 0 ? `-₹${Math.abs(acc.balance).toFixed(2)}` : `+₹${acc.balance.toFixed(2)}`}
+                                </p>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Amount + quick buttons */}
                 <div className="flex gap-2">
@@ -1992,6 +2330,174 @@ export default function QSRPage() {
         )}
       </Modal>
 
+      {/* ═══ Unpaid Orders Panel Modal ═══ */}
+      <Modal open={showUnpaidPanel} onClose={() => setShowUnpaidPanel(false)} title="Collect Unpaid Payments" maxWidth="max-w-2xl">
+        {unpaidOrders.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+            <svg className="w-12 h-12 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-sm font-medium">No unpaid orders today</p>
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between text-xs text-text-muted pb-1 border-b border-gray-100">
+              <span>{unpaidOrders.length} order{unpaidOrders.length !== 1 ? 's' : ''} pending</span>
+              <span className="font-bold text-amber-700 tabular-nums">
+                Total due: {formatCurrency(unpaidOrders.reduce((s, o) => s + o.total, 0))}
+              </span>
+            </div>
+            {unpaidOrders.map(order => (
+              <div key={order.id} className="flex items-center gap-3 px-3 py-3 rounded-xl border border-gray-200 hover:border-amber-300 hover:bg-amber-50/40 transition-colors">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+                  <span className="text-sm font-bold text-amber-700">
+                    {order.tokenNumber ? String(order.tokenNumber).padStart(3, '0') : '#'}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-gray-900">
+                      {order.customerName || (order.orderType === 'QSR_TAKEAWAY' ? 'Takeaway' : 'Counter')}
+                    </span>
+                    {order.customerPhone && (
+                      <span className="text-xs text-text-muted">{order.customerPhone}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-xs text-text-muted">{order.items.length} item{order.items.length !== 1 ? 's' : ''}</span>
+                    <span className="text-xs text-text-muted">·</span>
+                    <span className="text-xs text-text-muted">{timeAgo(order.createdAt)}</span>
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-sm font-bold text-gray-900 tabular-nums">{formatCurrency(order.total)}</div>
+                  <button
+                    onClick={() => { setShowUnpaidPanel(false); setCollectingOrder(order); }}
+                    className="mt-1 text-sm font-bold text-white bg-amber-500 hover:bg-amber-600 px-4 py-2 rounded-xl transition-colors"
+                  >
+                    Collect →
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
+
+      {/* ═══ Collect Payment Modal ═══ */}
+      <Modal open={!!collectingOrder} onClose={() => { setCollectingOrder(null); setCollectMethod('CASH'); setCollectCreditAccount(null); setCollectCreditSearch(''); }} title="" maxWidth="max-w-xl">
+        {collectingOrder && (
+          <div className="space-y-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-text-primary">Collect Payment</h2>
+                <p className="text-sm text-text-secondary">
+                  Token #{collectingOrder.tokenNumber ? String(collectingOrder.tokenNumber).padStart(3, '0') : collectingOrder.orderNumber}
+                  {collectingOrder.customerName && ` · ${collectingOrder.customerName}`}
+                </p>
+              </div>
+              <p className="text-2xl font-bold text-text-primary">{formatCurrency(collectingOrder.total)}</p>
+            </div>
+
+            {/* Payment method */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Pay via</p>
+              <div className="grid grid-cols-2 gap-2">
+                {PAYMENT_METHODS.map(m => (
+                  <button
+                    key={m.value}
+                    onClick={() => { setCollectMethod(m.value); setCollectCreditAccount(null); setCollectCreditSearch(''); }}
+                    className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 transition-all text-sm font-semibold ${
+                      collectMethod === m.value
+                        ? `${m.bg} border-current ${m.color} shadow-sm`
+                        : 'border-border-primary bg-white hover:border-primary hover:bg-primary/5'
+                    }`}
+                  >
+                    <svg className={`w-4 h-4 ${collectMethod === m.value ? m.color : 'text-text-secondary'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={m.icon} />
+                    </svg>
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Credit account selector */}
+            {collectMethod === 'CREDIT' && (
+              <div className="relative">
+                {collectCreditAccount ? (
+                  <div className="flex items-center justify-between px-3 py-2.5 bg-orange-50 border border-orange-200 rounded-xl">
+                    <div>
+                      <p className="text-sm font-semibold text-orange-800">{collectCreditAccount.name}</p>
+                      <p className="text-xs text-orange-600">{collectCreditAccount.phone || ''}</p>
+                    </div>
+                    <button onClick={() => { setCollectCreditAccount(null); setCollectCreditSearch(''); }} className="p-1 rounded-lg hover:bg-orange-100 text-orange-400 hover:text-orange-700">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <input
+                      type="text"
+                      value={collectCreditSearch}
+                      onChange={async e => {
+                        const val = e.target.value;
+                        setCollectCreditSearch(val);
+                        if (val.trim().length >= 1) {
+                          try {
+                            const res = await creditService.getAccounts({ search: val.trim(), active: true });
+                            setCollectCreditResults(res);
+                            setShowCollectCreditResults(true);
+                          } catch { setShowCollectCreditResults(false); }
+                        } else {
+                          setCollectCreditResults([]);
+                          setShowCollectCreditResults(false);
+                        }
+                      }}
+                      onBlur={() => setTimeout(() => setShowCollectCreditResults(false), 150)}
+                      onFocus={() => { if (collectCreditResults.length > 0) setShowCollectCreditResults(true); }}
+                      placeholder="Search credit account…"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-300"
+                    />
+                    {showCollectCreditResults && collectCreditResults.length > 0 && (
+                      <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                        {collectCreditResults.map(acc => (
+                          <button
+                            key={acc.id}
+                            type="button"
+                            onMouseDown={e => e.preventDefault()}
+                            onClick={() => { setCollectCreditAccount(acc); setCollectCreditSearch(acc.name); setShowCollectCreditResults(false); }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 text-left"
+                          >
+                            <div className="w-7 h-7 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center text-xs font-bold">{acc.name.charAt(0).toUpperCase()}</div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-semibold truncate">{acc.name}</p>
+                              <p className="text-xs text-gray-500">{acc.phone || ''}</p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <button
+              onClick={handleCollectPayment}
+              disabled={collecting || (collectMethod === 'CREDIT' && !collectCreditAccount)}
+              className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-colors disabled:opacity-60 flex items-center justify-center gap-2 text-base"
+            >
+              {collecting ? (
+                <><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />Collecting...</>
+              ) : (
+                <><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>Collect {formatCurrency(collectingOrder.total)} via {PAYMENT_METHODS.find(m => m.value === collectMethod)?.label}</>
+              )}
+            </button>
+          </div>
+        )}
+      </Modal>
+
       {/* ═══ Recall Modal ═══ */}
       <Modal open={showRecall} onClose={() => setShowRecall(false)} title="Held Tickets" maxWidth="max-w-3xl">
         {heldTickets.length === 0 ? (
@@ -2078,12 +2584,14 @@ function QSROrderCard({
   mode = 'completed',
   onServeItem,
   isServingItem,
+  onCollectPayment,
 }: {
   order: Order;
   formatCurrency: (n: number) => string;
   mode?: 'preparing' | 'served' | 'completed';
   onServeItem?: (itemId: string) => void;
   isServingItem?: boolean;
+  onCollectPayment?: (order: Order) => void;
 }) {
   const token = order.tokenNumber != null
     ? String(order.tokenNumber).padStart(3, '0')
@@ -2129,11 +2637,18 @@ function QSROrderCard({
             </p>
           </div>
         </div>
-        {mode !== 'completed' && (
-          <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-semibold shrink-0 bg-gray-100 text-gray-600 tabular-nums">
-            {servedCount}/{totalItemCount} served
-          </span>
-        )}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {order.isPaid === false && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">
+              UNPAID
+            </span>
+          )}
+          {mode !== 'completed' && (
+            <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-600 tabular-nums">
+              {servedCount}/{totalItemCount} served
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Items */}
@@ -2191,13 +2706,26 @@ function QSROrderCard({
       </div>
 
       {/* Footer */}
-      <div className="px-4 py-2 bg-gray-50/80 border-t border-gray-100 flex items-center justify-between">
+      <div className="px-4 py-2 bg-gray-50/80 border-t border-gray-100 flex items-center justify-between gap-2">
         <span className="text-xs text-gray-500 tabular-nums">
           {order.items.reduce((s, i) => s + i.quantity, 0)} items
         </span>
-        <span className="text-sm font-bold text-gray-900 tabular-nums">
-          {formatCurrency(order.total)}
-        </span>
+        <div className="flex items-center gap-2">
+          {order.isPaid === false && onCollectPayment && (
+            <button
+              onClick={() => onCollectPayment(order)}
+              className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold transition-colors flex items-center gap-1"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+              Collect
+            </button>
+          )}
+          <span className="text-sm font-bold text-gray-900 tabular-nums">
+            {formatCurrency(order.total)}
+          </span>
+        </div>
       </div>
     </motion.div>
   );

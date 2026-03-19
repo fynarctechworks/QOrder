@@ -112,6 +112,14 @@ router.patch(
   orderController.cancelOrder
 );
 
+router.patch(
+  '/:id/settle',
+  authenticate,
+  resolveBranch,
+  validate(idParamSchema, 'params'),
+  orderController.settleUnpaidOrder
+);
+
 // Customer order creation (requires restaurant context from public route)
 // Validate that restaurantId is set on the request (set by resolveRestaurant middleware in public routes)
 router.post(

@@ -37,7 +37,7 @@ router.get('/top-profitable-items', auth, reportController.topProfitableItems);
 router.get('/sales-summary', auth, reportController.salesSummary);
 router.get('/orders-report', auth, reportController.ordersReport);
 router.get('/cancelled-orders', auth, reportController.cancelledOrders);
-router.get('/top-selling-items', auth, reportController.topSellingItems);
+router.get('/top-selling-items', reportController.topSellingItems);
 router.get('/low-performing-items', auth, reportController.lowPerformingItems);
 router.get('/table-activity', auth, reportController.tableActivity);
 router.get('/tax-report', auth, reportController.taxReport);

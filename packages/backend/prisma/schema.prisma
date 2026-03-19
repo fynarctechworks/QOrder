@@ -570,6 +570,7 @@ model Order {
   preparedAt    DateTime?
   completedAt   DateTime?
   gatewayOrderId String?          // Payment gateway order ID for online payments
+  isPaid        Boolean          @default(true)  // false = pay later / collect later
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 

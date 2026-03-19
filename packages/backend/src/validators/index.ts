@@ -284,6 +284,8 @@ export const createOrderSchema = z.object({
   couponCode: z.string().max(50).optional(),
   manualDiscount: z.number().nonnegative().optional(),
   manualDiscountType: z.enum(['PERCENTAGE', 'FLAT']).optional(),
+  serviceType: z.string().max(20).optional(),
+  isPaid: z.boolean().optional(),
   // Geo-fence validation
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),

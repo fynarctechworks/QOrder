@@ -508,21 +508,7 @@ export default function OrdersPage() {
   return (
     <div className="space-y-3 md:space-y-5">
       {/* ═══ Header ═══ */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2.5">
-            Orders
-            {pending > 0 && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold animate-pulse">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                {pending} new
-              </span>
-            )}
-          </h1>
-          <p className="text-sm text-text-secondary mt-0.5">
-            Track and manage incoming orders in real-time
-          </p>
-        </div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-4">
         <div className="flex items-center gap-3">
           {/* Create Order */}
           <button
@@ -958,6 +944,11 @@ function TableBillCard({
                   {bill.orders[0]?.tokenNumber != null
                     ? `Token #${String(bill.orders[0]?.tokenNumber).padStart(3, '0')}`
                     : `#${bill.orders[0]?.orderNumber || bill.orders[0]?.id.slice(-6).toUpperCase()}`}
+                </span>
+              )}
+              {bill.orders.some(o => o.isPaid === false) && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">
+                  UNPAID
                 </span>
               )}
               {bill.orders[0]?.sectionName && (
@@ -1441,6 +1432,11 @@ function OrderDetail({
                   <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
                   {meta.label}
                 </span>
+                {order.isPaid === false && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">
+                    UNPAID
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-1.5 text-sm text-text-secondary mt-1.5">
                 <span>{order.tableName}</span>

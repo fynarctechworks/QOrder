@@ -139,6 +139,7 @@ function transformOrder(raw: RawOrder) {
     estimatedReadyTime: raw.estimatedTime
       ? new Date(Date.now() + raw.estimatedTime * 60_000).toISOString()
       : undefined,
+    isPaid: (raw as Record<string, unknown>).isPaid !== false,
     preparedAt: raw.preparedAt ? new Date(raw.preparedAt as string | Date).toISOString() : undefined,
     completedAt: raw.completedAt ? new Date(raw.completedAt as string | Date).toISOString() : undefined,
     createdAt: new Date(raw.createdAt as string | Date).toISOString(),
@@ -304,8 +305,9 @@ export const orderController = {
       const restaurantId = req.restaurantId!;
       const restaurantData = (req as unknown as { restaurantData?: RestaurantMiddlewareData }).restaurantData;
       const serviceType = (req.body as Record<string, unknown>).serviceType as string | undefined;
+      const isPaid = (req.body as Record<string, unknown>).isPaid !== false; // default true
       const orderType = serviceType === 'takeaway' ? 'QSR_TAKEAWAY' : 'QSR';
-      const order = await orderService.createOrder(restaurantId, req.body, restaurantData, 'PREPARING', req.branchId, orderType);
+      const order = await orderService.createOrder(restaurantId, req.body, restaurantData, 'PREPARING', req.branchId, orderType, isPaid);
 
       // Fetch full order data for admin response + socket
       const fullOrderData = await orderService.getOrderById(order.id, restaurantId);
@@ -710,6 +712,21 @@ export const orderController = {
         success: true,
         data: { sent: true, phone: result.phone },
       });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /** PATCH /orders/:id/settle — mark an unpaid order as paid */
+  async settleUnpaidOrder(req: Request<{ id: string }>, res: Response<ApiResponse>, next: NextFunction) {
+    try {
+      const restaurantId = req.restaurantId;
+      if (!restaurantId) {
+        res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } });
+        return;
+      }
+      await orderService.settleUnpaidOrder(req.params.id, restaurantId);
+      res.json({ success: true, data: { message: 'Order marked as paid' } });
     } catch (error) {
       next(error);
     }

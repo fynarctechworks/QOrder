@@ -50,6 +50,7 @@ function mapApiOrder(raw: Record<string, unknown>): Order {
     specialInstructions: (r.specialInstructions as string) || undefined,
     customerName: (r.customerName as string) || undefined,
     customerPhone: (r.customerPhone as string) || undefined,
+    isPaid: r.isPaid !== false,
     createdAt: r.createdAt as string,
     updatedAt: r.updatedAt as string,
     estimatedReadyTime: (r.estimatedReadyTime as string) || undefined,
@@ -125,7 +126,7 @@ export const orderService = {
     return mapApiOrder(raw);
   },
 
-  /** QSR order — created directly as COMPLETED (pre-paid at counter) */
+  /** QSR order — created directly as PREPARING (paid at counter, or pay later) */
   async createQSROrder(data: {
     items: Array<{ menuItemId: string; quantity: number; notes?: string; modifiers?: Array<{ modifierId: string }> }>;
     tableId?: string;
@@ -133,9 +134,15 @@ export const orderService = {
     customerPhone?: string;
     notes?: string;
     serviceType?: string;
+    isPaid?: boolean;
   }): Promise<Order> {
     const raw = await apiClient.post<Record<string, unknown>>('/orders/qsr', data);
     return mapApiOrder(raw);
+  },
+
+  /** Mark an unpaid QSR order as paid */
+  async settleOrder(orderId: string): Promise<void> {
+    await apiClient.patch(`/orders/${orderId}/settle`, {});
   },
 
   /**

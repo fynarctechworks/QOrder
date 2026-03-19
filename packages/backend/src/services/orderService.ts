@@ -205,7 +205,7 @@ export const orderService = {
     return order;
   },
 
-  async createOrder(restaurantId: string, input: CreateOrderInput, restaurantData?: { taxRate: unknown; settings: unknown }, initialStatus?: 'PENDING' | 'PREPARING' | 'COMPLETED', fallbackBranchId?: string | null, orderType?: string) {
+  async createOrder(restaurantId: string, input: CreateOrderInput, restaurantData?: { taxRate: unknown; settings: unknown }, initialStatus?: 'PENDING' | 'PREPARING' | 'COMPLETED', fallbackBranchId?: string | null, orderType?: string, isPaid?: boolean) {
     const { items, tableId, sessionToken, ...orderData } = input;
 
     // Parallel fetch: restaurant (if not pre-loaded), table validation, and menu items
@@ -465,6 +465,7 @@ export const orderService = {
               branchId: table?.branchId ?? fallbackBranchId ?? null,
               status: initialStatus || 'PENDING',
               orderType: orderType || (tableId ? 'DINE_IN' : 'TAKEAWAY'),
+              isPaid: isPaid ?? true,
               ...(initialStatus === 'COMPLETED' ? { completedAt: new Date() } : {}),
               subtotal,
               tax,
@@ -511,6 +512,7 @@ export const orderService = {
               customerName: true,
               customerPhone: true,
               estimatedTime: true,
+              isPaid: true,
               preparedAt: true,
               completedAt: true,
               createdAt: true,
@@ -900,6 +902,22 @@ export const orderService = {
       })),
       createdAt: order.createdAt.toISOString(),
     };
+  },
+
+  /** Mark an unpaid order as paid */
+  async settleUnpaidOrder(orderId: string, restaurantId: string) {
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, restaurantId },
+      select: { id: true, isPaid: true },
+    });
+    if (!order) throw AppError.notFound('Order');
+    if (order.isPaid) throw AppError.badRequest('Order is already paid');
+
+    return prisma.order.update({
+      where: { id: orderId },
+      data: { isPaid: true },
+      select: { id: true, isPaid: true },
+    });
   },
 
   // Get order stats for dashboard
