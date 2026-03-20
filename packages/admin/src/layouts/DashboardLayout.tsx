@@ -216,7 +216,7 @@ function DashboardLayoutInner() {
   const [isServicePanelOpen, setIsServicePanelOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const { user, logout } = useAuth();
-  const { isConnected, onNewOrder, onServiceRequest, onItemKitchenReady, onLeaveRequest, onStockLow, onStaffLate, onStaffEarlyCheckout, triggerSync, kdsCount, kdsUsers } = useSocket();
+  const { isConnected, onNewOrder, onOrderStatusUpdate, onServiceRequest, onItemKitchenReady, onLeaveRequest, onStockLow, onStaffLate, onStaffEarlyCheckout, triggerSync, kdsCount, kdsUsers } = useSocket();
   const { play: playSound } = useNotificationSound();
   const { notifications, push: pushNotification, dismiss: dismissNotification, dismissAll: dismissAllNotifications } = useNotificationOverlay();
   const queryClient = useQueryClient();
