@@ -404,6 +404,19 @@ export default function CreateOrderPage() {
             </svg>
             View Orders
           </button>
+          {/* Search menu items */}
+          <div className="relative">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              value={menuSearch}
+              onChange={e => setMenuSearch(e.target.value)}
+              placeholder="Search menu items…"
+              className="pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary w-44 sm:w-56"
+            />
+          </div>
           {/* Table select */}
           <select
             value={selectedTable}
@@ -736,20 +749,6 @@ export default function CreateOrderPage() {
           </button>
           {/* Search + Category tabs */}
           <div className="px-3 md:px-5 py-3 bg-white border-b border-gray-200 shrink-0">
-            {/* Search bar */}
-            <div className="relative mb-3">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <input
-                type="text"
-                value={menuSearch}
-                onChange={e => setMenuSearch(e.target.value)}
-                placeholder="Search menu items…"
-                className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-              />
-            </div>
-
             {/* Category sticky rail */}
             <div className="sticky top-0 z-10 -mx-3 md:-mx-5 px-3 md:px-5 py-3 bg-white/95 backdrop-blur border-y border-gray-100">
               <div className="flex flex-wrap items-center gap-2">

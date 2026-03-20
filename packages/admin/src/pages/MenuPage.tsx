@@ -90,8 +90,8 @@ function StatCard({ icon, label, value, accent }: { icon: string; label: string;
         </svg>
       </div>
       <div className="min-w-0">
-        <p className="text-2xl font-bold text-text-primary leading-none">{value}</p>
-        <p className="text-xs text-text-muted mt-0.5">{label}</p>
+        <p className="text-xs text-text-muted font-medium uppercase tracking-wider leading-none">{label}</p>
+        <p className="text-2xl font-bold text-text-primary mt-1.5 leading-none">{value}</p>
       </div>
     </motion.div>
   );
@@ -100,7 +100,7 @@ function StatCard({ icon, label, value, accent }: { icon: string; label: string;
 /** Skeleton for stat cards */
 function StatsSkeleton() {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       {Array.from({ length: 4 }).map((_, i) => (
         <div key={i} className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4 animate-pulse flex items-center gap-4">
           <div className="w-10 h-10 rounded-xl bg-gray-200" />
@@ -117,7 +117,7 @@ function StatsSkeleton() {
 /** Skeleton for item cards */
 function GridSkeleton() {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
       {Array.from({ length: 8 }).map((_, i) => (
         <div key={i} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden animate-pulse">
           <div className="h-32 bg-gray-200" />
@@ -441,7 +441,7 @@ export default function MenuPage() {
       ) : isLoading ? (
         <StatsSkeleton />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard
             icon="M4 6h16M4 10h16M4 14h16M4 18h16"
             label="Total Items"
@@ -647,7 +647,7 @@ export default function MenuPage() {
           onAdd={openNewItem}
         />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
           <AnimatePresence mode="popLayout">
             {pageItems.map((item, idx) => (
               <motion.div

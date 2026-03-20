@@ -212,7 +212,7 @@ export default function DashboardPage() {
       ) : isLoading ? (
         <StatCardsSkeleton />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
           <StatCard
             icon={
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -276,7 +276,7 @@ export default function DashboardPage() {
 
       {/* ═══════════════════ Secondary KPIs ═══════════════════ */}
       {extras && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
           <StatCard
             icon={
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -689,32 +689,32 @@ function StatCard({
 }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16 }}
+      initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay }}
-      className={`bg-white rounded-2xl border shadow-sm p-4 md:p-5 hover:shadow-md transition-all duration-300 group ${
+      className={`bg-white rounded-xl border shadow-sm p-5 hover:shadow-md transition-shadow ${
         highlight ? 'border-amber-200 ring-1 ring-amber-100' : 'border-gray-100'
       }`}
     >
-      <div className="flex items-start justify-between mb-2 md:mb-3">
-        <div className={`w-9 h-9 md:w-10 md:h-10 rounded-xl ${iconBg} flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-sm ${iconColor}`}>
+      <div className="flex items-center gap-4">
+        <div className={`w-11 h-11 rounded-xl ${iconBg} flex items-center justify-center shrink-0 shadow-sm ${iconColor}`}>
           {icon}
         </div>
-        {trend && (
-          <span className={`inline-flex items-center gap-0.5 px-2 py-1 rounded-lg text-[11px] font-bold ${
-            trend.up ? 'bg-primary/10 text-primary' : 'bg-red-50 text-red-500'
-          }`}>
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
-                d={trend.up ? 'M5 10l7-7m0 0l7 7m-7-7v18' : 'M19 14l-7 7m0 0l-7-7m7 7V3'} />
-            </svg>
-            {trend.pct.toFixed(1)}%
-          </span>
-        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-text-muted font-medium uppercase tracking-wider leading-none">{label}</p>
+            {trend && (
+              <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-lg text-[11px] font-bold ${
+                trend.up ? 'bg-primary/10 text-primary' : 'bg-red-50 text-red-500'
+              }`}>
+                {trend.up ? '↑' : '↓'} {trend.pct.toFixed(1)}%
+              </span>
+            )}
+          </div>
+          <p className="text-2xl font-bold text-text-primary mt-1.5 leading-none tabular-nums">{value}</p>
+          <p className="text-xs text-text-muted mt-1 leading-none">{sub}</p>
+        </div>
       </div>
-      <p className="text-xs text-text-muted font-medium mb-1">{label}</p>
-      <p className="text-xl md:text-2xl font-bold text-text-primary leading-none tabular-nums mb-1.5">{value}</p>
-      <p className="text-[11px] text-text-muted leading-none">{sub}</p>
     </motion.div>
   );
 }
@@ -1124,7 +1124,7 @@ function DailySummaryPanel({
 
 function StatCardsSkeleton() {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
       {Array.from({ length: 4 }).map((_, i) => (
         <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 animate-pulse">
           <div className="flex items-start justify-between mb-3">
