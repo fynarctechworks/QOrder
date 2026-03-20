@@ -39,10 +39,6 @@ export default function FeedbackPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-text-primary">Customer Feedback</h1>
-      </div>
-
       {/* Stats Overview */}
       {stats && (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">

@@ -280,4 +280,17 @@ export const tableController = {
       next(error);
     }
   },
+
+  async syncTableStatuses(
+    req: Request,
+    res: Response<ApiResponse>,
+    next: NextFunction
+  ) {
+    try {
+      const result = await tableService.syncTableStatuses(req.restaurantId!);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  },
 };

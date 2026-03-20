@@ -831,38 +831,24 @@ export const orderService = {
           },
         });
         if (activeCount === 0) {
-          // All orders are either COMPLETED or CANCELLED.
-          // Only close the session and free the table when ALL orders are CANCELLED
-          // (i.e. there are zero completed orders awaiting payment settlement).
-          // When completed orders exist, keep the session ACTIVE so the
-          // Settle Payment flow can find and settle them.
-          const completedCount = await prisma.order.count({
-            where: {
-              tableId: tId,
-              status: 'COMPLETED',
-            },
+          // All orders are either COMPLETED or CANCELLED — close session & free table
+          await prisma.tableSession.updateMany({
+            where: { tableId: tId, status: 'ACTIVE' },
+            data: { status: 'CLOSED', closedAt: new Date() },
           });
 
-          if (completedCount === 0) {
-            // All orders cancelled — no payment needed, close session & free table
-            await prisma.tableSession.updateMany({
-              where: { tableId: tId, status: 'ACTIVE' },
-              data: { status: 'CLOSED', closedAt: new Date() },
-            });
-
-            await prisma.table.update({
-              where: { id: tId },
-              data: { status: 'AVAILABLE' },
-            });
-            // Rotate session token so old QR screenshots can't order
-            const newSessionToken = await tableService.rotateSessionToken(tId, restaurantId).catch((err) => {
-              logger.error({ err, tableId: tId }, 'Failed to rotate session token');
-              return null;
-            });
-            await cache.del(cache.keys.tables(restaurantId)).catch(() => {});
-            tableFreed = true;
-            (order as Record<string, unknown>)._newSessionToken = newSessionToken;
-          }
+          await prisma.table.update({
+            where: { id: tId },
+            data: { status: 'AVAILABLE' },
+          });
+          // Rotate session token so old QR screenshots can't order
+          const newSessionToken = await tableService.rotateSessionToken(tId, restaurantId).catch((err) => {
+            logger.error({ err, tableId: tId }, 'Failed to rotate session token');
+            return null;
+          });
+          await cache.del(cache.keys.tables(restaurantId)).catch(() => {});
+          tableFreed = true;
+          (order as Record<string, unknown>)._newSessionToken = newSessionToken;
         }
       } catch (err) {
         logger.error({ err, tableId: tId }, 'Failed to free table after order completion');

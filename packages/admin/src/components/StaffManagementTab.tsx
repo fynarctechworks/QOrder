@@ -130,6 +130,7 @@ function CreateStaffModal({
     mutationFn: async () => {
       const staff = await staffService.create({
         ...form,
+        email: form.email?.trim() || undefined,
         roleTitle: form.roleTitle?.trim() || undefined,
       });
       return staff;
@@ -198,7 +199,7 @@ function CreateStaffModal({
     if (form.password.length < 8) return toast.error('Password must be at least 8 characters');
     if (form.password !== confirmPassword) return toast.error('Passwords do not match');
     if (!form.role) return toast.error('Please select a role');
-    if (!form.branchIds?.length) return toast.error('Please assign at least one branch');
+    if (branches.length > 0 && !form.branchIds?.length) return toast.error('Please assign at least one branch');
     mutation.mutate();
   };
 
@@ -427,7 +428,7 @@ function CreateStaffModal({
             </button>
             <button
               type="submit"
-              disabled={mutation.isPending || !hasRole || !form.branchIds?.length}
+              disabled={mutation.isPending || !hasRole || (branches.length > 0 && !form.branchIds?.length)}
               className="flex-1 px-4 py-2.5 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary-hover transition-all active:scale-[0.97] disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {mutation.isPending ? 'Creating...' : 'Create & Next'}
@@ -1075,14 +1076,14 @@ export default function StaffManagementTab() {
         <div className="bg-white rounded-2xl border border-purple-100 shadow-sm p-5">
           <div className="flex items-center gap-4">
             <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center shrink-0">
-              <span className="text-sm font-bold text-purple-700">{owner.name.charAt(0).toUpperCase()}</span>
+              <span className="text-sm font-bold text-purple-700">{owner.username.charAt(0).toUpperCase()}</span>
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <p className="text-sm font-semibold text-text-primary truncate">{owner.name}</p>
+                <p className="text-sm font-semibold text-text-primary truncate">{owner.username}</p>
                 <RoleBadge role="OWNER" />
               </div>
-              <p className="text-xs text-text-muted truncate">{owner.email ? `${owner.email} \u00b7 ` : ''}@{owner.username}</p>
+              <p className="text-xs text-text-muted truncate">{owner.email || ''}</p>
             </div>
             <p className="text-xs text-text-muted hidden sm:block">You</p>
           </div>

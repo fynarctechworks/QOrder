@@ -8,6 +8,7 @@ import Logo from '../components/Logo';
 import ServiceRequestsPanel from '../components/ServiceRequestsPanel';
 import LockScreen from '../components/LockScreen';
 import { settingsService } from '../services/settingsService';
+import { tableService } from '../services/tableService';
 import { DEFAULT_PERMISSIONS, type PageKey, type RolePermissions } from '../components/PermissionsTab';
 import { useIdleLock } from '../hooks/useIdleLock';
 import { useNotificationSound } from '../hooks/useNotificationSound';
@@ -375,8 +376,19 @@ function DashboardLayoutInner() {
     return allowedPageSet.has(pageKey);
   }, [allowedPageSet]);
 
-  const handleSync = useCallback(() => {
+  // Always-on listener: refresh tables whenever any order status changes (works on all pages)
+  useEffect(() => {
+    const unsub = onOrderStatusUpdate(() => {
+      queryClient.invalidateQueries({ queryKey: ['tables'] });
+      queryClient.invalidateQueries({ queryKey: ['runningTables'] });
+    });
+    return unsub;
+  }, [onOrderStatusUpdate, queryClient]);
+
+  const handleSync = useCallback(async () => {
     setIsSyncing(true);
+    // Fix any stuck occupied tables on the server first
+    await tableService.syncTableStatuses().catch(() => {});
     // Invalidate all admin queries
     queryClient.invalidateQueries();
     // Trigger customer refresh via socket

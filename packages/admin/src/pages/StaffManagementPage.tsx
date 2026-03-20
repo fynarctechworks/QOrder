@@ -56,12 +56,6 @@ export default function StaffManagementPage() {
 
   return (
     <div className="space-y-6 overflow-hidden">
-      <div>
-        <h1 className="text-2xl font-bold text-text-primary tracking-tight">
-          {isAdmin ? 'Staff Management' : 'Leave Management'}
-        </h1>
-      </div>
-
       {/* Tab Bar — only show if more than 1 tab */}
       {TABS.length > 1 && (
         <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-full sm:w-fit overflow-x-auto">

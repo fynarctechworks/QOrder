@@ -48,6 +48,12 @@ router.post(
   tableController.createBulkTables
 );
 
+router.post(
+  '/sync-statuses',
+  authorize('OWNER', 'ADMIN', 'MANAGER'),
+  tableController.syncTableStatuses
+);
+
 router.patch(
   '/:id',
   authorize('OWNER', 'ADMIN', 'MANAGER'),

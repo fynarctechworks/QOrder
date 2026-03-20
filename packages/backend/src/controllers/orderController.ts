@@ -367,7 +367,7 @@ export const orderController = {
             // Emit table update for running bills
             const tablePayload: { tableId: string; status?: string; sessionToken?: string | null } = { tableId: order!.tableId };
             if ((order as Record<string, unknown>)._tableFreed) {
-              tablePayload.status = 'AVAILABLE';
+              tablePayload.status = 'available';
               tablePayload.sessionToken = ((order as Record<string, unknown>)._newSessionToken as string) ?? null;
             }
             io.to(`restaurant:${restaurantId}`).emit('table:updated', tablePayload);

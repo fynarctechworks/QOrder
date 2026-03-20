@@ -326,12 +326,8 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-text-primary tracking-tight">Reports</h1>
-      </div>
-
       {/* Date Range */}
-      <div className="flex flex-wrap gap-3 items-end">
+      <div className="flex flex-wrap gap-3 items-end justify-end">
         <div>
           <label className="text-xs font-medium text-text-muted block mb-1">From</label>
           <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}

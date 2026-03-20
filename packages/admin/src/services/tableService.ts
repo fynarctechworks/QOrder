@@ -88,6 +88,10 @@ export const tableService = {
     const raw = await apiClient.post<Record<string, unknown>>(`/tables/${id}/regenerate-session`);
     return normalizeTable(raw);
   },
+
+  async syncTableStatuses(): Promise<{ fixed: number; tableIds?: string[] }> {
+    return apiClient.post('/tables/sync-statuses', {});
+  },
 };
 
 export interface TableOrderItem {

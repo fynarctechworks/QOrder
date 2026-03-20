@@ -867,9 +867,6 @@ export default function SettingsPage() {
 
   if (profileError || settingsError) return (
     <div className="w-full max-w-5xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-text-primary tracking-tight">Settings</h1>
-      </div>
       <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
         <p className="text-red-700 font-semibold">Failed to load settings</p>
         <p className="text-red-500 text-sm mt-1">Please check your connection and try refreshing the page.</p>
@@ -881,11 +878,6 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6 w-full max-w-5xl">
-
-      {/* ── Header ──────────────────────────────────────────── */}
-      <div>
-        <h1 className="text-2xl font-bold text-text-primary tracking-tight">Settings</h1>
-      </div>
 
       {/* ── Tab Navigation ──────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-1.5 sticky top-0 z-10 w-fit max-w-full overflow-x-auto">

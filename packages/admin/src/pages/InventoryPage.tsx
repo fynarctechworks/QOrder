@@ -56,11 +56,6 @@ export default function InventoryPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-text-primary">Inventory</h1>
-      </div>
-
       {/* Tabs */}
       <div className="flex gap-1 overflow-x-auto pb-1">
         {TABS.map(t => (

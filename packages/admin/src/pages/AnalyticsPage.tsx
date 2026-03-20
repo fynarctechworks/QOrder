@@ -377,11 +377,7 @@ const revenueTrend = useMemo(() => {
     <div className="space-y-6 overflow-hidden">
 
       {/* ── Header ──────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary tracking-tight">Analytics</h1>
-        </div>
-
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-4">
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           {/* Tab selector */}
           <div className="inline-flex items-center bg-white border border-gray-200 rounded-xl p-1 shadow-sm">

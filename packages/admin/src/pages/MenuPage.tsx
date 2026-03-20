@@ -409,10 +409,7 @@ export default function MenuPage() {
     <div className="space-y-6">
 
       {/* ── Header ─────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary tracking-tight">Menu Management</h1>
-        </div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-4">
         <div className="flex items-center gap-2.5">
           <button
             onClick={openNewCat}

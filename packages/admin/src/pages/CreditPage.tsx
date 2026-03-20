@@ -90,10 +90,7 @@ export default function CreditPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Credit Accounts</h1>
-        </div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-4">
         <button
           onClick={() => setShowCreateModal(true)}
           className="btn-primary rounded-xl text-sm px-5 py-2.5 shadow-sm flex items-center gap-2"

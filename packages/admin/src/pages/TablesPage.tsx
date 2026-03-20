@@ -454,10 +454,7 @@ export default function TablesPage() {
     <div className="space-y-6">
 
       {/* ── Header ──────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary tracking-tight">Table Management</h1>
-        </div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-4">
         <div className="flex items-center gap-3">
           {/* Section filter dropdown */}
           {sections.length > 0 && (

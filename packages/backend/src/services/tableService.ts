@@ -482,6 +482,52 @@ export const tableService = {
   },
 
   /**
+   * Fix stuck tables: free any OCCUPIED table that has no active orders.
+   * Called by the admin Sync button to recover from orphaned state.
+   */
+  async syncTableStatuses(restaurantId: string) {
+    const occupiedTables = await prisma.table.findMany({
+      where: { restaurantId, status: 'OCCUPIED' },
+      select: { id: true },
+    });
+
+    if (occupiedTables.length === 0) return { fixed: 0 };
+
+    const tableIds = occupiedTables.map((t) => t.id);
+
+    // Find which of those tables still have active (non-terminal) orders
+    const tablesWithActiveOrders = await prisma.order.findMany({
+      where: {
+        tableId: { in: tableIds },
+        status: { in: ['PENDING', 'PREPARING', 'READY', 'PAYMENT_PENDING'] },
+      },
+      select: { tableId: true },
+      distinct: ['tableId'],
+    });
+
+    const busyTableIds = new Set(tablesWithActiveOrders.map((o) => o.tableId!));
+    const stuckIds = tableIds.filter((id) => !busyTableIds.has(id));
+
+    if (stuckIds.length === 0) return { fixed: 0 };
+
+    // Close any lingering active sessions
+    await prisma.tableSession.updateMany({
+      where: { tableId: { in: stuckIds }, status: 'ACTIVE' },
+      data: { status: 'CLOSED', closedAt: new Date() },
+    });
+
+    // Free stuck tables
+    await prisma.table.updateMany({
+      where: { id: { in: stuckIds } },
+      data: { status: 'AVAILABLE' },
+    });
+
+    await cache.del(cache.keys.tables(restaurantId));
+    logger.info({ restaurantId, stuckIds }, 'Synced stuck table statuses');
+    return { fixed: stuckIds.length, tableIds: stuckIds };
+  },
+
+  /**
    * Manually regenerate session token (admin action for suspicious activity).
    */
   async regenerateSessionToken(tableId: string, restaurantId: string) {
