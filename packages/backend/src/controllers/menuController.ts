@@ -510,4 +510,33 @@ export const menuController = {
       next(error);
     }
   },
+
+  async getItemRecipes(
+    req: Request<{ id: string }>,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const restaurantId = req.user!.restaurantId;
+      const data = await menuService.getItemRecipes(req.params.id, restaurantId);
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async setItemRecipes(
+    req: Request<{ id: string }>,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const restaurantId = req.user!.restaurantId;
+      const { recipes } = req.body as { recipes: { ingredientId: string; quantity: number }[] };
+      const data = await menuService.setItemRecipes(req.params.id, restaurantId, recipes ?? []);
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  },
 };

@@ -258,7 +258,7 @@ class ApiClient {
   }
 
   async upload<T>(endpoint: string, formData: FormData): Promise<T> {
-    return this.request<T>(endpoint, {
+    return this.requestRaw<T>(endpoint, {
       method: 'POST',
       body: formData,
     });

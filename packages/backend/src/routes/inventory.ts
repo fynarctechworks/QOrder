@@ -28,6 +28,7 @@ router.get('/stock-history', inventoryController.getStockHistory);
 router.post('/usage', authorize('OWNER', 'ADMIN', 'MANAGER'), inventoryController.recordUsage);
 router.get('/daily-summary', inventoryController.getDailySummary);
 router.get('/usage-trend', inventoryController.getUsageTrend);
+router.get('/forecast', inventoryController.getForecast);
 
 // ─── SUPPLIERS ──────────────────────────────────────────────
 router.get('/suppliers', inventoryController.getSuppliers);

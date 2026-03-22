@@ -74,7 +74,7 @@ export default function TableLandingPage() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.1, ease: 'easeOut' }}
-            className="mt-5 text-[1.75rem] font-extrabold text-primary tracking-tight leading-none"
+            className="mt-5 text-[1.75rem] font-extrabold text-white tracking-tight leading-none"
             style={{ fontFamily: "'Modern Negra', serif" }}
           >
             {restaurant.name}

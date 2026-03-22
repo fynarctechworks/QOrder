@@ -75,6 +75,8 @@ export default function CreateOrderPage() {
   const dataError = menuErr || catErr || tabErr;
 
   const taxRate = settings?.taxRate ?? 0;
+  const menuShowItemImages = (settings?.settings as any)?.menuShowItemImages !== false;
+  const UPLOAD_BASE = (import.meta.env.VITE_API_URL as string || 'http://localhost:3000/api').replace('/api', '');
 
   /* ── State ── */
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -404,6 +406,19 @@ export default function CreateOrderPage() {
             </svg>
             View Orders
           </button>
+          {/* Search menu items */}
+          <div className="relative">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              value={menuSearch}
+              onChange={e => setMenuSearch(e.target.value)}
+              placeholder="Search menu items…"
+              className="pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary w-44 sm:w-56"
+            />
+          </div>
           {/* Table select */}
           <select
             value={selectedTable}
@@ -736,20 +751,6 @@ export default function CreateOrderPage() {
           </button>
           {/* Search + Category tabs */}
           <div className="px-3 md:px-5 py-3 bg-white border-b border-gray-200 shrink-0">
-            {/* Search bar */}
-            <div className="relative mb-3">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <input
-                type="text"
-                value={menuSearch}
-                onChange={e => setMenuSearch(e.target.value)}
-                placeholder="Search menu items…"
-                className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-              />
-            </div>
-
             {/* Category sticky rail */}
             <div className="sticky top-0 z-10 -mx-3 md:-mx-5 px-3 md:px-5 py-3 bg-white/95 backdrop-blur border-y border-gray-100">
               <div className="flex flex-wrap items-center gap-2">
@@ -805,32 +806,38 @@ export default function CreateOrderPage() {
                   const qty = getCartQty(item.id);
                   const price = item.discountPrice ?? item.price;
                   const catName = categoryMap.get(item.categoryId) || '';
+                  const imgSrc = menuShowItemImages && item.image
+                    ? (item.image.startsWith('/uploads') ? `${UPLOAD_BASE}${item.image}` : item.image)
+                    : null;
 
                   return (
                     <button
                       key={item.id}
                       onClick={() => addToCart(item)}
-                      className={`text-left bg-white rounded-xl border p-3.5 transition-all active:scale-[0.97] hover:shadow-md relative ${
+                      className={`text-left bg-white rounded-xl border overflow-hidden transition-all active:scale-[0.97] hover:shadow-md relative ${
                         qty > 0 ? 'border-primary ring-1 ring-primary/30 bg-primary/5' : 'border-border hover:border-muted'
                       }`}
                     >
                       {qty > 0 && (
-                        <span className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center shadow-sm">
+                        <span className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center shadow-sm z-10">
                           {qty}
                         </span>
                       )}
-
-                      {/* Diet badge */}
-                      <div className="flex items-start justify-between gap-2 mb-1.5">
-                        <DietBadge type={item.dietType} />
-                      </div>
-
-                      {/* Info */}
-                      <p className="text-sm font-semibold text-text-primary truncate">{item.name}</p>
-                      {catName && (
-                        <p className="text-xs text-text-muted mt-0.5 truncate">{catName}</p>
+                      {imgSrc && (
+                        <div className="w-full h-24 bg-gray-100 overflow-hidden">
+                          <img src={imgSrc} alt={item.name} className="w-full h-full object-cover" />
+                        </div>
                       )}
-                      <p className="text-sm font-bold text-primary mt-2">{formatCurrency(price)}</p>
+                      <div className="p-3">
+                        <div className="flex items-start gap-2 mb-1">
+                          <DietBadge type={item.dietType} />
+                        </div>
+                        <p className="text-sm font-semibold text-text-primary truncate">{item.name}</p>
+                        {catName && (
+                          <p className="text-xs text-text-muted mt-0.5 truncate">{catName}</p>
+                        )}
+                        <p className="text-sm font-bold text-primary mt-1.5">{formatCurrency(price)}</p>
+                      </div>
                     </button>
                   );
                 })}

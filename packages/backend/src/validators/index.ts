@@ -118,6 +118,10 @@ export const updateRestaurantSettingsSchema = z.object({
   printShowTax: z.boolean().optional(),
   /** Daily report email recipients */
   reportEmails: z.array(z.string().email()).optional(),
+  /** Smart Inventory: auto-deduct ingredients on order */
+  smartInventoryEnabled: z.boolean().optional(),
+  /** Menu display settings */
+  menuShowItemImages: z.boolean().optional(),
 });
 
 // ==================== MENU ====================

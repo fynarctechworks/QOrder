@@ -270,7 +270,7 @@ export default function MenuPage() {
                         key={cat.id}
                         onClick={() => handleCategoryClick(cat.id)}
                         className="rounded-2xl p-3 flex flex-col items-center justify-center text-center transition-all duration-200 hover:shadow-md active:scale-[0.97]"
-                        style={{ backgroundColor: '#f0f4ee' }}
+                        style={{ backgroundColor: '#FFF3E8' }}
                       >
                         <div className="w-16 h-16 rounded-xl overflow-hidden mb-2 bg-white/60 mx-auto">
                           {image ? (

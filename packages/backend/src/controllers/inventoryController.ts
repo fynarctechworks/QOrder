@@ -109,6 +109,15 @@ export const inventoryController = {
     } catch (err) { next(err); }
   },
 
+  async getForecast(req: Request, res: Response, next: NextFunction) {
+    try {
+      const restaurantId = req.user!.restaurantId;
+      const days = req.query.days ? Number(req.query.days) : 14;
+      const data = await inventoryService.getForecast(restaurantId, days);
+      res.json({ success: true, data });
+    } catch (err) { next(err); }
+  },
+
   // ─── SUPPLIERS ────────────────────────────────────────────
 
   async getSuppliers(req: Request, res: Response, next: NextFunction) {

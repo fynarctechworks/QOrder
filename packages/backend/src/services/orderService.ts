@@ -10,6 +10,7 @@ import { sessionService } from './sessionService.js';
 import { tableService } from './tableService.js';
 import { discountService } from './discountService.js';
 import { crmService } from './crmService.js';
+import { inventoryService } from './inventoryService.js';
 
 // Generate human-readable order number
 function generateOrderNumber(): string {
@@ -573,6 +574,17 @@ export const orderService = {
       );
     }
 
+    // Smart inventory: auto-deduct ingredients if enabled in restaurant settings
+    const smartInventoryEnabled = (settings as Record<string, unknown>).smartInventoryEnabled === true;
+    if (smartInventoryEnabled) {
+      postOps.push(
+        inventoryService.deductOrderStock(
+          restaurantId,
+          items.map(i => ({ menuItemId: i.menuItemId, quantity: i.quantity })),
+        ),
+      );
+    }
+
     // Rotate session token after customer order creation so old token can't be reused.
     // Only for customer orders (no initialStatus) — cashier orders skip this.
     // This must be awaited because the new token is returned to the client.
@@ -632,7 +644,7 @@ export const orderService = {
       // Already marked — idempotent
       const allReady = order.items.every(i => i.id === itemId || i.preparedAt);
       const tableName = order.table
-        ? (order.table.name ? `${order.table.name} ${order.table.number}` : `Table ${order.table.number}`)
+        ? (order.table.name ? `${order.table.name} (${order.table.number})` : `Table ${order.table.number}`)
         : 'Takeaway';
       return {
         orderId: order.id,
@@ -671,7 +683,7 @@ export const orderService = {
     ]);
 
     const tableName = order.table
-      ? (order.table.name ? `${order.table.name} ${order.table.number}` : `Table ${order.table.number}`)
+      ? (order.table.name ? `${order.table.name} (${order.table.number})` : `Table ${order.table.number}`)
       : 'Takeaway';
 
     return {
@@ -723,7 +735,7 @@ export const orderService = {
     ]);
 
     const tableName = updated.table
-      ? (updated.table.name ? `${updated.table.name} ${updated.table.number}` : `Table ${updated.table.number}`)
+      ? (updated.table.name ? `${updated.table.name} (${updated.table.number})` : `Table ${updated.table.number}`)
       : 'Takeaway';
 
     return {
@@ -1199,7 +1211,7 @@ export const orderService = {
       const dateStr = date.toLocaleDateString('en-IN');
       const timeStr = date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
       const tableName = o.table
-        ? (o.table.name ? `${o.table.name} ${o.table.number}` : `Table ${o.table.number}`)
+        ? (o.table.name ? `${o.table.name} (${o.table.number})` : `Table ${o.table.number}`)
         : 'Takeaway';
       const itemsSummary = o.items.map(i => `${i.menuItem?.name ?? 'Deleted Item'} x${i.quantity}`).join('; ');
       const totalQty = o.items.reduce((sum, i) => sum + i.quantity, 0);

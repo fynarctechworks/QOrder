@@ -67,7 +67,7 @@ export default function FeedbackModal({ orderId, onClose }: { orderId?: string; 
           initial={{ y: 100 }}
           animate={{ y: 0 }}
           exit={{ y: 100 }}
-          className="w-full max-w-md bg-white rounded-t-2xl sm:rounded-2xl p-6 space-y-5"
+          className="w-full max-w-md bg-white rounded-t-2xl sm:rounded-2xl p-6 space-y-5 max-h-[80vh] overflow-y-auto mb-16 sm:mb-0"
         >
           <div className="text-center">
             <h2 className="text-lg font-bold text-gray-900">{t('feedback.title')}</h2>

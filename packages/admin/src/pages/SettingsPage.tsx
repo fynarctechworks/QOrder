@@ -61,6 +61,8 @@ interface FormState {
   whatsappAlertAutoInvoice: boolean;
   staffLateThresholdMinutes: string;
   earlyCheckoutThresholdMinutes: string;
+  // QR layout logo
+  qrLogoUrl: string;
   // Print layout
   printLogoUrl: string;
   printHeaderText: string;
@@ -72,6 +74,8 @@ interface FormState {
   printShowSpecialInstructions: boolean;
   printShowSubtotal: boolean;
   printShowTax: boolean;
+  menuShowItemImages: boolean;
+  smartInventoryEnabled: boolean;
   // Daily report
   reportEmails: string;
 }
@@ -115,6 +119,7 @@ const DEFAULTS: FormState = {
   whatsappAlertAutoInvoice: false,
   staffLateThresholdMinutes: '15',
   earlyCheckoutThresholdMinutes: '30',
+  qrLogoUrl: '',
   printLogoUrl: '',
   printHeaderText: '',
   printFooterText: 'Thank you!',
@@ -125,6 +130,8 @@ const DEFAULTS: FormState = {
   printShowSpecialInstructions: true,
   printShowSubtotal: true,
   printShowTax: true,
+  menuShowItemImages: true,
+  smartInventoryEnabled: false,
   reportEmails: '',
 };
 
@@ -472,6 +479,7 @@ export default function SettingsPage() {
       whatsappAlertAutoInvoice: (s.whatsappAlertAutoInvoice as boolean) ?? false,
       staffLateThresholdMinutes: String(s.staffLateThresholdMinutes ?? 15),
       earlyCheckoutThresholdMinutes: String(s.earlyCheckoutThresholdMinutes ?? 30),
+      qrLogoUrl: (s.qrLogoUrl as string) ?? '',
       printLogoUrl: (s.printLogoUrl as string) ?? '',
       printHeaderText: (s.printHeaderText as string) ?? '',
       printFooterText: (s.printFooterText as string) ?? 'Thank you!',
@@ -482,6 +490,8 @@ export default function SettingsPage() {
       printShowSpecialInstructions: (s.printShowSpecialInstructions as boolean) ?? true,
       printShowSubtotal: (s.printShowSubtotal as boolean) ?? true,
       printShowTax: (s.printShowTax as boolean) ?? true,
+      menuShowItemImages: (s.menuShowItemImages as boolean) ?? true,
+      smartInventoryEnabled: (s.smartInventoryEnabled as boolean) ?? false,
       reportEmails: ((s.reportEmails as string[] | undefined) ?? []).join(', '),
     });
   }, [restaurant]);
@@ -529,6 +539,7 @@ export default function SettingsPage() {
       whatsappAlertAutoInvoice: (s.whatsappAlertAutoInvoice as boolean) ?? false,
       staffLateThresholdMinutes: String(s.staffLateThresholdMinutes ?? 15),
       earlyCheckoutThresholdMinutes: String(s.earlyCheckoutThresholdMinutes ?? 30),
+      qrLogoUrl: (s.qrLogoUrl as string) ?? '',
       printLogoUrl: (s.printLogoUrl as string) ?? '',
       printHeaderText: (s.printHeaderText as string) ?? '',
       printFooterText: (s.printFooterText as string) ?? 'Thank you!',
@@ -539,6 +550,8 @@ export default function SettingsPage() {
       printShowSpecialInstructions: (s.printShowSpecialInstructions as boolean) ?? true,
       printShowSubtotal: (s.printShowSubtotal as boolean) ?? true,
       printShowTax: (s.printShowTax as boolean) ?? true,
+      menuShowItemImages: (s.menuShowItemImages as boolean) ?? true,
+      smartInventoryEnabled: (s.smartInventoryEnabled as boolean) ?? false,
       reportEmails: ((s.reportEmails as string[] | undefined) ?? []).join(', '),
     };
   }, [restaurant]);
@@ -550,6 +563,27 @@ export default function SettingsPage() {
 
   // Password kept in a ref so the mutation closure always sees the latest value
   const passwordRef = useRef('');
+
+  // QR logo upload
+  const qrLogoInputRef = useRef<HTMLInputElement>(null);
+  const [qrLogoUploading, setQrLogoUploading] = useState(false);
+  const handleQrLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setQrLogoUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const res = await apiClient.upload<{ imageUrl: string }>('/upload/image', formData);
+      update('qrLogoUrl', res.imageUrl);
+      toast.success('QR logo uploaded');
+    } catch {
+      toast.error('Failed to upload QR logo');
+    } finally {
+      setQrLogoUploading(false);
+      if (qrLogoInputRef.current) qrLogoInputRef.current.value = '';
+    }
+  };
 
   // Logo upload
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -614,6 +648,7 @@ export default function SettingsPage() {
         staffLateThresholdMinutes: parseInt(form.staffLateThresholdMinutes, 10) || 15,
         earlyCheckoutThresholdMinutes: parseInt(form.earlyCheckoutThresholdMinutes, 10) || 30,
         // Print layout
+        qrLogoUrl: form.qrLogoUrl,
         printLogoUrl: form.printLogoUrl,
         printHeaderText: form.printHeaderText,
         printFooterText: form.printFooterText,
@@ -624,6 +659,8 @@ export default function SettingsPage() {
         printShowSpecialInstructions: form.printShowSpecialInstructions,
         printShowSubtotal: form.printShowSubtotal,
         printShowTax: form.printShowTax,
+        menuShowItemImages: form.menuShowItemImages,
+        smartInventoryEnabled: form.smartInventoryEnabled,
         reportEmails: form.reportEmails.split(',').map(e => e.trim()).filter(Boolean),
       };
 
@@ -1070,6 +1107,56 @@ export default function SettingsPage() {
                   </button>
                 </div>
               )}
+            </SectionCard>
+
+            {/* QR Code Logo */}
+            <SectionCard
+              icon="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
+              title="Logo"
+              subtitle="Logo displayed in the center of downloaded QR codes"
+            >
+              <div className="flex items-center gap-4">
+                {form.qrLogoUrl ? (
+                  <div className="relative w-20 h-20 rounded-xl border border-gray-200 overflow-hidden bg-white flex items-center justify-center">
+                    <img
+                      src={form.qrLogoUrl.startsWith('/uploads') ? `${(import.meta.env.VITE_API_URL || (import.meta.env.PROD ? 'https://api.infynarc.com/api' : 'http://localhost:3000/api')).replace('/api', '')}${form.qrLogoUrl}` : form.qrLogoUrl}
+                      alt="QR logo"
+                      className="max-w-full max-h-full object-contain"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => update('qrLogoUrl', '')}
+                      className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ) : (
+                  <div className="w-20 h-20 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center bg-gray-50">
+                    <svg className="w-8 h-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.41a2.25 2.25 0 013.182 0l2.909 2.91m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                    </svg>
+                  </div>
+                )}
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => qrLogoInputRef.current?.click()}
+                    disabled={qrLogoUploading}
+                    className="px-4 py-2 text-sm font-medium text-primary bg-orange-50 rounded-lg hover:bg-orange-100 transition-colors disabled:opacity-50"
+                  >
+                    {qrLogoUploading ? 'Uploading...' : form.qrLogoUrl ? 'Change Logo' : 'Upload Logo'}
+                  </button>
+                  <p className="text-[11px] text-text-muted">JPEG, PNG, or WebP. Max 5MB.</p>
+                </div>
+                <input
+                  ref={qrLogoInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleQrLogoUpload}
+                  className="hidden"
+                />
+              </div>
             </SectionCard>
           </motion.div>
         )}
@@ -1556,6 +1643,58 @@ export default function SettingsPage() {
                 <p className="text-xs text-text-muted">
                   Enter one or more email addresses separated by commas. Leave empty to send to the restaurant owner's account email.
                 </p>
+              </div>
+            </SectionCard>
+
+            {/* Smart Inventory */}
+            <SectionCard
+              icon="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 2.625v2.625m0 2.625v2.625"
+              title="Smart Inventory"
+              subtitle="Automatically deduct ingredients from stock when orders are placed, and disable menu items when an ingredient runs out"
+            >
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                    form.smartInventoryEnabled ? 'bg-green-100' : 'bg-gray-200'
+                  }`}>
+                    <svg className={`w-5 h-5 ${form.smartInventoryEnabled ? 'text-green-600' : 'text-gray-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-text-primary">Auto-deduct on Order</p>
+                    <p className="text-xs text-text-muted">
+                      {form.smartInventoryEnabled
+                        ? 'Ingredients will be deducted automatically when orders are placed'
+                        : 'Ingredients must be adjusted manually'}
+                    </p>
+                  </div>
+                </div>
+                <Toggle
+                  checked={form.smartInventoryEnabled}
+                  onChange={() => update('smartInventoryEnabled', !form.smartInventoryEnabled)}
+                  size="md"
+                />
+              </div>
+              <div className="px-1">
+                <p className="text-xs text-text-muted leading-relaxed">
+                  Requires recipes to be set up for each menu item in the Inventory section. When an ingredient reaches zero, the linked menu items will be automatically marked unavailable.
+                </p>
+              </div>
+            </SectionCard>
+
+            {/* Menu Display */}
+            <SectionCard
+              icon="M3.75 5.25h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5"
+              title="Menu Display"
+              subtitle="Controls how menu items appear in Create Order and QSR"
+            >
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <div>
+                  <p className="text-sm font-medium text-text-primary">Show Item Images</p>
+                  <p className="text-xs text-text-muted">Display item photos on the menu grid</p>
+                </div>
+                <Toggle checked={form.menuShowItemImages} onChange={() => update('menuShowItemImages', !form.menuShowItemImages)} size="md" />
               </div>
             </SectionCard>
           </motion.div>

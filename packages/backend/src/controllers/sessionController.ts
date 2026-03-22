@@ -89,7 +89,7 @@ export const sessionController = {
         if (result.isFullyPaid && result.session?.tableId) {
           const tablePayload = {
             tableId: result.session.tableId,
-            status: 'AVAILABLE',
+            status: 'available',
             sessionToken: result.newSessionToken,
           };
           io.to(`restaurant:${restaurantId}`).emit('table:updated', tablePayload);
@@ -138,13 +138,13 @@ export const sessionController = {
         if (result.oldTableId) {
           io.to(`restaurant:${restaurantId}`).emit('table:updated', {
             tableId: result.oldTableId,
-            status: 'AVAILABLE',
+            status: 'available',
             sessionToken: result.newSessionToken,
           });
         }
         io.to(`restaurant:${restaurantId}`).emit('table:updated', {
           tableId: targetTableId,
-          status: 'OCCUPIED',
+          status: 'occupied',
         });
         io.to(`restaurant:${restaurantId}`).emit('session:updated', {
           sessionId: result.newSession.id,
@@ -184,7 +184,7 @@ export const sessionController = {
         if (result.sourceTableId) {
           io.to(`restaurant:${restaurantId}`).emit('table:updated', {
             tableId: result.sourceTableId,
-            status: 'AVAILABLE',
+            status: 'available',
             sessionToken: result.newSessionToken,
           });
         }

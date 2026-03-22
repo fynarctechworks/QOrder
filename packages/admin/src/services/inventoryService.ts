@@ -91,6 +91,19 @@ export interface UsageTrendPoint {
   itemCount: number;
 }
 
+export interface ForecastItem {
+  id: string;
+  name: string;
+  unit: string;
+  currentStock: number;
+  minStock: number;
+  costPerUnit: number;
+  avgDailyUsage: number;
+  daysRemaining: number | null;
+  daysUntilMin: number | null;
+  status: 'ok' | 'critical' | 'low' | 'out';
+}
+
 export interface InventoryOverview {
   totalIngredients: number;
   lowStockCount: number;
@@ -235,5 +248,10 @@ export const inventoryService = {
   // Low stock alerts
   async getLowStockAlerts() {
     return apiClient.get<{ id: string; name: string; unit: string; currentStock: number; minStock: number }[]>('/inventory/alerts');
+  },
+
+  // Forecast
+  async getForecast(days: number = 14): Promise<ForecastItem[]> {
+    return apiClient.get(`/inventory/forecast?days=${days}`);
   },
 };

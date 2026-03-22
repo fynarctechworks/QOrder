@@ -216,7 +216,7 @@ function DashboardLayoutInner() {
   const [isServicePanelOpen, setIsServicePanelOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const { user, logout } = useAuth();
-  const { isConnected, onNewOrder, onOrderStatusUpdate, onServiceRequest, onItemKitchenReady, onLeaveRequest, onStockLow, onStaffLate, onStaffEarlyCheckout, triggerSync, kdsCount, kdsUsers } = useSocket();
+  const { isConnected, onNewOrder, onOrderStatusUpdate, onServiceRequest, onItemKitchenReady, onLeaveRequest, onStockLow, onStaffLate, onStaffEarlyCheckout, triggerSync, kdsCount, kdsUsers, onTableUpdated } = useSocket();
   const { play: playSound } = useNotificationSound();
   const { notifications, push: pushNotification, dismiss: dismissNotification, dismissAll: dismissAllNotifications } = useNotificationOverlay();
   const queryClient = useQueryClient();
@@ -246,7 +246,8 @@ function DashboardLayoutInner() {
   const settings = (restaurant?.settings ?? {}) as Record<string, unknown>;
   const autoLockEnabled = (settings.autoLockEnabled as boolean) ?? false;
   const autoLockTimeout = (settings.autoLockTimeout as number) ?? 2;
-  const hasLockPin = (settings.hasLockPin as boolean) ?? false;
+  const hasLockPin = (settings.hasLockPin as boolean) === true;
+
   const { isLocked, unlock, lock } = useIdleLock({
     enabled: autoLockEnabled,
     timeoutMinutes: autoLockTimeout,
@@ -384,6 +385,23 @@ function DashboardLayoutInner() {
     });
     return unsub;
   }, [onOrderStatusUpdate, queryClient]);
+
+  // Global table status update — runs regardless of which page is active
+  useEffect(() => {
+    const unsub = onTableUpdated((data) => {
+      if (!data.tableId || !data.status) return;
+      const status = data.status.toLowerCase();
+      queryClient.setQueryData<import('../types').Table[]>(['tables'], (old) => {
+        if (!old) return old;
+        return old.map((t) =>
+          t.id === data.tableId ? { ...t, status: status as import('../types').Table['status'] } : t
+        );
+      });
+      queryClient.invalidateQueries({ queryKey: ['tables'] });
+      queryClient.invalidateQueries({ queryKey: ['runningTables'] });
+    });
+    return unsub;
+  }, [onTableUpdated, queryClient]);
 
   const handleSync = useCallback(async () => {
     setIsSyncing(true);

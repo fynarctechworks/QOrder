@@ -246,7 +246,7 @@ export default function TablesPage() {
             t.id === data.tableId
               ? {
                   ...t,
-                  ...(data.status ? { status: data.status as Table['status'] } : {}),
+                  ...(data.status ? { status: data.status.toLowerCase() as Table['status'] } : {}),
                   ...(data.sessionToken !== undefined ? { sessionToken: data.sessionToken } : {}),
                 }
               : t
@@ -671,6 +671,7 @@ export default function TablesPage() {
           tableName={qrTable.name}
           tableNumber={qrTable.number}
           url={`${CUSTOMER_BASE_URL}/r/${restaurant.slug}/t/${qrTable.id}`}
+          logoUrl={(restaurant.settings?.qrLogoUrl as string) || undefined}
           onClose={() => setQrTable(null)}
         />
       )}

@@ -15,6 +15,8 @@ import DietBadge from '../components/DietBadge';
 import Modal from '../components/Modal';
 import type { MenuItem, Category, Order, OrderStatus, Table } from '../types';
 
+const UPLOAD_BASE = (import.meta.env.VITE_API_URL as string || 'http://localhost:3000/api').replace('/api', '');
+
 /* ─── Types ── */
 interface SelectedModifier {
   modifierId: string;
@@ -82,8 +84,8 @@ const PRINT_CSS = `
     .token-box{text-align:center;border:3px solid #000;border-radius:8px;padding:12px;margin:12px 0}
     .token-label{font-size:13px;text-transform:uppercase;letter-spacing:0.1em;font-weight:bold}
     .token-num{font-size:36px;font-weight:bold;line-height:1.1}
-    .item{display:flex;gap:6px;padding:6px 0;align-items:flex-start;font-size:14px}
-    .qty{min-width:28px;font-weight:bold;font-size:15px}
+    .item{display:flex;gap:6px;padding:6px 0;align-items:center;font-size:14px}
+    .qty{min-width:28px;font-weight:bold;font-size:20px}
     .name{flex:1;font-size:14px;font-weight:bold}
     .mods{font-size:12px;margin-top:1px;font-weight:bold}
     .price{text-align:right;white-space:nowrap;font-weight:bold;font-size:14px}
@@ -96,7 +98,7 @@ const PRINT_CSS = `
     .k-token-label{font-size:13px;text-transform:uppercase;letter-spacing:0.1em;font-weight:bold}
     .k-token-num{font-size:36px;font-weight:bold;line-height:1.1}
     .k-item{display:flex;gap:8px;padding:6px 0;border-bottom:1px dotted #000;font-size:15px}
-    .k-qty{min-width:28px;font-weight:bold;font-size:15px}
+    .k-qty{min-width:28px;font-weight:bold;font-size:20px}
     .k-name{flex:1;font-weight:bold}
     .k-mods{font-size:13px;font-weight:bold;margin-top:2px}
     .k-time{text-align:center;font-size:13px;margin-top:8px;font-weight:bold}
@@ -110,10 +112,9 @@ function firePrintJob(html: string, title: string) {
   w.document.close();
   w.print();
   w.onafterprint = () => w.close();
-  setTimeout(() => { try { w.close(); } catch {} }, 5000);
 }
 
-function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrency: (n: number) => string, restaurantName: string, itemStationMap?: Map<string, string>, orderLabel?: string, parcelCharge?: number) {
+function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrency: (n: number) => string, restaurantName: string, itemStationMap?: Map<string, string>, orderLabel?: string, parcelCharge?: number, logoUrl?: string) {
   const customerItemsHtml = order.items.map(item => {
     const mods = (item.customizations || []).flatMap(g => g.options.map(o => o.name)).join(', ');
     const displayName = mods ? `(${mods}) ${escapeHtml(item.menuItemName)}` : escapeHtml(item.menuItemName);
@@ -144,7 +145,10 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
       ${order.specialInstructions ? `<div class="divider"></div><p style="font-size:13px"><strong>Notes:</strong> ${escapeHtml(order.specialInstructions)}</p>` : ''}
       <div class="k-time">${new Date().toLocaleString()}</div>`;
 
+  const logoHtml = logoUrl ? `<div style="text-align:center;margin-bottom:8px"><img src="${escapeHtml(logoUrl)}" style="max-width:160px;max-height:80px;object-fit:contain" alt="logo"></div>` : '';
+
   const customerHtml = `
+      ${logoHtml}
       <p class="restaurant center">${escapeHtml(restaurantName)}</p>
       <div class="token-box">
         <div class="token-label">Token Number</div>
@@ -206,6 +210,7 @@ export default function QSRPage() {
   const restaurantName = (settings?.name as string) || 'Restaurant';
   const kitchenParcelRate = Number((settings?.settings as any)?.kitchenParcelCharge ?? 10);
   const beverageParcelRate = Number((settings?.settings as any)?.beverageParcelCharge ?? 15);
+  const menuShowItemImages = (settings?.settings as any)?.menuShowItemImages !== false;
 
   /* ── State ── */
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -507,8 +512,11 @@ export default function QSRPage() {
       isPayLaterRef.current = false;
       // Auto-print customer token + station KOTs
       const stationMap = buildItemStationMap();
-      const orderLabel = selectedTable === 'takeaway' ? 'Takeaway' : selectedTable ? (tables.find(t => t.id === selectedTable)?.name || `Table ${tables.find(t => t.id === selectedTable)?.number}`) : 'Counter';
-      setTimeout(() => printReceipts(order, selectedQuickMethod || 'CASH', formatCurrency, restaurantName, stationMap, orderLabel, parcelCharge), 300);
+      const _tbl = selectedTable && selectedTable !== 'takeaway' ? tables.find(t => t.id === selectedTable) : null;
+      const orderLabel = selectedTable === 'takeaway' ? 'Takeaway' : _tbl ? (_tbl.name ? `${_tbl.name} (${_tbl.number})` : `Table ${_tbl.number}`) : 'Counter';
+      const logoUrl = (settings?.settings as any)?.qrLogoUrl || (settings?.settings as any)?.printLogoUrl;
+      const resolvedLogoUrl = logoUrl ? (logoUrl.startsWith('/uploads') ? `${UPLOAD_BASE}${logoUrl}` : logoUrl) : undefined;
+      setTimeout(() => printReceipts(order, selectedQuickMethod || 'CASH', formatCurrency, restaurantName, stationMap, orderLabel, parcelCharge, resolvedLogoUrl), 300);
       // Auto-send WhatsApp invoice
       sendWhatsAppInvoice(order.id);
     },
@@ -1066,7 +1074,7 @@ export default function QSRPage() {
                   .filter(t => t.status === 'available' || t.status === 'occupied')
                   .sort((a, b) => Number(a.number) - Number(b.number))
                   .map(t => (
-                    <option key={t.id} value={t.id} disabled={t.status === 'occupied'}>
+                    <option key={t.id} value={t.id}>
                       {t.name ? `${t.name} (${t.number})` : `Table ${t.number}`}
                       {t.status === 'occupied' ? ' • Occupied' : ''}
                     </option>
@@ -1591,34 +1599,44 @@ export default function QSRPage() {
                 const qty = getCartQty(item.id);
                 const price = item.discountPrice ?? item.price;
                 const catName = categoryMap.get(item.categoryId) || '';
+                const imgSrc = menuShowItemImages && item.image
+                  ? (item.image.startsWith('/uploads') ? `${UPLOAD_BASE}${item.image}` : item.image)
+                  : null;
                 return (
                   <button
                     key={item.id}
                     onClick={() => addToCart(item)}
-                    className={`text-left bg-white rounded-xl border p-3.5 transition-all active:scale-[0.97] hover:shadow-md relative ${
+                    className={`text-left bg-white rounded-xl border overflow-hidden transition-all active:scale-[0.97] hover:shadow-md relative ${
                       qty > 0 ? 'border-primary ring-1 ring-primary/30 bg-primary/5' : 'border-border hover:border-muted'
                     }`}
                   >
                     {qty > 0 && (
-                      <span className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center shadow-sm">
+                      <span className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center shadow-sm z-10">
                         {qty}
                       </span>
                     )}
-                    <div className="flex items-start justify-between gap-2 mb-1.5">
-                      <DietBadge type={item.dietType} />
-                    </div>
-                    <p className="text-sm font-semibold text-text-primary truncate">{item.name}</p>
-                    {catName && (
-                      <p className="text-xs text-text-muted mt-0.5 truncate">{catName}</p>
+                    {imgSrc && (
+                      <div className="w-full h-24 bg-gray-100 overflow-hidden">
+                        <img src={imgSrc} alt={item.name} className="w-full h-full object-cover" />
+                      </div>
                     )}
-                    <p className="text-sm font-bold text-primary mt-2">{formatCurrency(price)}</p>
+                    <div className="p-3">
+                      <div className="flex items-start gap-2 mb-1">
+                        <DietBadge type={item.dietType} />
+                      </div>
+                      <p className="text-sm font-semibold text-text-primary truncate">{item.name}</p>
+                      {catName && (
+                        <p className="text-xs text-text-muted mt-0.5 truncate">{catName}</p>
+                      )}
+                      <p className="text-sm font-bold text-primary mt-1.5">{formatCurrency(price)}</p>
+                    </div>
                   </button>
                 );
               };
 
               if (selectedCategory === 'all' || menuSearch.trim()) {
                 return (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                     {availableItems.map(renderItemCard)}
                   </div>
                 );
@@ -1751,7 +1769,7 @@ export default function QSRPage() {
 
             <div className="flex flex-col sm:flex-row gap-3 max-w-sm mx-auto">
               <button
-                onClick={() => printReceipts(completedOrder, selectedQuickMethod || 'CASH', formatCurrency, restaurantName, buildItemStationMap())}
+                onClick={() => { const lUrl = (settings?.settings as any)?.qrLogoUrl || (settings?.settings as any)?.printLogoUrl; const rLUrl = lUrl ? (lUrl.startsWith('/uploads') ? `${UPLOAD_BASE}${lUrl}` : lUrl) : undefined; printReceipts(completedOrder, selectedQuickMethod || 'CASH', formatCurrency, restaurantName, buildItemStationMap(), undefined, undefined, rLUrl); }}
                 className="flex-1 px-5 py-3 bg-white border-2 border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-800 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 text-sm"
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
@@ -2600,6 +2618,23 @@ function QSROrderCard({
   const servedCount = order.items.filter(i => !!i.preparedAt).length;
   const totalItemCount = order.items.length;
 
+  const [elapsed, setElapsed] = useState(() =>
+    Math.floor((Date.now() - new Date(order.createdAt).getTime()) / 1000)
+  );
+  useEffect(() => {
+    if (mode !== 'preparing') return;
+    const id = setInterval(() =>
+      setElapsed(Math.floor((Date.now() - new Date(order.createdAt).getTime()) / 1000))
+    , 1000);
+    return () => clearInterval(id);
+  }, [mode, order.createdAt]);
+  const elapsedStr = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`;
+  const timerColor = elapsed >= 600
+    ? 'bg-red-100 text-red-700 border-red-200'
+    : elapsed >= 300
+    ? 'bg-amber-100 text-amber-700 border-amber-200'
+    : 'bg-violet-100 text-violet-700 border-violet-200';
+
   // Filter items based on mode
   const displayItems = mode === 'preparing'
     ? order.items.filter(i => !i.preparedAt)   // Show only UNSERVED items
@@ -2632,6 +2667,8 @@ function QSROrderCard({
               {order.customerName || order.tableName || 'Counter'}
             </p>
             <p className="text-[11px] text-gray-400 mt-0.5">
+              {order.customerName && <span className="font-semibold text-gray-600">{order.tableName || 'Counter'}</span>}
+              {order.customerName && ' • '}
               {timeAgo(order.createdAt)}
               {order.customerPhone && ` • ${order.customerPhone}`}
             </p>
@@ -2678,6 +2715,13 @@ function QSROrderCard({
             <span className="text-xs text-gray-400 tabular-nums shrink-0">
               {formatCurrency(item.totalPrice)}
             </span>
+
+            {/* Per-item elapsed timer (preparing mode, unserved only) */}
+            {mode === 'preparing' && !item.preparedAt && (
+              <span className={`shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold tabular-nums border ${timerColor}`}>
+                {elapsedStr}
+              </span>
+            )}
 
             {/* Serve button (preparing mode, unserved items) */}
             {mode === 'preparing' && !item.preparedAt && onServeItem && (

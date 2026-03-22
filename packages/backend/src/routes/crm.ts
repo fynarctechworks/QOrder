@@ -10,7 +10,7 @@ const router = Router();
 // All CRM routes require authentication and OWNER/ADMIN/MANAGER role
 router.use(authenticate, resolveBranch);
 
-router.get('/', authorize('OWNER', 'ADMIN', 'MANAGER'), crmController.getCustomers);
+router.get('/', crmController.getCustomers);
 router.get('/insights', authorize('OWNER', 'ADMIN', 'MANAGER'), crmController.getInsights);
 router.get('/top', authorize('OWNER', 'ADMIN', 'MANAGER'), crmController.getTopCustomers);
 router.get('/:id', authorize('OWNER', 'ADMIN', 'MANAGER'), crmController.getCustomer);

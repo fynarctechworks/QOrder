@@ -6,6 +6,8 @@ import { orderService } from '../services';
 import { settingsService } from '../services/settingsService';
 import type { Order } from '../types';
 
+const UPLOAD_BASE = (import.meta.env.VITE_API_URL as string || 'http://localhost:3000/api').replace('/api', '');
+
 type PaymentMethod = 'CASH' | 'CARD' | 'UPI';
 
 interface SplitEntry {
@@ -186,7 +188,8 @@ export default function TakeawaySettlementModal({
   const handlePrint = () => {
     const restaurantName = (restaurant?.name as string) || 'Restaurant';
     const pls = (restaurant?.settings ?? {}) as Record<string, unknown>;
-    const logoUrl = (pls.printShowLogo !== false && pls.printLogoUrl) ? ((pls.printLogoUrl as string).startsWith('/uploads') ? `${window.location.origin}${pls.printLogoUrl}` : pls.printLogoUrl as string) : '';
+    const rawLogoUrl = (pls.qrLogoUrl || pls.printLogoUrl) as string | undefined;
+    const logoUrl = (pls.printShowLogo !== false && rawLogoUrl) ? (rawLogoUrl.startsWith('/uploads') ? `${UPLOAD_BASE}${rawLogoUrl}` : rawLogoUrl) : '';
     const headerText = (pls.printShowAddress !== false && pls.printHeaderText) ? pls.printHeaderText as string : '';
     const footerText = (pls.printFooterText as string) || '';
     const showCustomerInfo = (pls.printShowCustomerInfo as boolean) ?? true;
@@ -203,7 +206,7 @@ export default function TakeawaySettlementModal({
       .info{font-size:12px;color:#444;margin-bottom:4px}
       .label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#888;margin:12px 0 6px}
       .item{display:flex;gap:8px;padding:6px 0;border-bottom:1px solid #eee}
-      .qty{font-weight:700;min-width:28px;height:28px;background:#f3f4f6;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px}
+      .qty{font-weight:700;min-width:28px;height:28px;background:#f3f4f6;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:20px}
       .item-detail{flex:1}
       .item-name{font-weight:700;font-size:14px}
       .mod{color:#888;font-size:11px;margin-top:2px}
@@ -258,7 +261,7 @@ export default function TakeawaySettlementModal({
     if (footerText) w.document.write(`<hr><p class="center">${footerText}</p>`);
     w.document.write(`</body></html>`);
     w.document.close();
-    setTimeout(() => { w.print(); }, 300);
+    setTimeout(() => { w.print(); w.onafterprint = () => w.close(); }, 300);
   };
 
   /* ── Auto-print disabled for takeaway — user clicks "Print Bill" manually ── */
