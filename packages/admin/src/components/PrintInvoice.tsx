@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react';
+
+const UPLOAD_BASE = (import.meta.env.VITE_API_URL as string || 'http://localhost:3000/api').replace('/api', '');
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../services/apiClient';
 import { settingsService } from '../services/settingsService';
@@ -69,10 +71,11 @@ export default function PrintInvoice({
     printedRef.current = true;
 
     const pls = (restaurantData.settings ?? {}) as Record<string, unknown>;
-    const logoUrl = (pls.printShowLogo !== false && pls.printLogoUrl)
-      ? ((pls.printLogoUrl as string).startsWith('/uploads')
-        ? `${window.location.origin}${pls.printLogoUrl}`
-        : pls.printLogoUrl as string)
+    const rawLogoUrl = (pls.qrLogoUrl || pls.printLogoUrl) as string | undefined;
+    const logoUrl = (pls.printShowLogo !== false && rawLogoUrl)
+      ? (rawLogoUrl.startsWith('/uploads')
+        ? `${UPLOAD_BASE}${rawLogoUrl}`
+        : rawLogoUrl)
       : '';
     const headerText = (pls.printShowAddress !== false && pls.printHeaderText) ? pls.printHeaderText as string : '';
     const footerText = (pls.printFooterText as string) || 'Thank you for dining with us!';
@@ -100,6 +103,7 @@ export default function PrintInvoice({
       th.r,td.r{text-align:right}
       th.c,td.c{text-align:center}
       td{padding:4px 2px;vertical-align:top}
+      td.c{font-size:20px;font-weight:700}
       .mod{color:#888;font-size:10px;margin-top:1px}
       .note{color:#d97706;font-size:10px;margin-top:1px}
       .totals .row{display:flex;justify-content:space-between;padding:2px 0;font-size:13px}
@@ -190,7 +194,7 @@ export default function PrintInvoice({
 
     setTimeout(() => {
       w.print();
-      setTimeout(() => { w.close(); onClose(); }, 500);
+      w.onafterprint = () => { w.close(); onClose(); };
     }, 300);
   }, [invoice, restaurantData]); // eslint-disable-line react-hooks/exhaustive-deps
 

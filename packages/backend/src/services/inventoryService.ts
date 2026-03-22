@@ -1,6 +1,62 @@
 import { Decimal } from '@prisma/client/runtime/library';
 import { prisma, cache, AppError } from '../lib/index.js';
 import { alertService } from './alertService.js';
+import { getIO } from '../socket/index.js';
+
+/**
+ * After any stock change, sync menu item availability:
+ * - Items whose ANY ingredient is now at 0 → isAvailable = false
+ * - Items whose ALL ingredients are > 0 (and were previously disabled by us) → isAvailable = true
+ * Fire-and-forget: never throws, never blocks the caller.
+ */
+async function syncMenuAvailability(restaurantId: string, affectedIngredientIds: string[]) {
+  if (affectedIngredientIds.length === 0) return;
+
+  // Find every menu item that uses any of the affected ingredients
+  const recipes = await prisma.recipe.findMany({
+    where: { ingredientId: { in: affectedIngredientIds } },
+    select: { menuItemId: true },
+    distinct: ['menuItemId'],
+  });
+  if (recipes.length === 0) return;
+
+  const menuItemIds = recipes.map(r => r.menuItemId);
+
+  // For each menu item, check all its ingredient stocks
+  const allRecipes = await prisma.recipe.findMany({
+    where: { menuItemId: { in: menuItemIds } },
+    include: { ingredient: { select: { currentStock: true } } },
+  });
+
+  const toDisable: string[] = [];
+  const toEnable: string[] = [];
+
+  // Group recipes by menuItemId
+  const recipesByItem = new Map<string, typeof allRecipes>();
+  for (const r of allRecipes) {
+    const list = recipesByItem.get(r.menuItemId) ?? [];
+    list.push(r);
+    recipesByItem.set(r.menuItemId, list);
+  }
+
+  for (const [menuItemId, itemRecipes] of recipesByItem) {
+    const hasOutOfStock = itemRecipes.some(r => new Decimal(r.ingredient.currentStock).equals(0));
+    if (hasOutOfStock) {
+      toDisable.push(menuItemId);
+    } else {
+      toEnable.push(menuItemId);
+    }
+  }
+
+  await Promise.all([
+    toDisable.length > 0
+      ? prisma.menuItem.updateMany({ where: { id: { in: toDisable }, restaurantId }, data: { isAvailable: false } })
+      : Promise.resolve(),
+    toEnable.length > 0
+      ? prisma.menuItem.updateMany({ where: { id: { in: toEnable }, restaurantId }, data: { isAvailable: true } })
+      : Promise.resolve(),
+  ]);
+}
 
 export const inventoryService = {
   // ─── INGREDIENTS ───────────────────────────────────────────
@@ -152,6 +208,9 @@ export const inventoryService = {
       }),
     ]);
 
+    // Sync menu item availability based on new stock level
+    syncMenuAvailability(restaurantId, [ingredientId]).catch(() => {});
+
     // Real-time low stock alert — only for deductive operations
     if (!ADDITIVE_TYPES.includes(data.type)) {
       alertService.checkItemsForLowStock(restaurantId, [{
@@ -257,6 +316,9 @@ export const inventoryService = {
     }
 
     await prisma.$transaction(operations);
+
+    // Sync menu item availability for all affected ingredients
+    syncMenuAvailability(restaurantId, ingredientIds).catch(() => {});
 
     // Real-time low stock alert for all deducted items
     const stockChanges = data.items.map(item => {
@@ -684,6 +746,138 @@ export const inventoryService = {
 
     return prisma.ingredientSupplier.delete({
       where: { ingredientId_supplierId: { ingredientId, supplierId } },
+    });
+  },
+
+  // ─── SMART INVENTORY: AUTO-DEDUCT ON ORDER ────────────────
+
+  /**
+   * Deducts ingredients based on order items' recipes.
+   * Called as a fire-and-forget post-op after order creation.
+   * Silently skips items with no recipes (ingredient tracking is optional per item).
+   * If an ingredient hits 0 after deduction, the linked menu items are auto-disabled.
+   */
+  async deductOrderStock(restaurantId: string, orderItems: { menuItemId: string; quantity: number }[]) {
+    const menuItemIds = [...new Set(orderItems.map(i => i.menuItemId))];
+
+    // Fetch all recipes for the ordered items in one query
+    const recipes = await prisma.recipe.findMany({
+      where: { menuItemId: { in: menuItemIds } },
+      include: { ingredient: true },
+    });
+
+    if (recipes.length === 0) return; // No recipes configured — nothing to deduct
+
+    // Aggregate total deduction per ingredient across all ordered items
+    const deductMap = new Map<string, { ingredient: typeof recipes[0]['ingredient']; qty: Decimal }>();
+    for (const recipe of recipes) {
+      const orderItem = orderItems.find(o => o.menuItemId === recipe.menuItemId);
+      if (!orderItem) continue;
+      const deduct = new Decimal(recipe.quantity).times(orderItem.quantity);
+      const existing = deductMap.get(recipe.ingredientId);
+      if (existing) {
+        existing.qty = existing.qty.plus(deduct);
+      } else {
+        deductMap.set(recipe.ingredientId, { ingredient: recipe.ingredient, qty: deduct });
+      }
+    }
+
+    // Build transaction operations
+    const ops: any[] = [];
+
+    for (const [ingredientId, { ingredient, qty }] of deductMap) {
+      const previousQty = new Decimal(ingredient.currentStock);
+      // Clamp to zero — don't throw on insufficient stock (order already placed)
+      const newQty = previousQty.minus(qty).lessThan(0) ? new Decimal(0) : previousQty.minus(qty);
+
+      ops.push(
+        prisma.ingredient.update({
+          where: { id: ingredientId },
+          data: { currentStock: newQty },
+        }),
+        prisma.stockMovement.create({
+          data: {
+            type: 'ORDER_DEDUCT',
+            quantity: qty.greaterThan(previousQty) ? previousQty : qty,
+            previousQty,
+            newQty,
+            costPerUnit: ingredient.costPerUnit,
+            ingredientId,
+            restaurantId,
+          },
+        }),
+      );
+    }
+
+    await prisma.$transaction(ops);
+
+    // Sync menu item availability for all affected ingredients
+    syncMenuAvailability(restaurantId, [...deductMap.keys()]).catch(() => {});
+
+    // Trigger low-stock alert checks
+    const stockChanges = [...deductMap.entries()].map(([ingredientId, { ingredient, qty }]) => ({
+      ingredientId,
+      previousStock: new Decimal(ingredient.currentStock).toNumber(),
+      newStock: Math.max(0, new Decimal(ingredient.currentStock).minus(qty).toNumber()),
+    }));
+    alertService.checkItemsForLowStock(restaurantId, stockChanges).catch(() => {});
+
+    // Notify admin clients so inventory UI auto-refreshes
+    getIO()?.to(`restaurant:${restaurantId}`).emit('inventory:updated', { restaurantId });
+  },
+
+  // ─── FORECAST ─────────────────────────────────────────────
+
+  /**
+   * Returns estimated days of stock remaining per ingredient,
+   * based on average daily ORDER_DEDUCT usage over the last N days.
+   */
+  async getForecast(restaurantId: string, days: number = 14) {
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+    since.setHours(0, 0, 0, 0);
+
+    const [ingredients, movements] = await Promise.all([
+      prisma.ingredient.findMany({
+        where: { restaurantId, isActive: true },
+        select: { id: true, name: true, unit: true, currentStock: true, minStock: true, costPerUnit: true, isActive: true },
+      }),
+      prisma.stockMovement.findMany({
+        where: { restaurantId, type: 'ORDER_DEDUCT', createdAt: { gte: since } },
+        select: { ingredientId: true, quantity: true },
+      }),
+    ]);
+
+    // Sum usage per ingredient over the window
+    const usageMap = new Map<string, number>();
+    for (const m of movements) {
+      usageMap.set(m.ingredientId, (usageMap.get(m.ingredientId) ?? 0) + Number(m.quantity));
+    }
+
+    return ingredients.map(ing => {
+      const totalUsed = usageMap.get(ing.id) ?? 0;
+      const avgDailyUsage = totalUsed / days;
+      const currentStock = Number(ing.currentStock);
+      const minStock = Number(ing.minStock);
+      const daysRemaining = avgDailyUsage > 0 ? Math.floor(currentStock / avgDailyUsage) : null;
+      const daysUntilMin = avgDailyUsage > 0 && minStock > 0
+        ? Math.floor((currentStock - minStock) / avgDailyUsage)
+        : null;
+
+      return {
+        id: ing.id,
+        name: ing.name,
+        unit: ing.unit,
+        currentStock,
+        minStock,
+        costPerUnit: Number(ing.costPerUnit),
+        avgDailyUsage: Math.round(avgDailyUsage * 1000) / 1000,
+        daysRemaining,
+        daysUntilMin,
+        status: currentStock === 0 ? 'out' :
+                minStock > 0 && currentStock <= minStock ? 'low' :
+                daysRemaining !== null && daysRemaining <= 3 ? 'critical' : 'ok',
+      };
     });
   },
 };

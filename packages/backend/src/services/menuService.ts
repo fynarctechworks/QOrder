@@ -674,4 +674,44 @@ export const menuService = {
 
     return menu;
   },
+
+  // ─── RECIPES ──────────────────────────────────────────────────────────
+
+  async getItemRecipes(menuItemId: string, restaurantId: string) {
+    const item = await prisma.menuItem.findFirst({ where: { id: menuItemId, restaurantId } });
+    if (!item) throw AppError.notFound('Menu item');
+    return prisma.recipe.findMany({
+      where: { menuItemId },
+      include: { ingredient: { select: { id: true, name: true, unit: true, currentStock: true } } },
+      orderBy: { ingredient: { name: 'asc' } },
+    });
+  },
+
+  async setItemRecipes(menuItemId: string, restaurantId: string, recipes: { ingredientId: string; quantity: number }[]) {
+    const item = await prisma.menuItem.findFirst({ where: { id: menuItemId, restaurantId } });
+    if (!item) throw AppError.notFound('Menu item');
+
+    // Validate all ingredients belong to this restaurant
+    if (recipes.length > 0) {
+      const ids = recipes.map(r => r.ingredientId);
+      const found = await prisma.ingredient.count({ where: { id: { in: ids }, restaurantId } });
+      if (found !== ids.length) throw AppError.badRequest('One or more ingredients not found');
+    }
+
+    // Replace all recipes for this item in a transaction
+    await prisma.$transaction([
+      prisma.recipe.deleteMany({ where: { menuItemId } }),
+      ...(recipes.length > 0
+        ? [prisma.recipe.createMany({
+            data: recipes.map(r => ({ menuItemId, ingredientId: r.ingredientId, quantity: r.quantity })),
+          })]
+        : []),
+    ]);
+
+    return prisma.recipe.findMany({
+      where: { menuItemId },
+      include: { ingredient: { select: { id: true, name: true, unit: true, currentStock: true } } },
+      orderBy: { ingredient: { name: 'asc' } },
+    });
+  },
 };

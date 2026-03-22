@@ -9,6 +9,8 @@ import Modal from '../components/Modal';
 import PanCornerCategoryForm from '../components/pan-corner/PanCornerCategoryForm';
 import PanCornerItemForm from '../components/pan-corner/PanCornerItemForm';
 
+const UPLOAD_BASE = (import.meta.env.VITE_API_URL as string || 'http://localhost:3000/api').replace('/api', '');
+
 /* ─── Print ──────────────────────────────────────────────────────────────── */
 function escapeHtml(text: string) {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -24,7 +26,7 @@ const PRINT_CSS = `
   .token-label{font-size:13px;text-transform:uppercase;letter-spacing:0.1em;font-weight:bold}
   .token-num{font-size:36px;font-weight:bold;line-height:1.1}
   .item{display:flex;gap:6px;padding:6px 0;align-items:flex-start;font-size:14px}
-  .qty{min-width:28px;font-weight:bold;font-size:15px}
+  .qty{min-width:28px;font-weight:bold;font-size:20px}
   .name{flex:1;font-size:14px;font-weight:bold}
   .price{text-align:right;white-space:nowrap;font-weight:bold;font-size:14px}
   .total-row{display:flex;justify-content:space-between;padding:3px 0;font-size:14px}
@@ -49,7 +51,8 @@ function printPanCornerReceipt(
   paymentMethod: string,
   restaurantName: string,
   discountAmount: number,
-  notes: string
+  notes: string,
+  logoUrl?: string
 ) {
   const itemsHtml = cartItems.map(c => {
     const price = c.item.discountPrice ?? c.item.price;
@@ -58,8 +61,10 @@ function printPanCornerReceipt(
 
   const subtotal = cartItems.reduce((s, c) => s + (c.item.discountPrice ?? c.item.price) * c.quantity, 0);
   const tokenLabel = String(order.tokenNumber).padStart(3, '0');
+  const logoHtml = logoUrl ? `<div style="text-align:center;margin-bottom:8px"><img src="${escapeHtml(logoUrl)}" style="max-width:160px;max-height:80px;object-fit:contain" alt="logo"></div>` : '';
 
   const html = `
+    ${logoHtml}
     <p class="restaurant center">${escapeHtml(restaurantName)}</p>
     <div class="token-box">
       <div class="token-label">Token Number</div>
@@ -332,7 +337,9 @@ export default function PanCornerPage() {
         const discount = discountAmount;
         const notesSnap = notes.trim();
         const name = restaurantName;
-        pendingPrintRef.current = () => printPanCornerReceipt(order, cartSnap, method, name, discount, notesSnap);
+        const lUrl = (settings?.settings as any)?.qrLogoUrl || (settings?.settings as any)?.printLogoUrl;
+        const rLUrl = lUrl ? (lUrl.startsWith('/uploads') ? `${UPLOAD_BASE}${lUrl}` : lUrl) : undefined;
+        pendingPrintRef.current = () => printPanCornerReceipt(order, cartSnap, method, name, discount, notesSnap, rLUrl);
       }
       setSettled(true);
       queryClient.invalidateQueries({ queryKey: ['orders'] });

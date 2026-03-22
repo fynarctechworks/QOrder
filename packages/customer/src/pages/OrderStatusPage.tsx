@@ -29,7 +29,7 @@ export default function OrderStatusPage() {
   const queryClient = useQueryClient();
   const { joinOrderRoom, leaveOrderRoom, onOrderStatusUpdate } = useSocket();
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  
+
   // Check if user came from orders page
   const isFromOrdersPage = localStorage.getItem('orderStatusReferrer') === 'orders';
 

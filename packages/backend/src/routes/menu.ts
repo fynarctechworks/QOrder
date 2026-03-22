@@ -93,6 +93,11 @@ router.delete(
   menuController.deleteMenuItem
 );
 
+// ==================== RECIPES ====================
+
+router.get('/items/:id/recipes', menuController.getItemRecipes);
+router.put('/items/:id/recipes', authorize('OWNER', 'ADMIN', 'MANAGER'), menuController.setItemRecipes);
+
 // ==================== MODIFIER GROUPS ====================
 
 router.get('/modifier-groups', menuController.getModifierGroups);

@@ -75,6 +75,8 @@ export default function CreateOrderPage() {
   const dataError = menuErr || catErr || tabErr;
 
   const taxRate = settings?.taxRate ?? 0;
+  const menuShowItemImages = (settings?.settings as any)?.menuShowItemImages !== false;
+  const UPLOAD_BASE = (import.meta.env.VITE_API_URL as string || 'http://localhost:3000/api').replace('/api', '');
 
   /* ── State ── */
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -804,32 +806,38 @@ export default function CreateOrderPage() {
                   const qty = getCartQty(item.id);
                   const price = item.discountPrice ?? item.price;
                   const catName = categoryMap.get(item.categoryId) || '';
+                  const imgSrc = menuShowItemImages && item.image
+                    ? (item.image.startsWith('/uploads') ? `${UPLOAD_BASE}${item.image}` : item.image)
+                    : null;
 
                   return (
                     <button
                       key={item.id}
                       onClick={() => addToCart(item)}
-                      className={`text-left bg-white rounded-xl border p-3.5 transition-all active:scale-[0.97] hover:shadow-md relative ${
+                      className={`text-left bg-white rounded-xl border overflow-hidden transition-all active:scale-[0.97] hover:shadow-md relative ${
                         qty > 0 ? 'border-primary ring-1 ring-primary/30 bg-primary/5' : 'border-border hover:border-muted'
                       }`}
                     >
                       {qty > 0 && (
-                        <span className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center shadow-sm">
+                        <span className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center shadow-sm z-10">
                           {qty}
                         </span>
                       )}
-
-                      {/* Diet badge */}
-                      <div className="flex items-start justify-between gap-2 mb-1.5">
-                        <DietBadge type={item.dietType} />
-                      </div>
-
-                      {/* Info */}
-                      <p className="text-sm font-semibold text-text-primary truncate">{item.name}</p>
-                      {catName && (
-                        <p className="text-xs text-text-muted mt-0.5 truncate">{catName}</p>
+                      {imgSrc && (
+                        <div className="w-full h-24 bg-gray-100 overflow-hidden">
+                          <img src={imgSrc} alt={item.name} className="w-full h-full object-cover" />
+                        </div>
                       )}
-                      <p className="text-sm font-bold text-primary mt-2">{formatCurrency(price)}</p>
+                      <div className="p-3">
+                        <div className="flex items-start gap-2 mb-1">
+                          <DietBadge type={item.dietType} />
+                        </div>
+                        <p className="text-sm font-semibold text-text-primary truncate">{item.name}</p>
+                        {catName && (
+                          <p className="text-xs text-text-muted mt-0.5 truncate">{catName}</p>
+                        )}
+                        <p className="text-sm font-bold text-primary mt-1.5">{formatCurrency(price)}</p>
+                      </div>
                     </button>
                   );
                 })}

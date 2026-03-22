@@ -73,6 +73,7 @@ export interface ServerToClientEvents {
   'notification:stockLow': (data: { count: number; items: Array<{ id: string; name: string; unit: string; currentStock: number; minStock: number }> }) => void;
   'notification:staffLate': (data: { count: number; staff: Array<{ name: string; shiftName: string; shiftStart: string; minutesLate: number }> }) => void;
   'notification:staffEarlyCheckout': (data: { count: number; staff: Array<{ name: string; shiftName: string; shiftEnd: string; minutesEarly: number }> }) => void;
+  'inventory:updated': (data: { restaurantId: string }) => void;
   error: (message: string) => void;
 }
 

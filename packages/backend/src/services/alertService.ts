@@ -133,6 +133,73 @@ export const alertService = {
   },
 
   /**
+   * Hourly low-stock reminder: emit toast to all connected admin clients for
+   * any ingredient currently at or below minStock.
+   * Uses a 55-minute Redis dedup key per ingredient so it fires ~once per hour
+   * without spamming when multiple interval ticks land close together.
+   */
+  async checkAndAlertLowStockAll() {
+    const HOURLY_TTL = 55 * 60; // 55 minutes
+    try {
+      const restaurants = await prisma.restaurant.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true, settings: true },
+      });
+
+      const io = getIO();
+      if (!io) return;
+
+      for (const restaurant of restaurants) {
+        try {
+          const lowItems = await prisma.$queryRaw<Array<{
+            id: string; name: string; unit: string;
+            currentStock: string; minStock: string;
+          }>>`
+            SELECT id, name, unit, "currentStock"::text, "minStock"::text
+            FROM "Ingredient"
+            WHERE "restaurantId" = ${restaurant.id}
+              AND "isActive" = true
+              AND "currentStock" <= "minStock"
+              AND "minStock" > 0
+          `;
+
+          if (lowItems.length === 0) continue;
+
+          // Dedup per ingredient — only emit if not already sent in last 55 min
+          const toEmit: typeof lowItems = [];
+          for (const ing of lowItems) {
+            const key = `hourly:stockLow:${restaurant.id}:${ing.id}`;
+            const sent = await redis.get(key).catch(() => null);
+            if (!sent) {
+              toEmit.push(ing);
+              redis.set(key, '1', 'EX', HOURLY_TTL).catch(() => {});
+            }
+          }
+
+          if (toEmit.length === 0) continue;
+
+          io.to(`restaurant:${restaurant.id}`).emit('notification:stockLow' as any, {
+            count: toEmit.length,
+            items: toEmit.map(i => ({
+              id: i.id,
+              name: i.name,
+              unit: i.unit,
+              currentStock: Number(i.currentStock),
+              minStock: Number(i.minStock),
+            })),
+          });
+
+          logger.info({ restaurantId: restaurant.id, count: toEmit.length }, 'Hourly low-stock reminder emitted');
+        } catch (err) {
+          logger.warn({ err, restaurantId: restaurant.id }, 'Hourly low-stock check failed for restaurant');
+        }
+      }
+    } catch (err) {
+      logger.error({ err }, 'Hourly low-stock check failed');
+    }
+  },
+
+  /**
    * Check all restaurants for late staff and send alerts
    * Called periodically from cron job
    */

@@ -15,6 +15,8 @@ import SettlementModal from '../components/SettlementModal';
 import TakeawaySettlementModal from '../components/TakeawaySettlementModal';
 import PrintInvoice from '../components/PrintInvoice';
 
+const UPLOAD_BASE = (import.meta.env.VITE_API_URL as string || 'http://localhost:3000/api').replace('/api', '');
+
 /* ═══════════════════════════ Constants ════════════════════════ */
 
 const STATUS_FLOW: OrderStatus[] = [
@@ -168,7 +170,8 @@ export default function OrdersPage() {
           const o = updatedOrder;
           const restaurantName = restaurant?.name || 'Restaurant';
           const pls = settings; // print layout settings
-          const logoUrl = (pls.printShowLogo && pls.printLogoUrl) ? ((pls.printLogoUrl as string).startsWith('/uploads') ? `${(window.location.origin)}${pls.printLogoUrl}` : pls.printLogoUrl as string) : '';
+          const rawLogoUrl = (pls.qrLogoUrl || pls.printLogoUrl) as string | undefined;
+          const logoUrl = (pls.printShowLogo !== false && rawLogoUrl) ? (rawLogoUrl.startsWith('/uploads') ? `${UPLOAD_BASE}${rawLogoUrl}` : rawLogoUrl) : '';
           const headerText = (pls.printShowAddress && pls.printHeaderText) ? pls.printHeaderText as string : '';
           const footerText = (pls.printFooterText as string) || '';
           const showCustomerInfo = (pls.printShowCustomerInfo as boolean) ?? true;
@@ -184,7 +187,7 @@ export default function OrdersPage() {
               .sub{text-align:center;color:#666;font-size:12px;margin-bottom:12px}
               .info{font-size:12px;color:#444;margin-bottom:4px}
               .item{display:flex;gap:8px;padding:6px 0;border-bottom:1px solid #eee}
-              .qty{font-weight:700;min-width:28px;height:28px;background:#f3f4f6;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px}
+              .qty{font-weight:700;min-width:28px;height:28px;background:#f3f4f6;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:20px}
               .item-detail{flex:1}
               .item-name{font-weight:700;font-size:14px}
               .mod{color:#888;font-size:11px;margin-top:2px}
@@ -230,7 +233,7 @@ export default function OrdersPage() {
             if (footerText) w.document.write(`<hr><p class="center">${footerText}</p>`);
             w.document.write(`</body></html>`);
             w.document.close();
-            setTimeout(() => { w.print(); }, 300);
+            setTimeout(() => { w.print(); w.onafterprint = () => w.close(); }, 300);
           }
         }
       }
@@ -258,7 +261,7 @@ export default function OrdersPage() {
       setDetail(null);
       toast.success('Order cancelled');
     },
-    onError: () => toast.error('Failed to cancel order'),
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to cancel order'),
   });
 
 
@@ -1085,7 +1088,8 @@ function TableBillCard({
                 <button
                   onClick={() => {
                     const pls = (restaurantSettings?.settings ?? {}) as Record<string, unknown>;
-                    const logoUrl = (pls.printShowLogo !== false && pls.printLogoUrl) ? ((pls.printLogoUrl as string).startsWith('/uploads') ? `${window.location.origin}${pls.printLogoUrl}` : pls.printLogoUrl as string) : '';
+                    const rawLogoUrl2 = (pls.qrLogoUrl || pls.printLogoUrl) as string | undefined;
+                    const logoUrl = (pls.printShowLogo !== false && rawLogoUrl2) ? (rawLogoUrl2.startsWith('/uploads') ? `${UPLOAD_BASE}${rawLogoUrl2}` : rawLogoUrl2) : '';
                     const headerText = (pls.printShowAddress !== false && pls.printHeaderText) ? pls.printHeaderText as string : '';
                     const footerText = (pls.printFooterText as string) || '';
                     const showCustomerInfo = (pls.printShowCustomerInfo as boolean) ?? true;
@@ -1101,7 +1105,7 @@ function TableBillCard({
                       .sub{text-align:center;color:#666;font-size:12px;margin-bottom:12px}
                       .info{font-size:12px;color:#444;margin-bottom:4px}
                       .item{display:flex;gap:8px;padding:6px 0;border-bottom:1px solid #eee}
-                      .qty{font-weight:700;min-width:28px;height:28px;background:#f3f4f6;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px}
+                      .qty{font-weight:700;min-width:28px;height:28px;background:#f3f4f6;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:20px}
                       .item-detail{flex:1}
                       .item-name{font-weight:700;font-size:14px}
                       .mod{color:#888;font-size:11px;margin-top:2px}
@@ -1148,7 +1152,7 @@ function TableBillCard({
                     if (footerText) w.document.write(`<hr><p class="center">${footerText}</p>`);
                     w.document.write(`</body></html>`);
                     w.document.close();
-                    setTimeout(() => { w.print(); }, 300);
+                    setTimeout(() => { w.print(); w.onafterprint = () => w.close(); }, 300);
                   }}
                   className="text-[13px] font-semibold px-3 py-2 rounded-lg shadow-sm transition-all duration-200 active:scale-95 inline-flex items-center gap-1.5 leading-none bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
                 >

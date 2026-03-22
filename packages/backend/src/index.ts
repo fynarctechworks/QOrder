@@ -93,6 +93,18 @@ async function bootstrap() {
       }
     }, 5 * 60 * 1000);
 
+    // Hourly low-stock reminder — run once on startup then every hour
+    alertService.checkAndAlertLowStockAll().catch(err =>
+      logger.warn({ err }, 'Initial low-stock reminder failed')
+    );
+    setInterval(async () => {
+      try {
+        await alertService.checkAndAlertLowStockAll();
+      } catch (err) {
+        logger.warn({ err }, 'Hourly low-stock reminder failed');
+      }
+    }, 60 * 60 * 1000);
+
     // Daily report — fires at 23:00 IST every day
     const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
     const lastReportSent = new Set<string>(); // tracks "YYYY-MM-DD" dates already sent

@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, type FormEvent, type DragEvent, type ChangeEvent, type ReactNode } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { menuService } from '../../services';
+import { inventoryService } from '../../services/inventoryService';
 import type { MenuItem, Category, CustomizationGroup, CustomizationOption, DietType, TranslationsMap } from '../../types';
 import { resolveImg } from '../../utils/resolveImg';
 import TranslationsEditor from './TranslationsEditor';
@@ -834,6 +836,9 @@ export default function MenuItemForm({
         </button>
       </Section>
 
+      {/* ═══ Recipe (Inventory) — only when editing an existing item ══════ */}
+      {initial?.id && <RecipeSection menuItemId={initial.id} key={initial.id} />}
+
       {/* ═══ Actions ════════════════════════════════════════════════════════ */}
       <div className="flex justify-end gap-3 pt-2 border-t border-surface-elevated sticky bottom-0 bg-white pb-1">
         <button type="button" onClick={onCancel} className="btn-secondary px-5" disabled={isLoading}>Cancel</button>
@@ -842,5 +847,199 @@ export default function MenuItemForm({
         </button>
       </div>
     </form>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   RECIPE SECTION — self-contained, saves independently
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+interface RecipeRow {
+  ingredientId: string;
+  quantity: string;
+  displayUnit: string; // unit the user is entering in (may differ from ingredient's stored unit)
+}
+
+// Compatible unit groups for the recipe unit selector
+const UNIT_GROUPS: Record<string, string[]> = {
+  KG: ['KG', 'G'],
+  G: ['G', 'KG'],
+  L: ['L', 'ML'],
+  ML: ['ML', 'L'],
+};
+
+// Convert qty from one unit to another (for storing back in ingredient's base unit)
+function convertUnit(qty: number, from: string, to: string): number {
+  if (from === to) return qty;
+  if (from === 'G'  && to === 'KG') return qty / 1000;
+  if (from === 'KG' && to === 'G')  return qty * 1000;
+  if (from === 'ML' && to === 'L')  return qty / 1000;
+  if (from === 'L'  && to === 'ML') return qty * 1000;
+  return qty;
+}
+
+function RecipeSection({ menuItemId }: { menuItemId: string }) {
+  const qc = useQueryClient();
+  const [rows, setRows] = useState<RecipeRow[]>([]);
+  const [dirty, setDirty] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  const { data: ingredients = [] } = useQuery({
+    queryKey: ['inventory', 'ingredients'],
+    queryFn: () => inventoryService.getIngredients(),
+    staleTime: 60_000,
+  });
+
+  const { data: saved = [], isLoading } = useQuery({
+    queryKey: ['menu', 'recipes', menuItemId],
+    queryFn: () => menuService.getRecipes(menuItemId),
+  });
+
+  // Initialise rows from saved data
+  useEffect(() => {
+    setRows(saved.map(r => ({
+      ingredientId: r.ingredientId,
+      quantity: String(r.quantity),
+      displayUnit: r.ingredient?.unit ?? '',
+    })));
+    setDirty(false);
+  }, [saved]);
+
+  const saveMut = useMutation({
+    mutationFn: () => menuService.setRecipes(
+      menuItemId,
+      rows
+        .filter(r => r.ingredientId && Number(r.quantity) > 0)
+        .map(r => ({
+          ingredientId: r.ingredientId,
+          quantity: convertUnit(Number(r.quantity), r.displayUnit, unitOf(r.ingredientId)),
+        })),
+    ),
+    onSuccess: () => {
+      toast.success('Recipe saved');
+      qc.invalidateQueries({ queryKey: ['menu', 'recipes', menuItemId] });
+      setDirty(false);
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to save recipe'),
+  });
+
+  const usedIds = new Set(rows.map(r => r.ingredientId));
+  const availableIngredients = ingredients.filter(i => i.isActive);
+
+  const addRow = () => {
+    const first = availableIngredients.find(i => !usedIds.has(i.id));
+    if (!first) return;
+    setRows(prev => [...prev, { ingredientId: first.id, quantity: '', displayUnit: first.unit ?? '' }]);
+    setDirty(true);
+    // Scroll the new row into view after render
+    requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  };
+
+  const updateRow = (idx: number, patch: Partial<RecipeRow>) => {
+    setRows(prev => prev.map((r, i) => i === idx ? { ...r, ...patch } : r));
+    setDirty(true);
+  };
+
+  const removeRow = (idx: number) => {
+    setRows(prev => prev.filter((_, i) => i !== idx));
+    setDirty(true);
+  };
+
+  const unitOf = (id: string) => ingredients.find(i => i.id === id)?.unit ?? '';
+
+  return (
+    <Section title={`Recipe / Ingredients (${rows.length})`} defaultOpen={true}>
+      {isLoading ? (
+        <div className="text-sm text-text-muted py-2">Loading…</div>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-xs text-text-muted">
+            Set how much of each ingredient is used per serving. Used by Smart Inventory to auto-deduct stock when orders are placed.
+          </p>
+
+          {rows.length > 0 && (
+            <div className="space-y-2">
+              {rows.map((row, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <select
+                    value={row.ingredientId}
+                    onChange={e => {
+                      const ing = availableIngredients.find(i => i.id === e.target.value);
+                      updateRow(idx, { ingredientId: e.target.value, quantity: '', displayUnit: ing?.unit ?? '' });
+                    }}
+                    className="input flex-1 text-sm py-1.5"
+                  >
+                    {availableIngredients.map(ing => (
+                      <option key={ing.id} value={ing.id} disabled={usedIds.has(ing.id) && ing.id !== row.ingredientId}>
+                        {ing.name}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.001"
+                    value={row.quantity}
+                    onChange={e => updateRow(idx, { quantity: e.target.value })}
+                    className="input w-24 text-sm py-1.5 text-center"
+                    placeholder="Qty"
+                  />
+                  <select
+                    value={row.displayUnit}
+                    onChange={e => updateRow(idx, { displayUnit: e.target.value })}
+                    className="input w-20 text-sm py-1.5 text-center shrink-0"
+                  >
+                    {(UNIT_GROUPS[unitOf(row.ingredientId)] ?? [unitOf(row.ingredientId)]).map(u => (
+                      <option key={u} value={u}>{u}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => removeRow(idx)}
+                    className="text-error/60 hover:text-error p-0.5 shrink-0"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between gap-3 pt-1">
+            <button
+              type="button"
+              onClick={addRow}
+              disabled={availableIngredients.length === 0 || rows.length >= availableIngredients.length}
+              className="text-xs text-primary font-medium hover:underline flex items-center gap-1 disabled:opacity-40 disabled:no-underline"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add Ingredient
+            </button>
+            {dirty && (
+              <button
+                type="button"
+                onClick={() => saveMut.mutate()}
+                disabled={saveMut.isPending}
+                className="btn-primary text-xs px-3 py-1.5"
+              >
+                {saveMut.isPending ? 'Saving…' : 'Save Recipe'}
+              </button>
+            )}
+          </div>
+
+          {availableIngredients.length === 0 && (
+            <p className="text-xs text-text-muted">No ingredients found. Add ingredients in Inventory → Products first.</p>
+          )}
+
+          <div ref={bottomRef} />
+        </div>
+      )}
+    </Section>
   );
 }

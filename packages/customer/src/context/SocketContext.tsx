@@ -20,7 +20,7 @@ interface SocketContextValue {
   joinTableRoom: (tableId: string) => void;
   leaveTableRoom: (tableId: string) => void;
   onOrderStatusUpdate: (callback: (update: OrderStatusUpdate) => void) => () => void;
-  onTableUpdated: (callback: (data: { tableId: string }) => void) => () => void;
+  onTableUpdated: (callback: (data: { tableId: string; status?: string; sessionToken?: string }) => void) => () => void;
 }
 
 const SocketContext = createContext<SocketContextValue | null>(null);
@@ -39,7 +39,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
   const statusUpdateCallbacks = useRef<Set<(update: OrderStatusUpdate) => void>>(
     new Set()
   );
-  const tableUpdatedCallbacks = useRef<Set<(data: { tableId: string }) => void>>(
+  const tableUpdatedCallbacks = useRef<Set<(data: { tableId: string; status?: string; sessionToken?: string }) => void>>(
     new Set()
   );
   // Track which order rooms we've joined so we can re-join on reconnect
@@ -144,7 +144,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
   );
 
   const onTableUpdated = useCallback(
-    (callback: (data: { tableId: string }) => void) => {
+    (callback: (data: { tableId: string; status?: string; sessionToken?: string }) => void) => {
       tableUpdatedCallbacks.current.add(callback);
       return () => {
         tableUpdatedCallbacks.current.delete(callback);

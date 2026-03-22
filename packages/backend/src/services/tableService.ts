@@ -505,7 +505,17 @@ export const tableService = {
       distinct: ['tableId'],
     });
 
-    const busyTableIds = new Set(tablesWithActiveOrders.map((o) => o.tableId!));
+    // Also keep tables that still have an active session (customer still seated, even if all orders completed)
+    const tablesWithActiveSessions = await prisma.tableSession.findMany({
+      where: { tableId: { in: tableIds }, status: 'ACTIVE' },
+      select: { tableId: true },
+      distinct: ['tableId'],
+    });
+
+    const busyTableIds = new Set([
+      ...tablesWithActiveOrders.map((o) => o.tableId!),
+      ...tablesWithActiveSessions.map((s) => s.tableId!),
+    ]);
     const stuckIds = tableIds.filter((id) => !busyTableIds.has(id));
 
     if (stuckIds.length === 0) return { fixed: 0 };

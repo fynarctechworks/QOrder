@@ -57,4 +57,13 @@ export const menuService = {
     formData.append('image', file);
     return apiClient.upload<{ imageUrl: string }>('/upload/image', formData);
   },
+
+  // Recipes
+  async getRecipes(menuItemId: string): Promise<{ id: string; ingredientId: string; quantity: number; ingredient: { id: string; name: string; unit: string; currentStock: number } }[]> {
+    return apiClient.get(`/menu/items/${menuItemId}/recipes`);
+  },
+
+  async setRecipes(menuItemId: string, recipes: { ingredientId: string; quantity: number }[]): Promise<void> {
+    return apiClient.put(`/menu/items/${menuItemId}/recipes`, { recipes });
+  },
 };

@@ -1,10 +1,11 @@
 import { Outlet } from 'react-router-dom';
 import { RestaurantProvider, useRestaurant } from '../context/RestaurantContext';
-import { SocketProvider } from '../context/SocketContext';
+import { SocketProvider, useSocket } from '../context/SocketContext';
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import AnimatedPage from '../components/AnimatedPage';
 import BottomNav from '../components/BottomNav';
+import FeedbackModal from '../components/FeedbackModal';
 
 function NotAcceptingOrders({ restaurantName }: { restaurantName?: string }) {
   return (
@@ -33,9 +34,32 @@ function NotAcceptingOrders({ restaurantName }: { restaurantName?: string }) {
 }
 
 function RestaurantContent() {
-  const { restaurant, isLoading } = useRestaurant();
+  const { restaurant, table, isLoading } = useRestaurant();
   const queryClient = useQueryClient();
+  const { joinTableRoom, leaveTableRoom, onTableUpdated } = useSocket();
+  const [showFeedback, setShowFeedback] = useState(false);
   const notAccepting = !isLoading && restaurant && restaurant.settings?.acceptsOrders === false;
+
+  // Join the table socket room so we receive table:updated events
+  useEffect(() => {
+    if (!table?.id) return;
+    joinTableRoom(table.id);
+    return () => leaveTableRoom(table.id);
+  }, [table?.id, joinTableRoom, leaveTableRoom]);
+
+  // Show feedback overlay when admin settles payment (table freed)
+  useEffect(() => {
+    const unsub = onTableUpdated((data) => {
+      if (data.status === 'available' && table?.id && data.tableId === table.id) {
+        const key = `feedback_shown_${data.sessionToken || table.id}`;
+        if (!localStorage.getItem(key)) {
+          localStorage.setItem(key, '1');
+          setShowFeedback(true);
+        }
+      }
+    });
+    return unsub;
+  }, [onTableUpdated, table?.id]);
 
   // Auto-poll every 15s while orders are paused so the page recovers automatically
   useEffect(() => {
@@ -56,6 +80,7 @@ function RestaurantContent() {
         <Outlet />
       </div>
       <BottomNav />
+      {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
     </>
   );
 }

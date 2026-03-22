@@ -1,23 +1,25 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSocket } from '../context/SocketContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { inventoryService } from '../services/inventoryService';
 import type {
   Ingredient, Supplier, StockMovement,
-  InventoryOverview,
+  InventoryOverview, ForecastItem,
 } from '../services/inventoryService';
 import Modal from '../components/Modal';
 import { useCurrency } from '../hooks/useCurrency';
 
 /* ═══════════════════ Constants ═══════════════════ */
 
-type TabKey = 'dashboard' | 'products' | 'stock' | 'suppliers';
+type TabKey = 'dashboard' | 'products' | 'stock' | 'suppliers' | 'forecast';
 
 const TABS: { key: TabKey; label: string; icon: string }[] = [
   { key: 'dashboard', label: 'Dashboard', icon: '📊' },
   { key: 'products',  label: 'Products',  icon: '📦' },
   { key: 'stock',     label: 'Stock In / Out', icon: '🔄' },
   { key: 'suppliers', label: 'Suppliers',  icon: '🏢' },
+  { key: 'forecast',  label: 'Forecast',  icon: '🔮' },
 ];
 
 const UNITS = ['KG', 'G', 'L', 'ML', 'PCS', 'DOZEN', 'PACKET', 'BUNCH', 'BOX', 'PLATE', 'CUP', 'TBSP', 'TSP'];
@@ -53,6 +55,15 @@ export default function InventoryPage() {
   const [tab, setTab] = useState<TabKey>('dashboard');
   const fmt = useCurrency();
   const qc = useQueryClient();
+  const { socket } = useSocket();
+
+  // Auto-refresh inventory data when smart inventory deducts stock on an order
+  useEffect(() => {
+    if (!socket) return;
+    const handler = () => qc.invalidateQueries({ queryKey: ['inventory'] });
+    socket.on('inventory:updated', handler);
+    return () => { socket.off('inventory:updated', handler); };
+  }, [socket, qc]);
 
   return (
     <div className="space-y-6">
@@ -87,6 +98,7 @@ export default function InventoryPage() {
           {tab === 'products' && <ProductsTab fmt={fmt} qc={qc} />}
           {tab === 'stock' && <StockTab fmt={fmt} qc={qc} />}
           {tab === 'suppliers' && <SuppliersTab qc={qc} />}
+          {tab === 'forecast' && <ForecastTab fmt={fmt} />}
         </motion.div>
       </AnimatePresence>
     </div>
@@ -867,5 +879,176 @@ function SupplierFormModal({ supplier, onClose, onSaved }: {
         </div>
       </form>
     </Modal>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════
+   FORECAST
+   ═══════════════════════════════════════════════════════ */
+
+function ForecastTab({ fmt }: { fmt: (v: number) => string }) {
+  const [days, setDays] = useState(14);
+
+  const { data: items = [], isLoading, isError, error, refetch } = useQuery<ForecastItem[]>({
+    queryKey: ['inventory', 'forecast', days],
+    queryFn: () => inventoryService.getForecast(days),
+  });
+
+  const statusConfig = {
+    out:      { label: 'Out of Stock',  cls: 'bg-red-100 text-red-700',    bar: 'bg-red-500' },
+    low:      { label: 'Low Stock',     cls: 'bg-amber-100 text-amber-700', bar: 'bg-amber-500' },
+    critical: { label: 'Critical',      cls: 'bg-orange-100 text-orange-700', bar: 'bg-orange-500' },
+    ok:       { label: 'OK',            cls: 'bg-green-100 text-green-700', bar: 'bg-green-500' },
+  };
+
+  const sorted = useMemo(() => {
+    const order = { out: 0, low: 1, critical: 2, ok: 3 };
+    return [...items].sort((a, b) => order[a.status] - order[b.status]);
+  }, [items]);
+
+  const counts = useMemo(() => ({
+    out: items.filter(i => i.status === 'out').length,
+    low: items.filter(i => i.status === 'low').length,
+    critical: items.filter(i => i.status === 'critical').length,
+    ok: items.filter(i => i.status === 'ok').length,
+  }), [items]);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="card p-4 animate-pulse flex gap-4">
+            <div className="h-4 bg-gray-200 rounded w-32" />
+            <div className="h-4 bg-gray-200 rounded w-16 ml-auto" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="card p-8 text-center space-y-3">
+        <p className="text-error">{error instanceof Error ? error.message : 'Failed to load forecast'}</p>
+        <button className="btn-primary text-sm" onClick={() => refetch()}>Retry</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header row */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="text-base font-semibold text-text-primary">Stock Forecast</h2>
+          <p className="text-sm text-text-secondary mt-0.5">
+            Based on order usage over the last {days} days. Enable Smart Inventory in Settings → Orders to populate this data.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-text-secondary">Window:</span>
+          {[7, 14, 30].map(d => (
+            <button
+              key={d}
+              onClick={() => setDays(d)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                days === d ? 'bg-primary text-white' : 'bg-surface-elevated text-text-secondary hover:bg-gray-200'
+              }`}
+            >
+              {d}d
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Summary badges */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {(Object.entries(counts) as [keyof typeof counts, number][]).map(([status, count]) => {
+          const cfg = statusConfig[status];
+          return (
+            <div key={status} className={`rounded-xl p-3 ${cfg.cls.split(' ').map(c => c.replace('text-', 'bg-').replace('700', '50')).join(' ')}`}>
+              <p className="text-xs font-medium text-text-secondary uppercase tracking-wider">{cfg.label}</p>
+              <p className={`text-2xl font-bold mt-0.5 ${cfg.cls.split(' ')[1]}`}>{count}</p>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Table */}
+      {sorted.length === 0 ? (
+        <div className="card p-8 text-center text-sm text-text-secondary">
+          No ingredients configured. Add ingredients in the Products tab and set up recipes to enable forecasting.
+        </div>
+      ) : (
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase tracking-wider">Ingredient</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-text-secondary uppercase tracking-wider">Stock</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-text-secondary uppercase tracking-wider">Avg/Day</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-text-secondary uppercase tracking-wider">Days Left</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-text-secondary uppercase tracking-wider">Value</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-text-secondary uppercase tracking-wider">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {sorted.map(item => {
+                  const cfg = statusConfig[item.status];
+                  const maxDays = 30;
+                  const barPct = item.daysRemaining !== null
+                    ? Math.min((item.daysRemaining / maxDays) * 100, 100)
+                    : 100;
+                  return (
+                    <tr key={item.id} className="hover:bg-surface-elevated transition-colors">
+                      <td className="px-4 py-3 font-medium text-text-primary">{item.name}</td>
+                      <td className="px-4 py-3 text-right text-text-secondary font-mono">
+                        {item.currentStock} {item.unit}
+                        {item.minStock > 0 && (
+                          <div className="w-full mt-1">
+                            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden w-24 ml-auto">
+                              <div
+                                className={`h-full rounded-full ${cfg.bar}`}
+                                style={{ width: `${Math.min((item.currentStock / Math.max(item.minStock, 1)) * 100, 100)}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right text-text-secondary font-mono">
+                        {item.avgDailyUsage > 0 ? `${item.avgDailyUsage} ${item.unit}` : <span className="text-text-muted">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {item.daysRemaining !== null ? (
+                          <div>
+                            <span className={`font-semibold ${item.daysRemaining <= 3 ? 'text-red-600' : item.daysRemaining <= 7 ? 'text-amber-600' : 'text-green-600'}`}>
+                              {item.daysRemaining}d
+                            </span>
+                            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden w-16 ml-auto mt-1">
+                              <div className={`h-full rounded-full ${cfg.bar}`} style={{ width: `${barPct}%` }} />
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-text-muted text-xs">No usage data</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right text-text-secondary">
+                        {fmt(item.currentStock * item.costPerUnit)}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${cfg.cls}`}>
+                          {cfg.label}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

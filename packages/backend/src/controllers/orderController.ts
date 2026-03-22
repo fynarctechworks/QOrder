@@ -102,7 +102,7 @@ function transformOrder(raw: RawOrder) {
     restaurantId: raw.restaurantId,
     tableId: raw.tableId ?? '',
     tableName: raw.table
-      ? (raw.table.name ? `${raw.table.name} ${raw.table.number}` : `Table ${raw.table.number}`)
+      ? (raw.table.name ? `${raw.table.name} (${raw.table.number})` : `Table ${raw.table.number}`)
       : raw.orderType === 'QSR' ? 'Counter' : raw.orderType === 'QSR_TAKEAWAY' ? 'Takeaway' : raw.orderType === 'PAN_CORNER' ? 'Pan Corner' : 'Takeaway',
     orderType: raw.orderType ?? 'DINE_IN',
     sectionName: raw.table?.section?.name ?? null,
@@ -637,13 +637,20 @@ export const orderController = {
     try {
       const order = await orderService.getOrderById(req.params.id);
 
-      if (order.status !== 'PENDING') {
-        throw AppError.badRequest('Order can only be cancelled while pending');
-      }
+      const isAdmin = !!req.restaurantId;
 
       // If the request is authenticated (admin route), verify the order belongs to the user's restaurant
-      if (req.restaurantId && order.restaurantId !== req.restaurantId) {
+      if (isAdmin && order.restaurantId !== req.restaurantId) {
         throw AppError.forbidden('You do not have access to this order');
+      }
+
+      const cancellableStatuses = ['PENDING', 'PREPARING'];
+      if (!cancellableStatuses.includes(order.status)) {
+        throw AppError.badRequest(
+          order.status === 'PAYMENT_PENDING'
+            ? 'Cannot cancel an order that is awaiting payment'
+            : 'Order cannot be cancelled at this stage'
+        );
       }
 
       const restaurantId = order.restaurantId;
