@@ -2,14 +2,37 @@ import { apiClient } from './apiClient';
 
 // ─── Types ──────────────────────────────────────────────────
 
+export type IngredientCategory = 'PANTRY' | 'BEVERAGES' | 'DAILY_CONSUMABLES' | 'DISPOSALS';
+export type AutoDeductFrequency = 'DAILY' | 'EVERY_2_DAYS' | 'WEEKLY' | 'MONTHLY';
+
+export const AUTO_DEDUCT_FREQUENCIES: { value: AutoDeductFrequency; label: string }[] = [
+  { value: 'DAILY',        label: 'Every Day' },
+  { value: 'EVERY_2_DAYS', label: 'Every 2 Days' },
+  { value: 'WEEKLY',       label: 'Every Week' },
+  { value: 'MONTHLY',      label: 'Every Month' },
+];
+
+export const INGREDIENT_CATEGORIES: { value: IngredientCategory; label: string }[] = [
+  { value: 'PANTRY',            label: 'Pantry' },
+  { value: 'BEVERAGES',         label: 'Beverages' },
+  { value: 'DAILY_CONSUMABLES', label: 'Daily Consumables' },
+  { value: 'DISPOSALS',         label: 'Disposals' },
+];
+
 export interface Ingredient {
   id: string;
   name: string;
   unit: string;
+  category: IngredientCategory;
   currentStock: number;
   minStock: number;
   costPerUnit: number;
   isActive: boolean;
+  autoDeductEnabled: boolean;
+  autoDeductQty: number;
+  autoDeductUnit: string;
+  autoDeductFrequency: AutoDeductFrequency;
+  lastAutoDeductDate?: string | null;
   branchId?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -129,6 +152,10 @@ function mapIngredient(raw: Record<string, unknown>): Ingredient {
     currentStock: num(r.currentStock),
     minStock: num(r.minStock),
     costPerUnit: num(r.costPerUnit),
+    autoDeductQty: num(r.autoDeductQty),
+    autoDeductEnabled: r.autoDeductEnabled ?? false,
+    autoDeductUnit: r.autoDeductUnit ?? r.unit ?? 'KG',
+    autoDeductFrequency: r.autoDeductFrequency ?? 'DAILY',
     suppliers: r.suppliers?.map((s: any) => ({ ...s, costPerUnit: num(s.costPerUnit) })),
   };
 }
@@ -146,7 +173,7 @@ export const inventoryService = {
     return mapIngredient(raw);
   },
 
-  async createIngredient(data: Partial<Ingredient>): Promise<Ingredient> {
+  async createIngredient(data: Partial<Ingredient> & { currentStock?: number }): Promise<Ingredient> {
     return apiClient.post('/inventory/ingredients', data);
   },
 
@@ -159,7 +186,7 @@ export const inventoryService = {
   },
 
   // Stock adjustments
-  async adjustStock(ingredientId: string, data: { type: string; quantity: number; notes?: string; costPerUnit?: number }): Promise<Ingredient> {
+  async adjustStock(ingredientId: string, data: { type: string; quantity: number; notes?: string; costPerUnit?: number; date?: string }): Promise<Ingredient> {
     return apiClient.post(`/inventory/ingredients/${ingredientId}/adjust`, data);
   },
 
@@ -177,8 +204,13 @@ export const inventoryService = {
   },
 
   // Usage / Stock Out
-  async recordUsage(items: { ingredientId: string; quantity: number; notes?: string }[]) {
-    return apiClient.post('/inventory/usage', { items });
+  async recordUsage(items: { ingredientId: string; quantity: number; notes?: string }[], date?: string) {
+    return apiClient.post('/inventory/usage', { items, ...(date && { date }) });
+  },
+
+  // Auto-deduct manual trigger
+  async runAutoDeduct(): Promise<{ deducted: number; skippedLowStock: number; skippedAlreadyRan: number }> {
+    return apiClient.post('/inventory/auto-deduct/run', {});
   },
 
   async getDailySummary(date?: string): Promise<DailySummary> {

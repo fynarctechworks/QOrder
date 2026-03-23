@@ -26,6 +26,7 @@ router.get('/stock-history', inventoryController.getStockHistory);
 
 // ─── USAGE / STOCK OUT ─────────────────────────────────────
 router.post('/usage', authorize('OWNER', 'ADMIN', 'MANAGER'), inventoryController.recordUsage);
+router.post('/auto-deduct/run', authorize('OWNER', 'ADMIN', 'MANAGER'), inventoryController.runAutoDeduct);
 router.get('/daily-summary', inventoryController.getDailySummary);
 router.get('/usage-trend', inventoryController.getUsageTrend);
 router.get('/forecast', inventoryController.getForecast);

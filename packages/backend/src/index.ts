@@ -8,6 +8,7 @@ import { sessionService } from './services/sessionService.js';
 import { orderService } from './services/orderService.js';
 import { alertService } from './services/alertService.js';
 import { reportService } from './services/reportService.js';
+import { inventoryService } from './services/inventoryService.js';
 import { sendDailyReportEmail } from './services/emailService.js';
 import { startFingerprintBridge, stopFingerprintBridge } from './fingerprint-bridge/index.js';
 
@@ -140,6 +141,28 @@ async function bootstrap() {
         logger.warn({ err }, 'Daily report scheduler error');
       }
     }, 60 * 1000); // check every minute
+
+    // Auto-deduct — fires at 23:59 IST every day
+    const lastAutoDeductRan = new Set<string>();
+    setInterval(async () => {
+      try {
+        const istNow = new Date(Date.now() + IST_OFFSET_MS);
+        const hh = istNow.getUTCHours();
+        const mm = istNow.getUTCMinutes();
+        const dateKey = `${istNow.getUTCFullYear()}-${String(istNow.getUTCMonth() + 1).padStart(2, '0')}-${String(istNow.getUTCDate()).padStart(2, '0')}`;
+        if (hh !== 23 || mm !== 59) return;
+        if (lastAutoDeductRan.has(dateKey)) return;
+        lastAutoDeductRan.add(dateKey);
+        if (lastAutoDeductRan.size > 7) {
+          const oldest = [...lastAutoDeductRan][0];
+          if (oldest) lastAutoDeductRan.delete(oldest);
+        }
+        const result = await inventoryService.runAutoDeduct();
+        logger.info(result, 'Auto-deduct completed');
+      } catch (err) {
+        logger.warn({ err }, 'Auto-deduct scheduler error');
+      }
+    }, 60 * 1000);
 
     // Start server
     httpServer.listen(config.port, () => {

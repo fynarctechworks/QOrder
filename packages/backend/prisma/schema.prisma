@@ -942,6 +942,20 @@ enum StockMovementType {
   TRANSFER
 }
 
+enum IngredientCategory {
+  PANTRY
+  BEVERAGES
+  DAILY_CONSUMABLES
+  DISPOSALS
+}
+
+enum AutoDeductFrequency {
+  DAILY
+  EVERY_2_DAYS
+  WEEKLY
+  MONTHLY
+}
+
 model Supplier {
   id          String   @id @default(uuid())
   name        String
@@ -966,15 +980,21 @@ model Supplier {
 }
 
 model Ingredient {
-  id            String   @id @default(uuid())
-  name          String
-  unit          UnitType @default(KG)
-  currentStock  Decimal  @default(0) @db.Decimal(12, 3)
-  minStock      Decimal  @default(0) @db.Decimal(12, 3)
-  costPerUnit   Decimal  @default(0) @db.Decimal(10, 2)
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                   String               @id @default(uuid())
+  name                 String
+  unit                 UnitType             @default(KG)
+  category             IngredientCategory   @default(PANTRY)
+  currentStock         Decimal              @default(0) @db.Decimal(12, 3)
+  minStock             Decimal              @default(0) @db.Decimal(12, 3)
+  costPerUnit          Decimal              @default(0) @db.Decimal(10, 2)
+  isActive             Boolean              @default(true)
+  autoDeductEnabled    Boolean              @default(false)
+  autoDeductQty        Decimal              @default(0) @db.Decimal(12, 3)
+  autoDeductUnit       UnitType             @default(KG)
+  autoDeductFrequency  AutoDeductFrequency  @default(DAILY)
+  lastAutoDeductDate   DateTime?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
 
   restaurantId String
   restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)

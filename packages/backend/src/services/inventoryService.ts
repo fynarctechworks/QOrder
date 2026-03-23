@@ -97,10 +97,15 @@ export const inventoryService = {
   async createIngredient(restaurantId: string, data: {
     name: string;
     unit?: string;
+    category?: string;
     currentStock?: number;
     minStock?: number;
     costPerUnit?: number;
     branchId?: string | null;
+    autoDeductEnabled?: boolean;
+    autoDeductQty?: number;
+    autoDeductUnit?: string;
+    autoDeductFrequency?: string;
   }) {
     const existing = await prisma.ingredient.findFirst({
       where: { restaurantId, branchId: data.branchId ?? null, name: data.name },
@@ -111,11 +116,16 @@ export const inventoryService = {
       data: {
         name: data.name,
         unit: (data.unit as any) || 'KG',
+        category: (data.category as any) || 'PANTRY',
         currentStock: data.currentStock ?? 0,
         minStock: data.minStock ?? 0,
         costPerUnit: data.costPerUnit ?? 0,
         branchId: data.branchId ?? null,
         restaurantId,
+        autoDeductEnabled: data.autoDeductEnabled ?? false,
+        autoDeductQty: data.autoDeductQty ?? 0,
+        autoDeductUnit: (data.autoDeductUnit as any) ?? data.unit ?? 'KG',
+        autoDeductFrequency: (data.autoDeductFrequency as any) ?? 'DAILY',
       },
     });
   },
@@ -123,9 +133,14 @@ export const inventoryService = {
   async updateIngredient(id: string, restaurantId: string, data: {
     name?: string;
     unit?: string;
+    category?: string;
     minStock?: number;
     costPerUnit?: number;
     isActive?: boolean;
+    autoDeductEnabled?: boolean;
+    autoDeductQty?: number;
+    autoDeductUnit?: string;
+    autoDeductFrequency?: string;
   }) {
     const ingredient = await prisma.ingredient.findFirst({ where: { id, restaurantId } });
     if (!ingredient) throw AppError.notFound('Ingredient');
@@ -142,9 +157,14 @@ export const inventoryService = {
       data: {
         ...(data.name !== undefined && { name: data.name }),
         ...(data.unit !== undefined && { unit: data.unit as any }),
+        ...(data.category !== undefined && { category: data.category as any }),
         ...(data.minStock !== undefined && { minStock: data.minStock }),
         ...(data.costPerUnit !== undefined && { costPerUnit: data.costPerUnit }),
         ...(data.isActive !== undefined && { isActive: data.isActive }),
+        ...(data.autoDeductEnabled !== undefined && { autoDeductEnabled: data.autoDeductEnabled }),
+        ...(data.autoDeductQty !== undefined && { autoDeductQty: data.autoDeductQty }),
+        ...(data.autoDeductUnit !== undefined && { autoDeductUnit: data.autoDeductUnit as any }),
+        ...(data.autoDeductFrequency !== undefined && { autoDeductFrequency: data.autoDeductFrequency as any }),
       },
     });
   },
@@ -163,6 +183,7 @@ export const inventoryService = {
     costPerUnit?: number;
     notes?: string;
     performedBy?: string;
+    date?: string;
   }) {
     const ingredient = await prisma.ingredient.findFirst({
       where: { id: ingredientId, restaurantId },
@@ -204,6 +225,7 @@ export const inventoryService = {
           performedBy: data.performedBy,
           ingredientId,
           restaurantId,
+          ...(data.date && { createdAt: new Date(data.date) }),
         },
       }),
     ]);
@@ -267,6 +289,7 @@ export const inventoryService = {
   async recordUsage(restaurantId: string, data: {
     items: { ingredientId: string; quantity: number; notes?: string }[];
     performedBy?: string;
+    date?: string;
   }) {
     // Validate all ingredients exist
     const ingredientIds = data.items.map(i => i.ingredientId);
@@ -310,6 +333,7 @@ export const inventoryService = {
             performedBy: data.performedBy,
             ingredientId: item.ingredientId,
             restaurantId,
+            ...(data.date && { createdAt: new Date(data.date) }),
           },
         })
       );
@@ -333,6 +357,75 @@ export const inventoryService = {
     alertService.checkItemsForLowStock(restaurantId, stockChanges).catch(() => {});
 
     return { deducted: data.items.length };
+  },
+
+  // ─── AUTO DEDUCT ──────────────────────────────────────────
+
+  async runAutoDeduct(restaurantId?: string) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const where: any = { autoDeductEnabled: true, isActive: true, autoDeductQty: { gt: 0 } };
+    if (restaurantId) where.restaurantId = restaurantId;
+
+    const candidates = await prisma.ingredient.findMany({ where });
+
+    const results = { deducted: 0, skippedLowStock: 0, skippedAlreadyRan: 0 };
+
+    for (const ing of candidates) {
+      // Check if already ran today for this ingredient
+      if (ing.lastAutoDeductDate) {
+        const last = new Date(ing.lastAutoDeductDate);
+        last.setHours(0, 0, 0, 0);
+        const daysSinceLast = Math.floor((today.getTime() - last.getTime()) / 86400000);
+        const requiredDays = ing.autoDeductFrequency === 'DAILY' ? 1
+          : ing.autoDeductFrequency === 'EVERY_2_DAYS' ? 2
+          : ing.autoDeductFrequency === 'WEEKLY' ? 7
+          : 30; // MONTHLY
+        if (daysSinceLast < requiredDays) {
+          results.skippedAlreadyRan++;
+          continue;
+        }
+      }
+
+      const qty = new Decimal(ing.autoDeductQty);
+      const currentStock = new Decimal(ing.currentStock);
+
+      if (currentStock.lessThan(qty)) {
+        results.skippedLowStock++;
+        alertService.checkItemsForLowStock(ing.restaurantId, [{
+          ingredientId: ing.id,
+          previousStock: currentStock.toNumber(),
+          newStock: currentStock.toNumber(),
+        }]).catch(() => {});
+        continue;
+      }
+
+      const newQty = currentStock.minus(qty);
+      await prisma.$transaction([
+        prisma.ingredient.update({
+          where: { id: ing.id },
+          data: { currentStock: newQty, lastAutoDeductDate: today },
+        }),
+        prisma.stockMovement.create({
+          data: {
+            type: 'USAGE',
+            quantity: qty,
+            previousQty: currentStock,
+            newQty,
+            costPerUnit: ing.costPerUnit,
+            notes: `Auto deduct (${ing.autoDeductFrequency.toLowerCase().replace(/_/g, ' ')})`,
+            ingredientId: ing.id,
+            restaurantId: ing.restaurantId,
+          },
+        }),
+      ]);
+
+      syncMenuAvailability(ing.restaurantId, [ing.id]).catch(() => {});
+      results.deducted++;
+    }
+
+    return results;
   },
 
   async getDailySummary(restaurantId: string, date?: string) {
