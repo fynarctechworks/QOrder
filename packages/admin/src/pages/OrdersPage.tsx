@@ -659,7 +659,7 @@ export default function OrdersPage() {
                 </div>
                 {/* Column Body — Drop zone */}
                 <div
-                  className={`flex-1 rounded-b-xl border border-t-0 p-2.5 space-y-2.5 overflow-y-auto max-h-[calc(100vh-380px)] transition-all duration-150 ${
+                  className={`flex-1 rounded-b-xl border border-t-0 p-2.5 space-y-2.5 overflow-y-auto lg:max-h-[calc(100vh-380px)] transition-all duration-150 ${
                     dragOverCol === col.key && dragBillRef.current && dragBillRef.current.status !== col.key
                     && (['pending', 'preparing', 'payment_pending'].indexOf(col.key) > ['pending', 'preparing', 'payment_pending'].indexOf(dragBillRef.current.status))
                       ? 'bg-primary/5 border-primary/30 ring-2 ring-primary/30'

@@ -475,11 +475,11 @@ export default function PanCornerPage() {
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
             </svg>
-            Print {autoPrint ? 'ON' : 'OFF'}
+            <span className="hidden sm:inline">Print </span>{autoPrint ? 'ON' : 'OFF'}
           </button>
 
           {/* Search */}
-          <div className="relative w-44 shrink-0">
+          <div className="relative w-28 sm:w-44 shrink-0">
             <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
@@ -495,12 +495,12 @@ export default function PanCornerPage() {
           {/* Recall button */}
           <button
             onClick={() => setShowRecall(true)}
-            className="relative rounded-xl text-sm px-4 py-2 shadow-sm active:scale-[0.97] flex items-center gap-2 border border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
+            className="relative rounded-xl text-sm px-3 sm:px-4 py-2 shadow-sm active:scale-[0.97] flex items-center gap-2 border border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            Recall
+            <span className="hidden sm:inline">Recall</span>
             {heldTickets.length > 0 && (
               <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">{heldTickets.length}</span>
             )}

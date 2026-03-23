@@ -1204,7 +1204,7 @@ export default function QSRPage() {
                     </div>
                     <span className="text-xs font-bold tabular-nums px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">{boardCounts.preparing}</span>
                   </div>
-                  <div className="flex-1 rounded-b-xl border border-t-0 p-2.5 space-y-2.5 overflow-y-auto max-h-[calc(100vh-280px)] bg-violet-50/20 border-violet-100/50">
+                  <div className="flex-1 rounded-b-xl border border-t-0 p-2.5 space-y-2.5 overflow-y-auto lg:max-h-[calc(100vh-280px)] bg-violet-50/20 border-violet-100/50">
                     {boardColumns.preparing.length === 0 ? (
                       <p className="text-center text-xs text-text-muted py-8">No orders preparing</p>
                     ) : (
@@ -1233,7 +1233,7 @@ export default function QSRPage() {
                     </div>
                     <span className="text-xs font-bold tabular-nums px-2 py-0.5 rounded-full bg-orange-100 text-primary">{boardCounts.served}</span>
                   </div>
-                  <div className="flex-1 rounded-b-xl border border-t-0 p-2.5 space-y-2.5 overflow-y-auto max-h-[calc(100vh-280px)] bg-orange-50/20 border-orange-100/50">
+                  <div className="flex-1 rounded-b-xl border border-t-0 p-2.5 space-y-2.5 overflow-y-auto lg:max-h-[calc(100vh-280px)] bg-orange-50/20 border-orange-100/50">
                     {boardColumns.served.length === 0 ? (
                       <p className="text-center text-xs text-text-muted py-8">No items served yet</p>
                     ) : (
@@ -1261,7 +1261,7 @@ export default function QSRPage() {
                     </div>
                     <span className="text-xs font-bold tabular-nums px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">{boardCounts.completed}</span>
                   </div>
-                  <div className="flex-1 rounded-b-xl border border-t-0 p-2.5 space-y-2.5 overflow-y-auto max-h-[calc(100vh-280px)] bg-emerald-50/20 border-emerald-100/50">
+                  <div className="flex-1 rounded-b-xl border border-t-0 p-2.5 space-y-2.5 overflow-y-auto lg:max-h-[calc(100vh-280px)] bg-emerald-50/20 border-emerald-100/50">
                     {boardColumns.completed.length === 0 ? (
                       <p className="text-center text-xs text-text-muted py-8">No completed orders</p>
                     ) : (
