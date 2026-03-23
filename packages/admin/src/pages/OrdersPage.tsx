@@ -509,12 +509,12 @@ export default function OrdersPage() {
   return (
     <div className="space-y-3 md:space-y-5">
       {/* ═══ Header ═══ */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-3">
         <div className="flex items-center gap-3">
           {/* Create Order */}
           <button
             onClick={() => navigate('/create-order')}
-            className="rounded-xl text-sm px-4 py-2.5 shadow-sm bg-primary hover:bg-primary/90 text-white active:scale-[0.97] flex items-center gap-2 transition-colors"
+            className="shrink-0 rounded-xl text-sm px-4 py-2 shadow-sm bg-primary hover:bg-primary/90 text-white active:scale-[0.97] flex items-center gap-2 transition-colors whitespace-nowrap"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -526,7 +526,7 @@ export default function OrdersPage() {
             <button
               onClick={() => setShowExportMenu(!showExportMenu)}
               disabled={exporting}
-              className="rounded-xl text-sm px-4 py-2.5 shadow-sm border border-gray-200 bg-white hover:bg-gray-50 text-text-secondary active:scale-[0.97] flex items-center gap-2 transition-colors"
+              className="shrink-0 rounded-xl text-sm px-4 py-2 shadow-sm border border-gray-200 bg-white hover:bg-gray-50 text-text-secondary active:scale-[0.97] flex items-center gap-2 transition-colors whitespace-nowrap"
             >
               {exporting ? (
                 <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -562,7 +562,8 @@ export default function OrdersPage() {
               </>
             )}
           </div>
-          <div className="relative w-full sm:w-72">
+        </div>
+        <div className="relative w-full sm:w-72">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
@@ -573,7 +574,6 @@ export default function OrdersPage() {
             onChange={e => setSearch(e.target.value)}
             className="input pl-10 py-2.5 text-sm"
           />
-          </div>
         </div>
       </div>
 

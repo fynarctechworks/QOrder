@@ -296,6 +296,7 @@ export default function ReportsPage() {
   const [toDate, setToDate] = useState(todayStr);
   const [viewMode, setViewMode] = useState<'chart' | 'table'>('chart');
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const [mobileDropdownOpen, setMobileDropdownOpen] = useState(false);
 
   const reportMeta = useMemo(() => {
     if (!activeReport) return null;
@@ -327,7 +328,7 @@ export default function ReportsPage() {
   return (
     <div className="space-y-6">
       {/* Date Range */}
-      <div className="flex flex-wrap gap-3 items-end justify-end">
+      <div className="flex flex-wrap gap-3 items-end">
         <div>
           <label className="text-xs font-medium text-text-muted block mb-1">From</label>
           <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
@@ -396,21 +397,55 @@ export default function ReportsPage() {
           })}
         </div>
 
-        {/* Mobile selector */}
-        <select value={activeReport ?? ''} onChange={e => setActiveReport(e.target.value)}
-          className="lg:hidden w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
-          <option value="" disabled>Select a report...</option>
-          {REPORT_CATEGORIES.map(c => (
-            <optgroup key={c.label} label={c.label}>
-              {c.items.map(i => (
-                <option key={i.key} value={i.key}>{i.label}</option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
+        {/* Mobile selector — custom dropdown to avoid native overflow */}
+        <div className="lg:hidden relative w-full">
+          <button
+            type="button"
+            onClick={() => setMobileDropdownOpen(v => !v)}
+            className="w-full flex items-center justify-between border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white text-left"
+          >
+            <span className={activeReport ? 'text-text-primary' : 'text-text-muted'}>
+              {activeReport
+                ? REPORT_CATEGORIES.flatMap(c => c.items).find(i => i.key === activeReport)?.label
+                : 'Select a report...'}
+            </span>
+            <svg className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${mobileDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {mobileDropdownOpen && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setMobileDropdownOpen(false)} />
+              <div className="absolute top-full left-0 right-0 z-20 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                {REPORT_CATEGORIES.map(cat => (
+                  <div key={cat.label}>
+                    <div className="px-3 py-1.5 text-xs font-bold text-text-primary uppercase tracking-wide bg-gray-50 sticky top-0">
+                      {cat.label}
+                    </div>
+                    {cat.items.map(item => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => { setActiveReport(item.key); setMobileDropdownOpen(false); }}
+                        className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                          activeReport === item.key
+                            ? 'text-primary font-medium bg-primary/5'
+                            : 'text-text-secondary hover:bg-gray-50'
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
 
         {/* Chart / Table Area */}
-        <div className="flex-1 min-w-0 w-full lg:w-auto bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6 min-h-[300px] sm:min-h-[500px] lg:sticky top-24 lg:max-h-[calc(100vh-120px)] overflow-y-auto">
+        <div className="flex-1 min-w-0 w-full lg:w-auto bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6 min-h-[300px] sm:min-h-[500px] lg:sticky top-24 lg:max-h-[calc(100vh-120px)] overflow-y-auto overflow-x-hidden">
           {!activeReport ? (
             <div className="flex items-center justify-center h-80">
               <div className="text-center space-y-3">

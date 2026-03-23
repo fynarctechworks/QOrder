@@ -556,7 +556,7 @@ export default function PanCornerPage() {
         )}
 
         {/* ── RIGHT: Current Ticket ── */}
-        <div className={`fixed inset-y-0 right-0 z-40 w-[300px] md:static md:z-auto md:w-[40%] flex flex-col bg-white border-l border-gray-200 shrink-0 transform transition-transform duration-200 order-last ${showCart ? 'translate-x-0' : 'translate-x-full'} md:translate-x-0`}>
+        <div className={`fixed inset-y-0 right-0 z-40 w-full sm:w-[300px] md:static md:z-auto md:w-[40%] flex flex-col bg-white border-l border-gray-200 shrink-0 transform transition-transform duration-200 order-last ${showCart ? 'translate-x-0' : 'translate-x-full'} md:translate-x-0`}>
           <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
             <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Current Ticket</h2>
             <div className="flex items-center gap-2">
@@ -734,14 +734,14 @@ export default function PanCornerPage() {
           {/* Category tabs */}
           <div className="shrink-0">
             <div className="sticky top-0 z-10 px-3 md:px-5 py-3 bg-white/95 backdrop-blur border-b border-gray-100">
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pb-0.5">
                 {activeCategories.map((cat) => (
                   <button
                     key={cat.id}
                     onClick={() => { setActiveCategory(cat.id); setMenuSearch(''); }}
                     onDoubleClick={() => { setEditingCat(cat); setCatModalOpen(true); }}
                     title="Double-click to edit"
-                    className={`px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all border ${
+                    className={`shrink-0 px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all border ${
                       selectedCategoryId === cat.id && !menuSearch.trim()
                         ? 'bg-primary text-white border-primary shadow-sm'
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200'

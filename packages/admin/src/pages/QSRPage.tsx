@@ -1299,7 +1299,7 @@ export default function QSRPage() {
         )}
 
         {/* ── RIGHT: Current Ticket ── */}
-        <div className={`fixed inset-y-0 right-0 z-40 w-[300px] md:static md:z-auto md:w-[40%] flex flex-col bg-white border-l border-gray-200 shrink-0 transform transition-transform duration-200 order-last ${showCart ? 'translate-x-0' : 'translate-x-full'} md:translate-x-0`}>
+        <div className={`fixed inset-y-0 right-0 z-40 w-full sm:w-[300px] md:static md:z-auto md:w-[40%] flex flex-col bg-white border-l border-gray-200 shrink-0 transform transition-transform duration-200 order-last ${showCart ? 'translate-x-0' : 'translate-x-full'} md:translate-x-0`}>
           <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
             <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Current Ticket</h2>
             <div className="flex items-center gap-2">
@@ -1535,14 +1535,14 @@ export default function QSRPage() {
           </button>
           <div className="shrink-0">
             <div className="sticky top-0 z-10 px-3 md:px-5 py-3 bg-white/95 backdrop-blur border-b border-gray-100">
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pb-0.5">
                   <button
                     ref={(el) => {
                       if (el) categoryBtnRefs.current.set('all', el);
                       else categoryBtnRefs.current.delete('all');
                     }}
                     onClick={() => setSelectedCategory('all')}
-                    className={`px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all border ${
+                    className={`shrink-0 px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all border ${
                       selectedCategory === 'all'
                         ? 'bg-primary text-white border-primary shadow-sm'
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200'
@@ -1558,7 +1558,7 @@ export default function QSRPage() {
                         else categoryBtnRefs.current.delete('top');
                       }}
                       onClick={() => setSelectedCategory('top')}
-                      className={`flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all border ${
+                      className={`shrink-0 flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all border ${
                         selectedCategory === 'top'
                           ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
                           : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-200'
@@ -1579,7 +1579,7 @@ export default function QSRPage() {
                         else categoryBtnRefs.current.delete(cat.id);
                       }}
                       onClick={() => setSelectedCategory(cat.id)}
-                      className={`px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all border ${
+                      className={`shrink-0 px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all border ${
                         selectedCategory === cat.id
                           ? 'bg-primary text-white border-primary shadow-sm'
                           : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200'
@@ -1655,7 +1655,7 @@ export default function QSRPage() {
               const bothExist = vegItems.length > 0 && nonVegItems.length > 0;
 
               return (
-                <div className={bothExist ? 'grid grid-cols-2 gap-4 divide-x divide-gray-100' : 'block'}>
+                <div className={bothExist ? 'flex flex-col gap-4 sm:grid sm:grid-cols-2 sm:gap-4 sm:divide-x sm:divide-gray-100' : 'block'}>
                   {/* Veg */}
                   {vegItems.length > 0 && (
                     <div>
@@ -1673,7 +1673,7 @@ export default function QSRPage() {
                   )}
                   {/* Non Veg */}
                   {nonVegItems.length > 0 && (
-                    <div className={bothExist ? 'pl-4' : ''}>
+                    <div className={bothExist ? 'sm:pl-4' : ''}>
                       <div className="flex items-center gap-2 mb-3">
                         <span className="w-3 h-3 rounded-sm border-2 border-red-600 flex items-center justify-center shrink-0">
                           <span className="w-1.5 h-1.5 rounded-full bg-red-600" />
