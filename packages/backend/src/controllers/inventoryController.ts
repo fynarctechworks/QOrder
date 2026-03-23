@@ -91,6 +91,14 @@ export const inventoryController = {
     } catch (err) { next(err); }
   },
 
+  async runAutoDeduct(req: Request, res: Response, next: NextFunction) {
+    try {
+      const restaurantId = req.user!.restaurantId;
+      const result = await inventoryService.runAutoDeduct(restaurantId);
+      res.json({ success: true, data: result });
+    } catch (err) { next(err); }
+  },
+
   async getDailySummary(req: Request, res: Response, next: NextFunction) {
     try {
       const restaurantId = req.user!.restaurantId;

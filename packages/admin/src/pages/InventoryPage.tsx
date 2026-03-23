@@ -5,8 +5,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { inventoryService } from '../services/inventoryService';
 import type {
   Ingredient, Supplier, StockMovement,
-  InventoryOverview, ForecastItem,
+  InventoryOverview, ForecastItem, IngredientCategory,
 } from '../services/inventoryService';
+import { INGREDIENT_CATEGORIES, AUTO_DEDUCT_FREQUENCIES } from '../services/inventoryService';
+import type { AutoDeductFrequency } from '../services/inventoryService';
 import Modal from '../components/Modal';
 import { useCurrency } from '../hooks/useCurrency';
 
@@ -238,6 +240,7 @@ function DashboardTab({ fmt }: { fmt: (v: number) => string }) {
 
 function ProductsTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<typeof useQueryClient> }) {
   const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<IngredientCategory | 'ALL'>('ALL');
   const [showForm, setShowForm] = useState(false);
   const [editItem, setEditItem] = useState<Ingredient | null>(null);
   const [adjustItem, setAdjustItem] = useState<Ingredient | null>(null);
@@ -249,14 +252,24 @@ function ProductsTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<t
   });
 
   const filtered = useMemo(() => {
-    if (!search) return ingredients;
-    const q = search.toLowerCase();
-    return ingredients.filter(i => i.name.toLowerCase().includes(q) || i.unit.toLowerCase().includes(q));
-  }, [ingredients, search]);
+    return ingredients.filter(i => {
+      const matchSearch = !search || i.name.toLowerCase().includes(search.toLowerCase()) || i.unit.toLowerCase().includes(search.toLowerCase());
+      const matchCat = categoryFilter === 'ALL' || i.category === categoryFilter;
+      return matchSearch && matchCat;
+    });
+  }, [ingredients, search, categoryFilter]);
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => inventoryService.deleteIngredient(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['inventory'] }),
+  });
+
+  const autoDeductMut = useMutation({
+    mutationFn: () => inventoryService.runAutoDeduct(),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['inventory'] });
+      alert(`Auto-deduct complete:\n✓ Deducted: ${data.deducted}\n⚠ Low stock skipped: ${data.skippedLowStock}\n— Already ran today: ${data.skippedAlreadyRan}`);
+    },
   });
 
   if (isLoading) {
@@ -274,6 +287,23 @@ function ProductsTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<t
 
   return (
     <div className="space-y-4">
+      {/* Category tabs */}
+      <div className="flex gap-1 flex-wrap">
+        {[{ value: 'ALL' as const, label: 'All' }, ...INGREDIENT_CATEGORIES].map(cat => (
+          <button
+            key={cat.value}
+            onClick={() => setCategoryFilter(cat.value as IngredientCategory | 'ALL')}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+              categoryFilter === cat.value
+                ? 'bg-primary text-white'
+                : 'bg-surface-elevated text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            {cat.label}
+          </button>
+        ))}
+      </div>
+
       {/* Toolbar */}
       <div className="flex gap-3 items-center justify-between">
         <input
@@ -282,7 +312,17 @@ function ProductsTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<t
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
-        <button className="btn-primary text-sm" onClick={() => setShowForm(true)}>+ Add Product</button>
+        <div className="flex gap-2">
+          <button
+            className="btn-secondary text-sm"
+            disabled={autoDeductMut.isPending}
+            onClick={() => autoDeductMut.mutate()}
+            title="Manually run auto-deduct for all enabled products"
+          >
+            {autoDeductMut.isPending ? 'Running...' : '▶ Run Auto-Deduct'}
+          </button>
+          <button className="btn-primary text-sm" onClick={() => setShowForm(true)}>+ Add Product</button>
+        </div>
       </div>
 
       {/* Table */}
@@ -292,6 +332,7 @@ function ProductsTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<t
             <thead>
               <tr>
                 <th>Product</th>
+                <th>Category</th>
                 <th>Unit</th>
                 <th className="text-right">Stock</th>
                 <th className="text-right">Min Stock</th>
@@ -304,15 +345,22 @@ function ProductsTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<t
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-8 text-text-secondary">
-                    {search ? 'No products match your search' : 'No products yet — add your first one!'}
+                  <td colSpan={9} className="text-center py-8 text-text-secondary">
+                    {search || categoryFilter !== 'ALL' ? 'No products match your filter' : 'No products yet — add your first one!'}
                   </td>
                 </tr>
               ) : filtered.map(item => {
                 const status = stockStatus(item.currentStock, item.minStock);
+                const catLabel = INGREDIENT_CATEGORIES.find(c => c.value === item.category)?.label ?? item.category;
                 return (
                   <tr key={item.id} className={!item.isActive ? 'opacity-50' : ''}>
-                    <td className="font-medium">{item.name}</td>
+                    <td className="font-medium">
+                      {item.name}
+                      {item.autoDeductEnabled && (
+                        <span className="ml-2 text-[10px] font-semibold bg-primary/10 text-primary px-1.5 py-0.5 rounded">AUTO</span>
+                      )}
+                    </td>
+                    <td><span className="badge badge-neutral text-xs">{catLabel}</span></td>
                     <td><span className="badge badge-neutral text-xs">{item.unit}</span></td>
                     <td className="text-right font-mono">{item.currentStock}</td>
                     <td className="text-right font-mono text-text-secondary">{item.minStock}</td>
@@ -369,16 +417,21 @@ function ProductFormModal({ item, onClose, onSaved }: {
 }) {
   const [name, setName] = useState(item?.name ?? '');
   const [unit, setUnit] = useState(item?.unit ?? 'KG');
+  const [category, setCategory] = useState<IngredientCategory>(item?.category ?? 'PANTRY');
   const [currentStock, setCurrentStock] = useState(item?.currentStock ?? 0);
   const [minStock, setMinStock] = useState(item?.minStock ?? 0);
   const [costPerUnit, setCostPerUnit] = useState(item?.costPerUnit ?? 0);
+  const [autoDeductEnabled, setAutoDeductEnabled] = useState(item?.autoDeductEnabled ?? false);
+  const [autoDeductQty, setAutoDeductQty] = useState(item?.autoDeductQty ?? 0);
+  const [autoDeductUnit, setAutoDeductUnit] = useState(item?.autoDeductUnit ?? item?.unit ?? 'KG');
+  const [autoDeductFrequency, setAutoDeductFrequency] = useState<AutoDeductFrequency>(item?.autoDeductFrequency ?? 'DAILY');
   const [error, setError] = useState('');
 
   const mut = useMutation({
     mutationFn: () =>
       item
-        ? inventoryService.updateIngredient(item.id, { name, unit, minStock, costPerUnit })
-        : inventoryService.createIngredient({ name, unit, currentStock, minStock, costPerUnit }),
+        ? inventoryService.updateIngredient(item.id, { name, unit, category, minStock, costPerUnit, autoDeductEnabled, autoDeductQty, autoDeductUnit, autoDeductFrequency })
+        : inventoryService.createIngredient({ name, unit, category, currentStock, minStock, costPerUnit, autoDeductEnabled, autoDeductQty, autoDeductUnit, autoDeductFrequency }),
     onSuccess: onSaved,
     onError: (e: any) => setError(e?.message ?? 'Failed to save'),
   });
@@ -390,6 +443,12 @@ function ProductFormModal({ item, onClose, onSaved }: {
         <div>
           <label className="text-sm font-medium">Name *</label>
           <input className="input mt-1" value={name} onChange={e => setName(e.target.value)} autoFocus />
+        </div>
+        <div>
+          <label className="text-sm font-medium">Category</label>
+          <select className="select mt-1" value={category} onChange={e => setCategory(e.target.value as IngredientCategory)}>
+            {INGREDIENT_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+          </select>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -415,6 +474,49 @@ function ProductFormModal({ item, onClose, onSaved }: {
             <input className="input mt-1" type="number" min={0} step="0.01" value={minStock} onChange={e => setMinStock(+e.target.value)} />
           </div>
         </div>
+
+        {/* Auto-deduct */}
+        <div className="border border-border rounded-lg p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Daily Auto-Deduct</p>
+              <p className="text-xs text-text-secondary">Automatically deduct stock on a schedule</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAutoDeductEnabled(v => !v)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${autoDeductEnabled ? 'bg-primary' : 'bg-surface-elevated border border-border'}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${autoDeductEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
+          {autoDeductEnabled && (
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs font-medium text-text-secondary">Qty per cycle</label>
+                <input
+                  className="input mt-1"
+                  type="number" min={0} step="0.01"
+                  value={autoDeductQty || ''}
+                  onChange={e => setAutoDeductQty(+e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-text-secondary">Unit</label>
+                <select className="select mt-1" value={autoDeductUnit} onChange={e => setAutoDeductUnit(e.target.value)}>
+                  {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-text-secondary">Frequency</label>
+                <select className="select mt-1" value={autoDeductFrequency} onChange={e => setAutoDeductFrequency(e.target.value as AutoDeductFrequency)}>
+                  {AUTO_DEDUCT_FREQUENCIES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="flex justify-end gap-3 pt-2">
           <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
           <button type="submit" className="btn-primary" disabled={mut.isPending}>
@@ -510,11 +612,19 @@ function AdjustStockModal({ item, onClose, onSaved }: {
    STOCK IN / OUT
    ═══════════════════════════════════════════════════════ */
 
+function todayISO() {
+  return new Date().toISOString().split('T')[0]!;
+}
+
+const HISTORY_LIMIT = 20;
+
 function StockTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<typeof useQueryClient> }) {
   const [mode, setMode] = useState<'purchase' | 'usage'>('purchase');
-  const [items, setItems] = useState<{ ingredientId: string; quantity: number; notes: string }[]>([
-    { ingredientId: '', quantity: 0, notes: '' },
-  ]);
+  const [date, setDate] = useState<string>(todayISO());
+  const [ingredientId, setIngredientId] = useState('');
+  const [quantity, setQuantity] = useState<number>(0);
+  const [notes, setNotes] = useState('');
+  const [histPage, setHistPage] = useState(1);
 
   const { data: ingredients = [], isError: ingError, error: ingErr, refetch: refetchIng } = useQuery<Ingredient[]>({
     queryKey: ['inventory', 'ingredients'],
@@ -522,62 +632,51 @@ function StockTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<type
   });
 
   const { data: historyResult, isError: histError, error: histErr, refetch: refetchHist } = useQuery({
-    queryKey: ['inventory', 'stock-history', 1],
-    queryFn: () => inventoryService.getStockHistory({ page: 1, limit: 15 }),
+    queryKey: ['inventory', 'stock-history', histPage],
+    queryFn: () => inventoryService.getStockHistory({ page: histPage, limit: HISTORY_LIMIT }),
   });
 
   const movements = (historyResult?.data ?? []) as StockMovement[];
+  const histMeta = historyResult?.meta as { total: number; totalPages: number } | undefined;
 
-  const addRow = () => setItems([...items, { ingredientId: '', quantity: 0, notes: '' }]);
-  const removeRow = (idx: number) => setItems(items.filter((_, i) => i !== idx));
-  const updateRow = (idx: number, field: string, value: string | number) => {
-    const next = [...items];
-    (next[idx] as any)[field] = value;
-    setItems(next);
-  };
+  const reset = () => { setIngredientId(''); setQuantity(0); setNotes(''); };
 
   // Usage recording
   const usageMut = useMutation({
     mutationFn: () => {
-      const valid = items.filter(i => i.ingredientId && i.quantity > 0);
-      if (valid.length === 0) throw new Error('Add at least one item');
-      return inventoryService.recordUsage(valid.map(i => ({
-        ingredientId: i.ingredientId,
-        quantity: i.quantity,
-        notes: i.notes || undefined,
-      })));
+      if (!ingredientId || quantity <= 0) throw new Error('Select a product and enter quantity');
+      return inventoryService.recordUsage([{ ingredientId, quantity, notes: notes || undefined }], date);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['inventory'] });
-      setItems([{ ingredientId: '', quantity: 0, notes: '' }]);
+      reset();
+      setHistPage(1);
     },
   });
 
-  // Purchase (manual add) — adjust stock for each item
+  // Purchase (manual add) — adjust stock
   const purchaseMut = useMutation({
-    mutationFn: async () => {
-      const valid = items.filter(i => i.ingredientId && i.quantity > 0);
-      if (valid.length === 0) throw new Error('Add at least one item');
-      for (const item of valid) {
-        await inventoryService.adjustStock(item.ingredientId, {
-          type: 'PURCHASE',
-          quantity: item.quantity,
-          notes: item.notes || 'Stock purchase',
-        });
-      }
+    mutationFn: () => {
+      if (!ingredientId || quantity <= 0) throw new Error('Select a product and enter quantity');
+      return inventoryService.adjustStock(ingredientId, {
+        type: 'PURCHASE',
+        quantity,
+        notes: notes || 'Stock purchase',
+        date,
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['inventory'] });
-      setItems([{ ingredientId: '', quantity: 0, notes: '' }]);
+      reset();
+      setHistPage(1);
     },
   });
 
   const activeMut = mode === 'purchase' ? purchaseMut : usageMut;
 
-  const estValue = items.reduce((s, item) => {
-    const ing = ingredients.find(i => i.id === item.ingredientId);
-    return s + (ing ? item.quantity * ing.costPerUnit : 0);
-  }, 0);
+  const ing = ingredients.find(i => i.id === ingredientId);
+  const estValue = ing ? quantity * ing.costPerUnit : 0;
+
 
   return (
     <div className="space-y-6">
@@ -589,9 +688,16 @@ function StockTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<type
       )}
       {/* Record Form */}
       <div className="card p-6">
-        <div className="flex items-center gap-3 mb-5">
+        <div className="flex items-center gap-3 mb-5 flex-wrap">
           <h3 className="text-sm font-semibold text-text-primary">Record Stock Movement</h3>
-          <div className="flex bg-surface-elevated rounded-lg p-0.5 ml-auto">
+          <input
+            type="date"
+            className="input text-sm ml-auto"
+            value={date}
+            max={todayISO()}
+            onChange={e => setDate(e.target.value)}
+          />
+          <div className="flex bg-surface-elevated rounded-lg p-0.5">
             <button
               onClick={() => setMode('purchase')}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
@@ -615,45 +721,36 @@ function StockTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<type
           {activeMut.isError && <p className="text-sm text-error">{(activeMut.error as any)?.message ?? 'Failed'}</p>}
           {activeMut.isSuccess && <p className="text-sm text-success">Recorded successfully ✓</p>}
 
-          {items.map((item, idx) => {
-            const ing = ingredients.find(i => i.id === item.ingredientId);
-            return (
-              <div key={idx} className="flex flex-wrap gap-2 items-center">
-                <select
-                  className="select flex-1 min-w-[180px]"
-                  value={item.ingredientId}
-                  onChange={e => updateRow(idx, 'ingredientId', e.target.value)}
-                >
-                  <option value="">Select product...</option>
-                  {ingredients.map(i => (
-                    <option key={i.id} value={i.id}>
-                      {i.name} ({i.currentStock} {i.unit})
-                    </option>
-                  ))}
-                </select>
-                <input
-                  className="input w-24"
-                  type="number" min={0} step="0.1"
-                  placeholder="Qty"
-                  value={item.quantity || ''}
-                  onChange={e => updateRow(idx, 'quantity', +e.target.value)}
-                />
-                {ing && <span className="text-xs text-text-secondary w-8">{ing.unit}</span>}
-                <input
-                  className="input w-36"
-                  placeholder="Notes..."
-                  value={item.notes}
-                  onChange={e => updateRow(idx, 'notes', e.target.value)}
-                />
-                {items.length > 1 && (
-                  <button type="button" className="text-error text-sm px-1" onClick={() => removeRow(idx)}>✕</button>
-                )}
-              </div>
-            );
-          })}
+          <div className="flex flex-wrap gap-2 items-center">
+            <select
+              className="select flex-1 min-w-[180px]"
+              value={ingredientId}
+              onChange={e => setIngredientId(e.target.value)}
+            >
+              <option value="">Select product...</option>
+              {ingredients.map(i => (
+                <option key={i.id} value={i.id}>
+                  {i.name} ({i.currentStock} {i.unit})
+                </option>
+              ))}
+            </select>
+            <input
+              className="input w-24"
+              type="number" min={0} step="0.1"
+              placeholder="Qty"
+              value={quantity || ''}
+              onChange={e => setQuantity(+e.target.value)}
+            />
+            {ing && <span className="text-xs text-text-secondary w-8">{ing.unit}</span>}
+            <input
+              className="input w-36"
+              placeholder="Notes..."
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+            />
+          </div>
 
-          <div className="flex items-center justify-between pt-2">
-            <button type="button" className="text-primary text-sm hover:underline" onClick={addRow}>+ Add item</button>
+          <div className="flex items-center justify-end pt-2">
             <div className="flex items-center gap-4">
               {estValue > 0 && <span className="text-xs text-text-secondary">Est. value: <strong>{fmt(estValue)}</strong></span>}
               <button type="submit" className="btn-primary text-sm" disabled={activeMut.isPending}>
@@ -664,9 +761,29 @@ function StockTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<type
         </form>
       </div>
 
-      {/* Recent History */}
+      {/* History */}
       <div className="card p-6">
-        <h3 className="text-sm font-semibold text-text-primary mb-4">Recent Stock Movements</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-text-primary">
+            Stock Movements
+            {histMeta && <span className="ml-2 text-text-secondary font-normal">({histMeta.total} total)</span>}
+          </h3>
+          {histMeta && histMeta.totalPages > 1 && (
+            <div className="flex items-center gap-2 text-sm">
+              <button
+                className="btn-secondary px-3 py-1 text-xs"
+                disabled={histPage === 1}
+                onClick={() => setHistPage(p => p - 1)}
+              >← Prev</button>
+              <span className="text-text-secondary">{histPage} / {histMeta.totalPages}</span>
+              <button
+                className="btn-secondary px-3 py-1 text-xs"
+                disabled={histPage === histMeta.totalPages}
+                onClick={() => setHistPage(p => p + 1)}
+              >Next →</button>
+            </div>
+          )}
+        </div>
         {movements.length === 0 ? (
           <p className="text-sm text-text-secondary text-center py-6">No stock movements yet</p>
         ) : (
@@ -702,6 +819,21 @@ function StockTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<type
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+        {histMeta && histMeta.totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 mt-4 text-sm">
+            <button
+              className="btn-secondary px-3 py-1 text-xs"
+              disabled={histPage === 1}
+              onClick={() => setHistPage(p => p - 1)}
+            >← Prev</button>
+            <span className="text-text-secondary">Page {histPage} of {histMeta.totalPages}</span>
+            <button
+              className="btn-secondary px-3 py-1 text-xs"
+              disabled={histPage === histMeta.totalPages}
+              onClick={() => setHistPage(p => p + 1)}
+            >Next →</button>
           </div>
         )}
       </div>
