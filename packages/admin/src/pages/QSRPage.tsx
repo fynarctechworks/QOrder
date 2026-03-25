@@ -1017,21 +1017,18 @@ export default function QSRPage() {
         </div>
       )}
       {/* ═══ Top bar ═══ */}
-      <div className="bg-white border-b border-gray-200 px-3 md:px-6 py-2.5 flex items-center gap-3 shrink-0">
-        {/* Spacer */}
-        <div className="flex-1" />
+      <div className="bg-white border-b border-gray-200 px-3 md:px-6 py-2 shrink-0">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2">
 
-        {/* Action buttons */}
-        <div className="flex items-center gap-2">
-          {/* Station toggle + search (only in QSR order mode) */}
+          {/* Row 1 (mobile) / inline (desktop): station filter + search — QSR order mode only */}
           {!showOrderBoard && (
-            <>
-              <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-xl shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="flex items-center gap-0.5 p-1 bg-gray-100 rounded-xl shrink-0">
                 {(['ALL', 'KITCHEN', 'BEVERAGE'] as const).map(s => (
                   <button
                     key={s}
                     onClick={() => { setStationFilter(s); setSelectedCategory('all'); }}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                       stationFilter === s
                         ? 'bg-white text-text-primary shadow-sm'
                         : 'text-gray-500 hover:text-gray-700'
@@ -1047,11 +1044,11 @@ export default function QSRPage() {
                         <path strokeLinecap="round" strokeLinejoin="round" d="M9 3h6l1 9H8L9 3zM8 12c0 4 8 4 8 0M10 21h4M12 12v9" />
                       </svg>
                     )}
-                    {s === 'ALL' ? 'All' : s === 'KITCHEN' ? 'Kitchen' : 'Beverage'}
+                    {s === 'ALL' ? 'All' : <span className="hidden sm:inline">{s === 'KITCHEN' ? 'Kitchen' : 'Beverage'}</span>}
                   </button>
                 ))}
               </div>
-              <div className="relative w-44 shrink-0">
+              <div className="relative flex-1 min-w-0">
                 <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
@@ -1063,79 +1060,89 @@ export default function QSRPage() {
                   className="w-full pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 />
               </div>
-              <select
-                value={selectedTable}
-                onChange={e => setSelectedTable(e.target.value)}
-                className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary w-32 bg-white"
-              >
-                <option value="">Counter</option>
-                <option value="takeaway">Takeaway</option>
-                {tables
-                  .filter(t => t.status === 'available' || t.status === 'occupied')
-                  .sort((a, b) => Number(a.number) - Number(b.number))
-                  .map(t => (
-                    <option key={t.id} value={t.id}>
-                      {t.name ? `${t.name} (${t.number})` : `Table ${t.number}`}
-                      {t.status === 'occupied' ? ' • Occupied' : ''}
-                    </option>
-                  ))}
-              </select>
-            </>
+            </div>
           )}
-          {!showOrderBoard && (
-          <>
-          <button
-            onClick={resetForm}
-            className="btn-primary rounded-xl text-sm px-4 py-2 shadow-sm active:scale-[0.97] flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
-            New Order
-          </button>
-          <button
-            onClick={() => setShowRecall(true)}
-            className="relative rounded-xl text-sm px-4 py-2 shadow-sm active:scale-[0.97] flex items-center gap-2 border border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Recall
-            {heldTickets.length > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">
-                {heldTickets.length}
-              </span>
+
+          {/* Row 2 (mobile) / inline (desktop): table select + action buttons */}
+          <div className="flex items-center gap-2">
+            {!showOrderBoard && (
+              <>
+                <select
+                  value={selectedTable}
+                  onChange={e => setSelectedTable(e.target.value)}
+                  className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary flex-1 sm:flex-none sm:w-32 bg-white min-w-0"
+                >
+                  <option value="">Counter</option>
+                  <option value="takeaway">Takeaway</option>
+                  {tables
+                    .filter(t => t.status === 'available' || t.status === 'occupied')
+                    .sort((a, b) => Number(a.number) - Number(b.number))
+                    .map(t => (
+                      <option key={t.id} value={t.id}>
+                        {t.name ? `${t.name} (${t.number})` : `Table ${t.number}`}
+                        {t.status === 'occupied' ? ' • Occupied' : ''}
+                      </option>
+                    ))}
+                </select>
+                <button
+                  onClick={resetForm}
+                  title="New Order"
+                  className="btn-primary rounded-xl text-sm px-3 py-2 shadow-sm active:scale-[0.97] flex items-center gap-1.5 shrink-0"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                  <span className="hidden sm:inline">New Order</span>
+                </button>
+                <button
+                  onClick={() => setShowRecall(true)}
+                  title="Recall"
+                  className="relative rounded-xl text-sm px-3 py-2 shadow-sm active:scale-[0.97] flex items-center gap-1.5 border border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors shrink-0"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="hidden sm:inline">Recall</span>
+                  {heldTickets.length > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">
+                      {heldTickets.length}
+                    </span>
+                  )}
+                </button>
+              </>
             )}
-          </button>
-          </>
-          )}
-          <button
-            onClick={() => { setShowUnpaidPanel(true); refetchQsrOrders(); }}
-            className="relative rounded-xl text-sm px-4 py-2 shadow-sm active:scale-[0.97] flex items-center gap-2 border border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-            </svg>
-            Collect Payment
-            {unpaidOrders.length > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">
-                {unpaidOrders.length}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => { setShowOrderBoard(!showOrderBoard); if (!showOrderBoard) refetchQsrOrders(); }}
-            className={`relative rounded-xl text-sm px-4 py-2 shadow-sm active:scale-[0.97] flex items-center gap-2 transition-colors ${
-              showOrderBoard
-                ? 'bg-violet-600 text-white hover:bg-violet-700'
-                : 'border border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100'
-            }`}
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-            </svg>
-            {showOrderBoard ? 'Back to QSR' : 'QSR Order Board'}
-          </button>
+            <button
+              onClick={() => { setShowUnpaidPanel(true); refetchQsrOrders(); }}
+              title="Collect Payment"
+              className="relative rounded-xl text-sm px-3 py-2 shadow-sm active:scale-[0.97] flex items-center gap-1.5 border border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors shrink-0"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+              <span className="sm:hidden">Pay</span>
+              <span className="hidden sm:inline">Collect Payment</span>
+              {unpaidOrders.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">
+                  {unpaidOrders.length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => { setShowOrderBoard(!showOrderBoard); if (!showOrderBoard) refetchQsrOrders(); }}
+              title={showOrderBoard ? 'Back to QSR' : 'QSR Order Board'}
+              className={`relative rounded-xl text-sm px-3 py-2 shadow-sm active:scale-[0.97] flex items-center gap-1.5 transition-colors shrink-0 ${
+                showOrderBoard
+                  ? 'bg-violet-600 text-white hover:bg-violet-700'
+                  : 'border border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+              </svg>
+              <span className="hidden sm:inline">{showOrderBoard ? 'Back to QSR' : 'QSR Order Board'}</span>
+            </button>
+          </div>
+
         </div>
       </div>
 
@@ -1204,7 +1211,7 @@ export default function QSRPage() {
                     </div>
                     <span className="text-xs font-bold tabular-nums px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">{boardCounts.preparing}</span>
                   </div>
-                  <div className="flex-1 rounded-b-xl border border-t-0 p-2.5 space-y-2.5 overflow-y-auto max-h-[calc(100vh-280px)] bg-violet-50/20 border-violet-100/50">
+                  <div className="flex-1 rounded-b-xl border border-t-0 p-2.5 space-y-2.5 overflow-y-auto lg:max-h-[calc(100vh-280px)] bg-violet-50/20 border-violet-100/50">
                     {boardColumns.preparing.length === 0 ? (
                       <p className="text-center text-xs text-text-muted py-8">No orders preparing</p>
                     ) : (
@@ -1233,7 +1240,7 @@ export default function QSRPage() {
                     </div>
                     <span className="text-xs font-bold tabular-nums px-2 py-0.5 rounded-full bg-orange-100 text-primary">{boardCounts.served}</span>
                   </div>
-                  <div className="flex-1 rounded-b-xl border border-t-0 p-2.5 space-y-2.5 overflow-y-auto max-h-[calc(100vh-280px)] bg-orange-50/20 border-orange-100/50">
+                  <div className="flex-1 rounded-b-xl border border-t-0 p-2.5 space-y-2.5 overflow-y-auto lg:max-h-[calc(100vh-280px)] bg-orange-50/20 border-orange-100/50">
                     {boardColumns.served.length === 0 ? (
                       <p className="text-center text-xs text-text-muted py-8">No items served yet</p>
                     ) : (
@@ -1261,7 +1268,7 @@ export default function QSRPage() {
                     </div>
                     <span className="text-xs font-bold tabular-nums px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">{boardCounts.completed}</span>
                   </div>
-                  <div className="flex-1 rounded-b-xl border border-t-0 p-2.5 space-y-2.5 overflow-y-auto max-h-[calc(100vh-280px)] bg-emerald-50/20 border-emerald-100/50">
+                  <div className="flex-1 rounded-b-xl border border-t-0 p-2.5 space-y-2.5 overflow-y-auto lg:max-h-[calc(100vh-280px)] bg-emerald-50/20 border-emerald-100/50">
                     {boardColumns.completed.length === 0 ? (
                       <p className="text-center text-xs text-text-muted py-8">No completed orders</p>
                     ) : (
@@ -1292,7 +1299,7 @@ export default function QSRPage() {
         )}
 
         {/* ── RIGHT: Current Ticket ── */}
-        <div className={`fixed inset-y-0 right-0 z-40 w-[300px] md:static md:z-auto md:w-[40%] flex flex-col bg-white border-l border-gray-200 shrink-0 transform transition-transform duration-200 order-last ${showCart ? 'translate-x-0' : 'translate-x-full'} md:translate-x-0`}>
+        <div className={`fixed inset-y-0 right-0 z-40 w-full sm:w-[300px] md:static md:z-auto md:w-[40%] flex flex-col bg-white border-l border-gray-200 shrink-0 transform transition-transform duration-200 order-last ${showCart ? 'translate-x-0' : 'translate-x-full'} md:translate-x-0`}>
           <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
             <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Current Ticket</h2>
             <div className="flex items-center gap-2">
@@ -1528,14 +1535,14 @@ export default function QSRPage() {
           </button>
           <div className="shrink-0">
             <div className="sticky top-0 z-10 px-3 md:px-5 py-3 bg-white/95 backdrop-blur border-b border-gray-100">
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pb-0.5">
                   <button
                     ref={(el) => {
                       if (el) categoryBtnRefs.current.set('all', el);
                       else categoryBtnRefs.current.delete('all');
                     }}
                     onClick={() => setSelectedCategory('all')}
-                    className={`px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all border ${
+                    className={`shrink-0 px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all border ${
                       selectedCategory === 'all'
                         ? 'bg-primary text-white border-primary shadow-sm'
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200'
@@ -1551,7 +1558,7 @@ export default function QSRPage() {
                         else categoryBtnRefs.current.delete('top');
                       }}
                       onClick={() => setSelectedCategory('top')}
-                      className={`flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all border ${
+                      className={`shrink-0 flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all border ${
                         selectedCategory === 'top'
                           ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
                           : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-200'
@@ -1572,7 +1579,7 @@ export default function QSRPage() {
                         else categoryBtnRefs.current.delete(cat.id);
                       }}
                       onClick={() => setSelectedCategory(cat.id)}
-                      className={`px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all border ${
+                      className={`shrink-0 px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all border ${
                         selectedCategory === cat.id
                           ? 'bg-primary text-white border-primary shadow-sm'
                           : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200'
@@ -1648,7 +1655,7 @@ export default function QSRPage() {
               const bothExist = vegItems.length > 0 && nonVegItems.length > 0;
 
               return (
-                <div className={bothExist ? 'grid grid-cols-2 gap-4 divide-x divide-gray-100' : 'block'}>
+                <div className={bothExist ? 'flex flex-col gap-4 sm:grid sm:grid-cols-2 sm:gap-4 sm:divide-x sm:divide-gray-100' : 'block'}>
                   {/* Veg */}
                   {vegItems.length > 0 && (
                     <div>
@@ -1666,7 +1673,7 @@ export default function QSRPage() {
                   )}
                   {/* Non Veg */}
                   {nonVegItems.length > 0 && (
-                    <div className={bothExist ? 'pl-4' : ''}>
+                    <div className={bothExist ? 'sm:pl-4' : ''}>
                       <div className="flex items-center gap-2 mb-3">
                         <span className="w-3 h-3 rounded-sm border-2 border-red-600 flex items-center justify-center shrink-0">
                           <span className="w-1.5 h-1.5 rounded-full bg-red-600" />

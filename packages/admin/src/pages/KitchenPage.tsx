@@ -121,26 +121,23 @@ const ItemTicket = memo(function ItemTicket({
   return (
     <div className="bg-gray-800/70 rounded-lg overflow-hidden border-l-4 border-l-blue-400">
       {/* Main row — always visible */}
-      <div className="flex items-center gap-2 px-3 py-2">
+      <div className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2">
         {/* Quantity badge */}
-        <span className="shrink-0 w-7 h-7 rounded bg-gray-700 flex items-center justify-center text-sm font-bold text-white">
+        <span className="shrink-0 w-6 h-6 sm:w-7 sm:h-7 rounded bg-gray-700 flex items-center justify-center text-xs sm:text-sm font-bold text-white">
           {item.quantity}
         </span>
         {/* Item name + meta */}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold text-gray-100 leading-tight truncate">{item.menuItemName}</p>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <span className="text-[10px] font-mono text-gray-500">#{item.orderNumber}</span>
+          <p className="text-xs sm:text-sm font-bold text-gray-100 leading-tight truncate">{item.menuItemName}</p>
+          <div className="flex items-center gap-1 mt-0.5">
+            <span className="text-[9px] sm:text-[10px] font-mono text-gray-500 truncate">#{item.orderNumber}</span>
             {item.tableName && item.tableName !== 'Unknown' && (
-              <span className="text-[10px] text-gray-400 bg-gray-700/80 px-1 rounded">{item.tableName}</span>
-            )}
-            {item.customerName && (
-              <span className="text-[10px] text-gray-500">{item.customerName}</span>
+              <span className="hidden sm:inline text-[10px] text-gray-400 bg-gray-700/80 px-1 rounded">{item.tableName}</span>
             )}
           </div>
         </div>
         {/* Timer */}
-        <span className={`text-[11px] font-mono font-bold tabular-nums shrink-0 ${timerColor}`}>
+        <span className={`text-[10px] sm:text-[11px] font-mono font-bold tabular-nums shrink-0 ${timerColor}`}>
           {formatTimer(elapsed)}
         </span>
         {/* Ready button */}
@@ -148,15 +145,20 @@ const ItemTicket = memo(function ItemTicket({
           <button
             onClick={onMarkReady}
             disabled={isUpdating}
-            className="shrink-0 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs tracking-wide transition-colors disabled:opacity-50"
+            className="shrink-0 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs transition-colors disabled:opacity-50"
           >
-            {isUpdating ? '...' : '✓ READY'}
+            {isUpdating ? '…' : (
+              <>
+                <span className="sm:hidden">✓</span>
+                <span className="hidden sm:inline">✓ READY</span>
+              </>
+            )}
           </button>
         )}
       </div>
       {/* Extras row — only if customizations or notes */}
       {hasExtras && (
-        <div className="px-3 pb-2 pt-0 pl-12 space-y-0.5">
+        <div className="px-2 sm:px-3 pb-1.5 sm:pb-2 pt-0 pl-10 sm:pl-12 space-y-0.5">
           {item.customizations.map((c) => (
             <p key={c.groupId} className="text-[11px] text-gray-400">
               {c.options.map((o) => o.name).join(', ')}
@@ -413,52 +415,52 @@ export default function KitchenPage() {
   return (
     <div className="h-screen bg-gray-950 text-white flex flex-col select-none overflow-hidden">
       {/* ─── Header Bar ─── */}
-      <header className="flex items-center justify-between px-3 sm:px-5 py-2.5 bg-gray-900 border-b border-gray-800 shrink-0">
-        <div className="flex items-center gap-4">
+      <header className="flex items-center justify-between px-2 sm:px-5 py-1.5 sm:py-2.5 bg-gray-900 border-b border-gray-800 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-4">
           {backPath && (
             <button
               onClick={() => navigate(backPath)}
-              className="p-1.5 rounded-lg hover:bg-gray-800 transition-colors"
+              className="p-1 sm:p-1.5 rounded-lg hover:bg-gray-800 transition-colors"
               title="Back"
             >
-              <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
             </button>
           )}
-          <div className="flex items-center gap-2">
-            <img src="/Q Order Logo QO.svg" alt="Q Order" className="w-6 h-6" />
-            <h1 className="text-base font-bold tracking-wider uppercase text-gray-200">
+          <div className="flex items-center gap-1.5">
+            <img src="/Q Order Logo QO.svg" alt="Q Order" className="w-4 h-4 sm:w-6 sm:h-6" />
+            <h1 className="text-xs sm:text-base font-bold tracking-wider uppercase text-gray-200">
               Kitchen Display
             </h1>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-5 text-sm">
-          <div className="hidden sm:flex items-center gap-1.5">
+        <div className="flex items-center gap-2 sm:gap-5">
+          <div className="hidden sm:flex items-center gap-1.5 text-sm">
             <span className="w-2 h-2 rounded-full bg-blue-400" />
             <span className="text-gray-500">Preparing</span>
             <span className="font-bold text-blue-400 tabular-nums">{columnData.cooking.length}</span>
           </div>
-          <div className="hidden sm:flex items-center gap-1.5">
+          <div className="hidden sm:flex items-center gap-1.5 text-sm">
             <span className="w-2 h-2 rounded-full bg-emerald-400" />
             <span className="text-gray-500">Ready</span>
             <span className="font-bold text-emerald-400 tabular-nums">{columnData.ready.length}</span>
           </div>
 
-          <span className="w-px h-5 bg-gray-700" />
+          <span className="hidden sm:block w-px h-5 bg-gray-700" />
 
-          <span className="font-mono font-bold text-gray-300 tabular-nums text-base">
+          <span className="font-mono font-bold text-gray-300 tabular-nums text-xs sm:text-base">
             {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </span>
 
           <div className="flex items-center gap-1">
-            <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`} />
-            <span className="text-xs text-gray-500">{isConnected ? 'Live' : 'Offline'}</span>
+            <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`} />
+            <span className="text-[10px] sm:text-xs text-gray-500">{isConnected ? 'Live' : 'Offline'}</span>
           </div>
 
-          <button onClick={toggleFullscreen} className="p-1.5 rounded-lg hover:bg-gray-800 transition-colors" title="Fullscreen">
-            <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <button onClick={toggleFullscreen} className="p-1 sm:p-1.5 rounded-lg hover:bg-gray-800 transition-colors" title="Fullscreen">
+            <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
             </svg>
           </button>
@@ -482,12 +484,12 @@ export default function KitchenPage() {
             </div>
           </div>
         ) : (
-          <div className="flex gap-2 sm:gap-3 h-full overflow-x-auto">
+          <div className="flex gap-2 sm:gap-3 h-full">
             {COLUMNS.map((col) => {
               const items = columnData[col.key];
               const isReady = col.key === 'ready';
               return (
-                <div key={col.key} className={`flex flex-col h-full min-h-0 ${isReady ? 'w-1/2 sm:w-[320px] shrink-0' : 'w-1/2 sm:flex-1 sm:min-w-0'}`}>
+                <div key={col.key} className={`flex flex-col h-full min-h-0 ${isReady ? 'w-[42%] sm:w-[320px] shrink-0' : 'w-[58%] sm:flex-1 sm:w-auto sm:min-w-0'}`}>
                   {/* Column header */}
                   <div className={`flex items-center justify-between px-2 sm:px-4 py-2 rounded-t-xl ${col.headerBg} border ${col.borderColor} border-b-0`}>
                     <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
@@ -506,7 +508,7 @@ export default function KitchenPage() {
                     items.length === 0
                       ? 'flex items-center justify-center'
                       : col.key === 'cooking'
-                        ? 'grid grid-cols-2 sm:grid-cols-3 gap-1.5 auto-rows-min content-start'
+                        ? 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1.5 auto-rows-min content-start'
                         : 'space-y-1.5'
                   }`}>
                     {items.length === 0 ? (
@@ -515,22 +517,22 @@ export default function KitchenPage() {
                       readyByTable.map((group) => (
                         <div key={group.key} className="bg-gray-800/60 rounded-lg overflow-hidden border-l-3 border-l-emerald-400">
                           {/* Table header */}
-                          <div className="flex items-center justify-between px-3 py-1.5 bg-emerald-500/10">
-                            <span className="text-xs font-bold text-emerald-400 tracking-wide">
+                          <div className="flex items-center justify-between px-2 py-1 bg-emerald-500/10">
+                            <span className="text-[10px] sm:text-xs font-bold text-emerald-400 tracking-wide truncate">
                               {group.tableName && group.tableName !== 'Unknown' ? group.tableName : 'Takeaway'}
                             </span>
-                            <span className="text-[10px] font-bold text-emerald-400/60 tabular-nums">
+                            <span className="text-[10px] font-bold text-emerald-400/60 tabular-nums shrink-0">
                               {group.items.length}
                             </span>
                           </div>
                           {/* Compact items */}
                           <div className="divide-y divide-gray-700/20">
                             {group.items.map((kitchenItem) => (
-                              <div key={kitchenItem.id} className="flex items-center gap-2 px-3 py-1.5">
-                                <span className="shrink-0 w-5 h-5 rounded bg-gray-700 flex items-center justify-center text-[11px] font-bold text-white">
+                              <div key={kitchenItem.id} className="flex items-center gap-1.5 px-2 py-1">
+                                <span className="shrink-0 w-4 h-4 sm:w-5 sm:h-5 rounded bg-gray-700 flex items-center justify-center text-[10px] font-bold text-white">
                                   {kitchenItem.quantity}
                                 </span>
-                                <p className="flex-1 text-xs font-semibold text-gray-200 truncate">{kitchenItem.menuItemName}</p>
+                                <p className="flex-1 text-[10px] sm:text-xs font-semibold text-gray-200 truncate">{kitchenItem.menuItemName}</p>
                               </div>
                             ))}
                           </div>

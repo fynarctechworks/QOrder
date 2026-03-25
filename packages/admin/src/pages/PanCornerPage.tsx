@@ -475,11 +475,11 @@ export default function PanCornerPage() {
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
             </svg>
-            Print {autoPrint ? 'ON' : 'OFF'}
+            <span className="hidden sm:inline">Print </span>{autoPrint ? 'ON' : 'OFF'}
           </button>
 
           {/* Search */}
-          <div className="relative w-44 shrink-0">
+          <div className="relative w-28 sm:w-44 shrink-0">
             <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
@@ -495,12 +495,12 @@ export default function PanCornerPage() {
           {/* Recall button */}
           <button
             onClick={() => setShowRecall(true)}
-            className="relative rounded-xl text-sm px-4 py-2 shadow-sm active:scale-[0.97] flex items-center gap-2 border border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
+            className="relative rounded-xl text-sm px-3 sm:px-4 py-2 shadow-sm active:scale-[0.97] flex items-center gap-2 border border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            Recall
+            <span className="hidden sm:inline">Recall</span>
             {heldTickets.length > 0 && (
               <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">{heldTickets.length}</span>
             )}
@@ -556,7 +556,7 @@ export default function PanCornerPage() {
         )}
 
         {/* ── RIGHT: Current Ticket ── */}
-        <div className={`fixed inset-y-0 right-0 z-40 w-[300px] md:static md:z-auto md:w-[40%] flex flex-col bg-white border-l border-gray-200 shrink-0 transform transition-transform duration-200 order-last ${showCart ? 'translate-x-0' : 'translate-x-full'} md:translate-x-0`}>
+        <div className={`fixed inset-y-0 right-0 z-40 w-full sm:w-[300px] md:static md:z-auto md:w-[40%] flex flex-col bg-white border-l border-gray-200 shrink-0 transform transition-transform duration-200 order-last ${showCart ? 'translate-x-0' : 'translate-x-full'} md:translate-x-0`}>
           <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
             <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Current Ticket</h2>
             <div className="flex items-center gap-2">
@@ -734,14 +734,14 @@ export default function PanCornerPage() {
           {/* Category tabs */}
           <div className="shrink-0">
             <div className="sticky top-0 z-10 px-3 md:px-5 py-3 bg-white/95 backdrop-blur border-b border-gray-100">
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pb-0.5">
                 {activeCategories.map((cat) => (
                   <button
                     key={cat.id}
                     onClick={() => { setActiveCategory(cat.id); setMenuSearch(''); }}
                     onDoubleClick={() => { setEditingCat(cat); setCatModalOpen(true); }}
                     title="Double-click to edit"
-                    className={`px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all border ${
+                    className={`shrink-0 px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all border ${
                       selectedCategoryId === cat.id && !menuSearch.trim()
                         ? 'bg-primary text-white border-primary shadow-sm'
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200'

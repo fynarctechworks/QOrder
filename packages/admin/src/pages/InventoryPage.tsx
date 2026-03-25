@@ -305,23 +305,23 @@ function ProductsTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<t
       </div>
 
       {/* Toolbar */}
-      <div className="flex gap-3 items-center justify-between">
+      <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
         <input
-          className="input w-64"
+          className="input flex-1 min-w-0"
           placeholder="Search products..."
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <button
-            className="btn-secondary text-sm"
+            className="btn-secondary text-sm flex-1 sm:flex-none"
             disabled={autoDeductMut.isPending}
             onClick={() => autoDeductMut.mutate()}
             title="Manually run auto-deduct for all enabled products"
           >
             {autoDeductMut.isPending ? 'Running...' : '▶ Run Auto-Deduct'}
           </button>
-          <button className="btn-primary text-sm" onClick={() => setShowForm(true)}>+ Add Product</button>
+          <button className="btn-primary text-sm flex-1 sm:flex-none" onClick={() => setShowForm(true)}>+ Add Product</button>
         </div>
       </div>
 
@@ -491,7 +491,7 @@ function ProductFormModal({ item, onClose, onSaved }: {
             </button>
           </div>
           {autoDeductEnabled && (
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="text-xs font-medium text-text-secondary">Qty per cycle</label>
                 <input
@@ -721,9 +721,9 @@ function StockTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<type
           {activeMut.isError && <p className="text-sm text-error">{(activeMut.error as any)?.message ?? 'Failed'}</p>}
           {activeMut.isSuccess && <p className="text-sm text-success">Recorded successfully ✓</p>}
 
-          <div className="flex flex-wrap gap-2 items-center">
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto] gap-2 items-center">
             <select
-              className="select flex-1 min-w-[180px]"
+              className="select w-full"
               value={ingredientId}
               onChange={e => setIngredientId(e.target.value)}
             >
@@ -734,16 +734,18 @@ function StockTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<type
                 </option>
               ))}
             </select>
+            <div className="flex gap-2 items-center">
+              <input
+                className="input w-full sm:w-24"
+                type="number" min={0} step="0.1"
+                placeholder="Qty"
+                value={quantity || ''}
+                onChange={e => setQuantity(+e.target.value)}
+              />
+              {ing && <span className="text-xs text-text-secondary shrink-0">{ing.unit}</span>}
+            </div>
             <input
-              className="input w-24"
-              type="number" min={0} step="0.1"
-              placeholder="Qty"
-              value={quantity || ''}
-              onChange={e => setQuantity(+e.target.value)}
-            />
-            {ing && <span className="text-xs text-text-secondary w-8">{ing.unit}</span>}
-            <input
-              className="input w-36"
+              className="input w-full sm:w-36"
               placeholder="Notes..."
               value={notes}
               onChange={e => setNotes(e.target.value)}
@@ -884,9 +886,9 @@ function SuppliersTab({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
   return (
     <div className="space-y-4">
       {/* Toolbar */}
-      <div className="flex gap-3 items-center justify-between">
-        <input className="input w-64" placeholder="Search suppliers..." value={search} onChange={e => setSearch(e.target.value)} />
-        <button className="btn-primary text-sm" onClick={() => setShowForm(true)}>+ Add Supplier</button>
+      <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+        <input className="input flex-1 min-w-0" placeholder="Search suppliers..." value={search} onChange={e => setSearch(e.target.value)} />
+        <button className="btn-primary text-sm sm:shrink-0" onClick={() => setShowForm(true)}>+ Add Supplier</button>
       </div>
 
       {/* Table */}

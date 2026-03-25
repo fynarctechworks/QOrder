@@ -509,7 +509,7 @@ export default function CreateOrderPage() {
         )}
 
         {/* ── RIGHT: Current Ticket ── */}
-        <div className={`fixed inset-y-0 right-0 z-40 w-[300px] md:static md:z-auto md:w-[40%] flex flex-col bg-white border-l border-gray-200 shrink-0 transform transition-transform duration-200 order-last ${showCart ? 'translate-x-0' : 'translate-x-full'} md:translate-x-0`}>
+        <div className={`fixed inset-y-0 right-0 z-40 w-full sm:w-[300px] md:static md:z-auto md:w-[40%] flex flex-col bg-white border-l border-gray-200 shrink-0 transform transition-transform duration-200 order-last ${showCart ? 'translate-x-0' : 'translate-x-full'} md:translate-x-0`}>
           <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
             <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Current Ticket</h2>
             <div className="flex items-center gap-2">
@@ -753,14 +753,14 @@ export default function CreateOrderPage() {
           <div className="px-3 md:px-5 py-3 bg-white border-b border-gray-200 shrink-0">
             {/* Category sticky rail */}
             <div className="sticky top-0 z-10 -mx-3 md:-mx-5 px-3 md:px-5 py-3 bg-white/95 backdrop-blur border-y border-gray-100">
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pb-0.5">
                   <button
                     ref={(el) => {
                       if (el) categoryBtnRefs.current.set('all', el);
                       else categoryBtnRefs.current.delete('all');
                     }}
                     onClick={() => setSelectedCategory('all')}
-                    className={`px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all border ${
+                    className={`shrink-0 px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all border ${
                       selectedCategory === 'all'
                         ? 'bg-primary text-white border-primary shadow-sm'
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200'
@@ -777,7 +777,7 @@ export default function CreateOrderPage() {
                         else categoryBtnRefs.current.delete(cat.id);
                       }}
                       onClick={() => setSelectedCategory(cat.id)}
-                      className={`px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all border ${
+                      className={`shrink-0 px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all border ${
                         selectedCategory === cat.id
                           ? 'bg-primary text-white border-primary shadow-sm'
                           : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200'

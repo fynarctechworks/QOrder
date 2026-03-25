@@ -14,8 +14,8 @@ import { resolveImg } from '../utils/resolveImg';
 import CustomerInfoSheet from '../components/CustomerInfoSheet';
 import { useGeolocation } from '../hooks/useGeolocation';
 
-// Default tax rate — overridden by restaurant.settings.taxRate when available
-const DEFAULT_TAX_RATE = 0.1;
+// Default tax rate (percentage) — overridden by restaurant.taxRate when available
+const DEFAULT_TAX_RATE = 0;
 
 /* ─── Swipeable cart item card ─── */
 const SWIPE_THRESHOLD = -70;
@@ -220,7 +220,7 @@ export default function CartPage() {
   }, [restaurant?.id, rawSubtotal, couponResult?.valid]);
 
   /* totals */
-  const taxRate = restaurant?.settings?.taxRate ?? DEFAULT_TAX_RATE;
+  const taxRate = (Number(restaurant?.taxRate) || DEFAULT_TAX_RATE) / 100;
   const activeDiscount = couponResult?.valid ? couponResult.discount : autoDiscount;
   const discountAmount = activeDiscount?.discountAmount ?? 0;
   const { subtotal, tax, total, estimatedTime, totalQty } = useMemo(() => {
