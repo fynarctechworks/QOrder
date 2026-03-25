@@ -8,6 +8,7 @@ export interface Restaurant {
   currency: string;
   isOpen: boolean;
   openingHours: OpeningHours[];
+  taxRate: number;
   settings: RestaurantSettings;
   geoFenceEnabled?: boolean;
 }
