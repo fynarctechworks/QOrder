@@ -9,6 +9,12 @@ import TranslationsEditor from './TranslationsEditor';
 
 /* ─── Form data types ───────────────────────────────────────────────────── */
 
+export interface RecipeRowData {
+  ingredientId: string;
+  quantity: string;
+  displayUnit: string;
+}
+
 export interface MenuItemFormData {
   name: string;
   description: string;
@@ -28,6 +34,7 @@ export interface MenuItemFormData {
   allowSpecialInstructions: boolean;
   customizationGroups: CustomizationGroup[];
   translations: TranslationsMap;
+  recipeRows?: RecipeRowData[];
 }
 
 interface MenuItemFormProps {
@@ -184,6 +191,7 @@ export default function MenuItemForm({
   onCancel,
 }: MenuItemFormProps) {
   const [form, setForm] = useState<MenuItemFormData>(initial ? fromItem(initial) : EMPTY);
+  const [recipeRows, setRecipeRows] = useState<RecipeRowData[]>([]);
 
   // Chip inputs
   const [tagInput, setTagInput] = useState('');
@@ -247,6 +255,9 @@ export default function MenuItemForm({
       }
     }
     
+    if (recipeRows.length > 0) {
+      formData.recipeRows = recipeRows.filter(r => r.ingredientId && Number(r.quantity) > 0);
+    }
     onSubmit(formData);
   };
 
@@ -836,8 +847,12 @@ export default function MenuItemForm({
         </button>
       </Section>
 
-      {/* ═══ Recipe (Inventory) — only when editing an existing item ══════ */}
-      {initial?.id && <RecipeSection menuItemId={initial.id} key={initial.id} />}
+      {/* ═══ Recipe (Inventory) ═════════════════════════════════════════════ */}
+      {initial?.id ? (
+        <RecipeSection menuItemId={initial.id} key={initial.id} />
+      ) : (
+        <RecipeEditor rows={recipeRows} onChange={setRecipeRows} />
+      )}
 
       {/* ═══ Actions ════════════════════════════════════════════════════════ */}
       <div className="flex justify-end gap-3 pt-2 border-t border-surface-elevated sticky bottom-0 bg-white pb-1">
@@ -851,14 +866,8 @@ export default function MenuItemForm({
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   RECIPE SECTION — self-contained, saves independently
+   RECIPE EDITOR — inline for new items, rows passed via props
    ═══════════════════════════════════════════════════════════════════════════ */
-
-interface RecipeRow {
-  ingredientId: string;
-  quantity: string;
-  displayUnit: string; // unit the user is entering in (may differ from ingredient's stored unit)
-}
 
 // Compatible unit groups for the recipe unit selector
 const UNIT_GROUPS: Record<string, string[]> = {
@@ -867,6 +876,119 @@ const UNIT_GROUPS: Record<string, string[]> = {
   L: ['L', 'ML'],
   ML: ['ML', 'L'],
 };
+
+function RecipeEditor({ rows, onChange }: { rows: RecipeRowData[]; onChange: (rows: RecipeRowData[]) => void }) {
+  const { data: ingredients = [] } = useQuery({
+    queryKey: ['inventory', 'ingredients'],
+    queryFn: () => inventoryService.getIngredients(),
+    staleTime: 60_000,
+  });
+
+  const availableIngredients = ingredients.filter(i => i.isActive);
+  const usedIds = new Set(rows.map(r => r.ingredientId));
+
+  const addRow = () => {
+    const first = availableIngredients.find(i => !usedIds.has(i.id));
+    if (!first) return;
+    onChange([...rows, { ingredientId: first.id, quantity: '', displayUnit: first.unit ?? '' }]);
+  };
+
+  const updateRow = (idx: number, patch: Partial<RecipeRowData>) => {
+    onChange(rows.map((r, i) => i === idx ? { ...r, ...patch } : r));
+  };
+
+  const removeRow = (idx: number) => {
+    onChange(rows.filter((_, i) => i !== idx));
+  };
+
+  const unitOf = (id: string) => ingredients.find(i => i.id === id)?.unit ?? '';
+
+  return (
+    <Section title={`Recipe / Ingredients (${rows.length})`} defaultOpen={false}>
+      <div className="space-y-3">
+        <p className="text-xs text-text-muted">
+          Set how much of each ingredient is used per serving. Used by Smart Inventory to auto-deduct stock when orders are placed.
+        </p>
+
+        {rows.length > 0 && (
+          <div className="space-y-2">
+            {rows.map((row, idx) => (
+              <div key={idx} className="flex items-center gap-2">
+                <select
+                  value={row.ingredientId}
+                  onChange={e => {
+                    const ing = availableIngredients.find(i => i.id === e.target.value);
+                    updateRow(idx, { ingredientId: e.target.value, quantity: '', displayUnit: ing?.unit ?? '' });
+                  }}
+                  className="input flex-1 text-sm py-1.5"
+                >
+                  {availableIngredients.map(ing => (
+                    <option key={ing.id} value={ing.id} disabled={usedIds.has(ing.id) && ing.id !== row.ingredientId}>
+                      {ing.name}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.001"
+                  value={row.quantity}
+                  onChange={e => updateRow(idx, { quantity: e.target.value })}
+                  className="input w-24 text-sm py-1.5 text-center"
+                  placeholder="Qty"
+                />
+                <select
+                  value={row.displayUnit}
+                  onChange={e => updateRow(idx, { displayUnit: e.target.value })}
+                  className="input w-20 text-sm py-1.5 text-center shrink-0"
+                >
+                  {(UNIT_GROUPS[unitOf(row.ingredientId)] ?? [unitOf(row.ingredientId)]).map(u => (
+                    <option key={u} value={u}>{u}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => removeRow(idx)}
+                  className="text-error/60 hover:text-error p-0.5 shrink-0"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={addRow}
+          disabled={availableIngredients.length === 0 || rows.length >= availableIngredients.length}
+          className="text-xs text-primary font-medium hover:underline flex items-center gap-1 disabled:opacity-40 disabled:no-underline"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Add Ingredient
+        </button>
+
+        {availableIngredients.length === 0 && (
+          <p className="text-xs text-text-muted">No ingredients found. Add ingredients in Inventory first.</p>
+        )}
+      </div>
+    </Section>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   RECIPE SECTION — self-contained, saves independently
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+interface RecipeRow {
+  ingredientId: string;
+  quantity: string;
+  displayUnit: string; // unit the user is entering in (may differ from ingredient's stored unit)
+}
 
 // Convert qty from one unit to another (for storing back in ingredient's base unit)
 function convertUnit(qty: number, from: string, to: string): number {

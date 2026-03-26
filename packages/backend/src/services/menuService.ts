@@ -407,7 +407,7 @@ export const menuService = {
       data: {
         ...itemData,
         restaurantId,
-        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
+        ...(branchId ? { branchId } : {}),
         modifierGroups: resolvedGroupIds.length > 0 ? {
           create: resolvedGroupIds.map((groupId, index) => ({
             modifierGroupId: groupId,

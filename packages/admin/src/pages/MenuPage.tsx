@@ -291,7 +291,16 @@ export default function MenuPage() {
 
   // ── Item mutations ──
   const createItemMutation = useMutation({
-    mutationFn: (data: MenuItemFormData) => menuService.createItem(toMenuItemData(data)),
+    mutationFn: async (data: MenuItemFormData) => {
+      const item = await menuService.createItem(toMenuItemData(data));
+      if (data.recipeRows && data.recipeRows.length > 0) {
+        await menuService.setRecipes(item.id, data.recipeRows.map(r => ({
+          ingredientId: r.ingredientId,
+          quantity: Number(r.quantity),
+        })));
+      }
+      return item;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['menu'] });
       toast.success('Item created');
