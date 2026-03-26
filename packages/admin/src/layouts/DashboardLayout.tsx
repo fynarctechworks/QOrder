@@ -216,7 +216,7 @@ function DashboardLayoutInner() {
   const [isServicePanelOpen, setIsServicePanelOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const { user, logout } = useAuth();
-  const { isConnected, onNewOrder, onOrderStatusUpdate, onServiceRequest, onItemKitchenReady, onLeaveRequest, onStockLow, onStaffLate, onStaffEarlyCheckout, triggerSync, kdsCount, kdsUsers, onTableUpdated } = useSocket();
+  const { isConnected, onNewOrder, onOrderStatusUpdate, onServiceRequest, onItemKitchenReady, onLeaveRequest, onStockLow, onStockOut, onStaffLate, onStaffEarlyCheckout, triggerSync, kdsCount, kdsUsers, onTableUpdated } = useSocket();
   const { play: playSound } = useNotificationSound();
   const { notifications, push: pushNotification, dismiss: dismissNotification, dismissAll: dismissAllNotifications } = useNotificationOverlay();
   const queryClient = useQueryClient();
@@ -299,6 +299,14 @@ function DashboardLayoutInner() {
       const more = data.count > 3 ? ` +${data.count - 3} more` : '';
       pushNotification('stockLow', 'Low Stock Alert', `${data.count} ingredient(s) running low`, `${names}${more}`);
     });
+    const u6b = onStockOut((data) => {
+      playSound('stockOut');
+      const ingNames = data.ingredients.slice(0, 3).map(i => i.name).join(', ');
+      const ingMore = data.ingredients.length > 3 ? ` +${data.ingredients.length - 3} more` : '';
+      const menuNames = data.affectedMenuItems.slice(0, 3).map(m => m.name).join(', ');
+      const menuMore = data.affectedMenuItems.length > 3 ? ` +${data.affectedMenuItems.length - 3} more` : '';
+      pushNotification('stockOut', 'Out of Stock', `${ingNames}${ingMore}`, `Affected items: ${menuNames}${menuMore}`);
+    });
     const u7 = onStaffLate((data) => {
       playSound('staffLate');
       const names = data.staff.slice(0, 3).map(s => s.name).join(', ');
@@ -311,8 +319,8 @@ function DashboardLayoutInner() {
       const more = data.count > 3 ? ` +${data.count - 3} more` : '';
       pushNotification('staffEarlyCheckout', 'Early Checkout', `${data.count} staff left early`, `${names}${more}`);
     });
-    return () => { u1(); u3(); u4(); u5(); u6(); u7(); u8(); };
-  }, [onNewOrder, onServiceRequest, onItemKitchenReady, onLeaveRequest, onStockLow, onStaffLate, onStaffEarlyCheckout, playSound, pushNotification, queryClient]);
+    return () => { u1(); u3(); u4(); u5(); u6(); u6b(); u7(); u8(); };
+  }, [onNewOrder, onServiceRequest, onItemKitchenReady, onLeaveRequest, onStockLow, onStockOut, onStaffLate, onStaffEarlyCheckout, playSound, pushNotification, queryClient]);
 
   // Map nav paths to permission page keys
   const pathToPageKey: Record<string, PageKey> = {

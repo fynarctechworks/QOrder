@@ -34,6 +34,7 @@ interface SocketContextValue {
   onServiceRequest: (callback: (data: { id: string; type: string; tableId: string; tableName?: string }) => void) => () => void;
   onLeaveRequest: (callback: (data: { id: string; userName: string; leaveType: string; startDate: string; endDate: string; reason?: string }) => void) => () => void;
   onStockLow: (callback: (data: { count: number; items: Array<{ id: string; name: string; unit: string; currentStock: number; minStock: number }> }) => void) => () => void;
+  onStockOut: (callback: (data: { ingredients: Array<{ id: string; name: string; unit: string }>; affectedMenuItems: Array<{ id: string; name: string }> }) => void) => () => void;
   onStaffLate: (callback: (data: { count: number; staff: Array<{ name: string; shiftName: string; shiftStart: string; minutesLate: number }> }) => void) => () => void;
   onStaffEarlyCheckout: (callback: (data: { count: number; staff: Array<{ name: string; shiftName: string; shiftEnd: string; minutesEarly: number }> }) => void) => () => void;
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
@@ -83,6 +84,9 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   >(new Set());
   const stockLowCallbacks = useRef<
     Set<(data: { count: number; items: Array<{ id: string; name: string; unit: string; currentStock: number; minStock: number }> }) => void>
+  >(new Set());
+  const stockOutCallbacks = useRef<
+    Set<(data: { ingredients: Array<{ id: string; name: string; unit: string }>; affectedMenuItems: Array<{ id: string; name: string }> }) => void>
   >(new Set());
   const staffLateCallbacks = useRef<
     Set<(data: { count: number; staff: Array<{ name: string; shiftName: string; shiftStart: string; minutesLate: number }> }) => void>
@@ -180,6 +184,10 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
     socket.on('notification:stockLow' as any, (data: { count: number; items: Array<{ id: string; name: string; unit: string; currentStock: number; minStock: number }> }) => {
       stockLowCallbacks.current.forEach((cb) => cb(data));
+    });
+
+    socket.on('notification:stockOut' as any, (data: { ingredients: Array<{ id: string; name: string; unit: string }>; affectedMenuItems: Array<{ id: string; name: string }> }) => {
+      stockOutCallbacks.current.forEach((cb) => cb(data));
     });
 
     socket.on('notification:staffLate' as any, (data: { count: number; staff: Array<{ name: string; shiftName: string; shiftStart: string; minutesLate: number }> }) => {
@@ -301,6 +309,16 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const onStockOut = useCallback(
+    (callback: (data: { ingredients: Array<{ id: string; name: string; unit: string }>; affectedMenuItems: Array<{ id: string; name: string }> }) => void) => {
+      stockOutCallbacks.current.add(callback);
+      return () => {
+        stockOutCallbacks.current.delete(callback);
+      };
+    },
+    []
+  );
+
   const onStaffLate = useCallback(
     (callback: (data: { count: number; staff: Array<{ name: string; shiftName: string; shiftStart: string; minutesLate: number }> }) => void) => {
       staffLateCallbacks.current.add(callback);
@@ -355,6 +373,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       onServiceRequest,
       onLeaveRequest,
       onStockLow,
+      onStockOut,
       onStaffLate,
       onStaffEarlyCheckout,
       updateOrderStatus,
@@ -364,7 +383,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       joinKds,
       leaveKds,
     }),
-    [isConnected, socketInstance, kdsCount, kdsUsers, onNewOrder, onNewOrderFull, onOrderStatusUpdate, onKitchenReady, onItemKitchenReady, onTableUpdate, onTableUpdated, onSessionUpdated, onServiceRequest, onLeaveRequest, onStockLow, onStaffLate, onStaffEarlyCheckout, updateOrderStatus, triggerSync, joinKds, leaveKds]
+    [isConnected, socketInstance, kdsCount, kdsUsers, onNewOrder, onNewOrderFull, onOrderStatusUpdate, onKitchenReady, onItemKitchenReady, onTableUpdate, onTableUpdated, onSessionUpdated, onServiceRequest, onLeaveRequest, onStockLow, onStockOut, onStaffLate, onStaffEarlyCheckout, updateOrderStatus, triggerSync, joinKds, leaveKds]
   );
 
   return (

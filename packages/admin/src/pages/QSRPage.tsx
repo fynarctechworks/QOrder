@@ -1535,7 +1535,7 @@ export default function QSRPage() {
           </button>
           <div className="shrink-0">
             <div className="sticky top-0 z-10 px-3 md:px-5 py-3 bg-white/95 backdrop-blur border-b border-gray-100">
-              <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pb-0.5">
+              <div className="flex items-center gap-2 flex-wrap pb-0.5">
                   <button
                     ref={(el) => {
                       if (el) categoryBtnRefs.current.set('all', el);

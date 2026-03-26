@@ -4,58 +4,39 @@ import { alertService } from './alertService.js';
 import { getIO } from '../socket/index.js';
 
 /**
- * After any stock change, sync menu item availability:
- * - Items whose ANY ingredient is now at 0 → isAvailable = false
- * - Items whose ALL ingredients are > 0 (and were previously disabled by us) → isAvailable = true
+ * After any stock change, check if any affected ingredients hit zero.
+ * If so, emit a real-time alert to the admin panel listing the out-of-stock
+ * ingredients and the menu items they affect. Does NOT auto-disable menu items.
  * Fire-and-forget: never throws, never blocks the caller.
  */
 async function syncMenuAvailability(restaurantId: string, affectedIngredientIds: string[]) {
   if (affectedIngredientIds.length === 0) return;
 
-  // Find every menu item that uses any of the affected ingredients
+  const outOfStockIngredients = await prisma.ingredient.findMany({
+    where: {
+      id: { in: affectedIngredientIds },
+      restaurantId,
+      currentStock: { equals: 0 },
+    },
+    select: { id: true, name: true, unit: true },
+  });
+
+  if (outOfStockIngredients.length === 0) return;
+
   const recipes = await prisma.recipe.findMany({
-    where: { ingredientId: { in: affectedIngredientIds } },
-    select: { menuItemId: true },
-    distinct: ['menuItemId'],
-  });
-  if (recipes.length === 0) return;
-
-  const menuItemIds = recipes.map(r => r.menuItemId);
-
-  // For each menu item, check all its ingredient stocks
-  const allRecipes = await prisma.recipe.findMany({
-    where: { menuItemId: { in: menuItemIds } },
-    include: { ingredient: { select: { currentStock: true } } },
+    where: { ingredientId: { in: outOfStockIngredients.map(i => i.id) } },
+    include: { menuItem: { select: { id: true, name: true } } },
   });
 
-  const toDisable: string[] = [];
-  const toEnable: string[] = [];
+  const affectedMenuItems = [...new Map(recipes.map(r => [r.menuItem.id, r.menuItem])).values()];
 
-  // Group recipes by menuItemId
-  const recipesByItem = new Map<string, typeof allRecipes>();
-  for (const r of allRecipes) {
-    const list = recipesByItem.get(r.menuItemId) ?? [];
-    list.push(r);
-    recipesByItem.set(r.menuItemId, list);
+  const io = getIO();
+  if (io) {
+    io.to(`restaurant:${restaurantId}`).emit('notification:stockOut' as any, {
+      ingredients: outOfStockIngredients.map(i => ({ id: i.id, name: i.name, unit: i.unit })),
+      affectedMenuItems: affectedMenuItems.map(m => ({ id: m.id, name: m.name })),
+    });
   }
-
-  for (const [menuItemId, itemRecipes] of recipesByItem) {
-    const hasOutOfStock = itemRecipes.some(r => new Decimal(r.ingredient.currentStock).equals(0));
-    if (hasOutOfStock) {
-      toDisable.push(menuItemId);
-    } else {
-      toEnable.push(menuItemId);
-    }
-  }
-
-  await Promise.all([
-    toDisable.length > 0
-      ? prisma.menuItem.updateMany({ where: { id: { in: toDisable }, restaurantId }, data: { isAvailable: false } })
-      : Promise.resolve(),
-    toEnable.length > 0
-      ? prisma.menuItem.updateMany({ where: { id: { in: toEnable }, restaurantId }, data: { isAvailable: true } })
-      : Promise.resolve(),
-  ]);
 }
 
 export const inventoryService = {
