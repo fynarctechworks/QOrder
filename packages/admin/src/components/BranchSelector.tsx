@@ -26,13 +26,20 @@ export default function BranchSelector() {
     staleTime: 60_000,
   });
 
-  // If the persisted branch no longer exists in the fetched list, reset to "All Branches"
+  // If the persisted branch no longer exists in the fetched list, reset to first branch
+  // Also auto-select the first active branch if nothing is selected yet
   useEffect(() => {
-    if (!isLoading && activeBranchId) {
-      const stillExists = branches.some((b) => b.id === activeBranchId);
+    if (isLoading || branches.length === 0) return;
+    const activeBranches = branches.filter((b) => b.isActive);
+    if (activeBranchId) {
+      const stillExists = activeBranches.some((b) => b.id === activeBranchId);
       if (!stillExists) {
-        switchBranch(null, null);
+        const first = activeBranches[0];
+        switchBranch(first?.id ?? null, first?.name ?? null);
       }
+    } else {
+      const first = activeBranches[0];
+      if (first) switchBranch(first.id, first.name);
     }
   }, [isLoading, branches, activeBranchId, switchBranch]);
 
