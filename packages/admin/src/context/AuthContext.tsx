@@ -6,6 +6,7 @@ import {
 } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../state/authStore';
+import { useBranchStore } from '../state/branchStore';
 import { authService } from '../services/authService';
 import type { User } from '../types';
 
@@ -26,6 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login: setUser,
     logout: clearUser,
   } = useAuthStore();
+  const { clearBranch } = useBranchStore();
 
   // Derive auth state from user presence — survives page refresh
   const isAuthenticated = user !== null;
@@ -68,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const login = async (identifier: string, password: string) => {
+    clearBranch();
     queryClient.clear();
     const response = await authService.login(identifier, password);
     if ('requires2FA' in response && response.requires2FA) {
@@ -81,6 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     await authService.logout();
+    clearBranch();
     clearUser();
     queryClient.clear();
   };
