@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { billController } from '../controllers/billController.js';
 import authRoutes from './auth.js';
 import menuRoutes from './menu.js';
 import tableRoutes from './tables.js';
@@ -58,6 +59,9 @@ router.use('/credit', creditRoutes);
 router.use('/biometric', biometricRoutes);
 router.use('/tv-slides', tvSlideRoutes);
 router.use('/pan-corner', panCornerRoutes);
+
+// Public bill page — no auth required
+router.get('/bill/:orderId', billController.getBill);
 
 // Public routes (no /api prefix in practice, but grouped here)
 router.use('/public', publicRoutes);

@@ -557,6 +557,7 @@ model Order {
   id            String           @id @default(uuid())
   orderNumber   String           // Human-readable order number
   tokenNumber   Int?             // Sequential 001-999 counter for QSR receipts
+  tentNumber    Int?             // Tent/table tent number for dine-in identification
   status        OrderStatus      @default(PENDING)
   orderType     String           @default("DINE_IN") // DINE_IN, TAKEAWAY, QSR
   subtotal      Decimal          @db.Decimal(10, 2)

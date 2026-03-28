@@ -122,7 +122,11 @@ export const updateRestaurantSettingsSchema = z.object({
   smartInventoryEnabled: z.boolean().optional(),
   /** Menu display settings */
   menuShowItemImages: z.boolean().optional(),
-});
+  qrLogoUrl: z.string().max(500).optional(),
+  /** Parcel charges */
+  kitchenParcelCharge: z.coerce.number().min(0).optional(),
+  beverageParcelCharge: z.coerce.number().min(0).optional(),
+}).passthrough();
 
 // ==================== MENU ====================
 

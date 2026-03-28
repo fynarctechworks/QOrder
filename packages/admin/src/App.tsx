@@ -33,6 +33,7 @@ const CreditPage = lazy(() => import('./pages/CreditPage'));
 const QSRPage = lazy(() => import('./pages/QSRPage'));
 const PanCornerPage = lazy(() => import('./pages/PanCornerPage'));
 const TVMenuPage = lazy(() => import('./pages/TVMenuPage'));
+const BillPage = lazy(() => import('./pages/BillPage'));
 
 function App() {
   return (
@@ -42,6 +43,7 @@ function App() {
         <Suspense fallback={<LoadingScreen />}>
           <Routes>
             {/* Public routes */}
+            <Route path="/bill/:orderId" element={<BillPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignUpPage />} />
             <Route path="/verify-email" element={<VerifyEmailPage />} />

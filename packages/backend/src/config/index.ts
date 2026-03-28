@@ -41,6 +41,9 @@ const envSchema = z.object({
   // Biometric fingerprint encryption
   BIOMETRIC_ENCRYPTION_KEY: z.string().default(''),
 
+  // Frontend URLs (used to build shareable links e.g. bill URL in WhatsApp)
+  ADMIN_URL: z.string().default('http://localhost:5173'),
+
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -119,6 +122,7 @@ export const config = {
   biometric: {
     encryptionKey: parsed.data.BIOMETRIC_ENCRYPTION_KEY,
   },
+  adminUrl: parsed.data.ADMIN_URL,
   isProduction: parsed.data.NODE_ENV === 'production',
   isDevelopment: parsed.data.NODE_ENV === 'development',
 } as const;

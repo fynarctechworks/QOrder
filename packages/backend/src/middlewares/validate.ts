@@ -16,6 +16,10 @@ export const validate = <T>(
       return;
     }
 
+    // Save the original body before replacing with parsed data
+    if (target === 'body') {
+      (req as any)._rawBody = req.body;
+    }
     // Replace with parsed/transformed data
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (req as any)[target] = result.data;

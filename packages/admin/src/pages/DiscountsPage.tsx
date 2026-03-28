@@ -73,6 +73,11 @@ function DiscountForm({ initial, onSubmit, loading }: { initial?: Partial<Create
             </button>
           ))}
         </div>
+        <button type="button"
+          onClick={() => setForm(f => ({ ...f, activeDays: (f.activeDays?.length === 7) ? [] : [0, 1, 2, 3, 4, 5, 6] }))}
+          className="text-xs font-medium text-primary hover:text-primary-hover transition-colors mt-1">
+          {form.activeDays?.length === 7 ? 'Clear all' : 'Select all days'}
+        </button>
         <p className="text-xs text-text-muted mt-1">Leave empty for all days</p>
       </div>
 

@@ -51,6 +51,7 @@ interface SettingsPayload {
     paymentMode?: 'pay_before' | 'pay_after';
     /** Daily report recipients */
     reportEmails?: string[];
+    [key: string]: unknown;
   };
 }
 
@@ -95,16 +96,20 @@ export const settingsService = {
       }
     }
 
-    // Always save WhatsApp alert settings at restaurant level
-    if (Object.keys(restaurantSettings).length > 0) {
-      await apiClient.patch<RestaurantInfo>('/restaurant/settings', restaurantSettings);
-    }
-
-    if (branchId && Object.keys(branchSettings).length > 0) {
-      // Write branch-specific settings to the branch level
-      await apiClient.patch(`/branches/${branchId}/settings`, branchSettings);
-    } else if (Object.keys(branchSettings).length > 0) {
-      await apiClient.patch<RestaurantInfo>('/restaurant/settings', branchSettings);
+    if (branchId) {
+      // With branch: restaurant-only keys stay at restaurant level, rest go to branch
+      if (Object.keys(restaurantSettings).length > 0) {
+        await apiClient.patch<RestaurantInfo>('/restaurant/settings', restaurantSettings);
+      }
+      if (Object.keys(branchSettings).length > 0) {
+        await apiClient.patch(`/branches/${branchId}/settings`, branchSettings);
+      }
+    } else {
+      // No branch: merge everything into a single PATCH to avoid two-call race
+      const allSettings = { ...restaurantSettings, ...branchSettings };
+      if (Object.keys(allSettings).length > 0) {
+        await apiClient.patch<RestaurantInfo>('/restaurant/settings', allSettings);
+      }
     }
 
     // Top-level restaurant fields (name, currency, taxRate) are always restaurant-level
