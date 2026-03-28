@@ -35,10 +35,10 @@ export const menuService = {
 
   async fetchCategories(restaurantId: string, branchId?: string | null) {
     return prisma.category.findMany({
-      where: { 
-        restaurantId, 
+      where: {
+        restaurantId,
         isActive: true,
-        ...(branchId ? { branchId } : {}),
+        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
       },
       orderBy: { sortOrder: 'asc' },
       select: {
@@ -213,7 +213,7 @@ export const menuService = {
       where: {
         restaurantId,
         isActive: true,
-        ...(branchId ? { branchId } : {}),
+        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
         ...(categoryId ? { categoryId } : {}),
       },
       orderBy: [
@@ -517,7 +517,7 @@ export const menuService = {
       where: {
         id: { in: itemIds },
         restaurantId,
-        ...(branchId ? { branchId } : {}),
+        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
       },
       data: { isAvailable },
     });
@@ -607,10 +607,10 @@ export const menuService = {
     if (cached) return cached;
 
     const menu = await prisma.category.findMany({
-      where: { 
-        restaurantId: restaurant.id, 
+      where: {
+        restaurantId: restaurant.id,
         isActive: true,
-        ...(branchId ? { branchId } : {}),
+        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
       },
       orderBy: { sortOrder: 'asc' },
       select: {
@@ -620,10 +620,10 @@ export const menuService = {
         image: true,
         translations: true,
         menuItems: {
-          where: { 
-            isActive: true, 
+          where: {
+            isActive: true,
             isAvailable: true,
-            ...(branchId ? { branchId } : {}),
+            ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
           },
           orderBy: { sortOrder: 'asc' },
           select: {
