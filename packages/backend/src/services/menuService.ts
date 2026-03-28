@@ -314,7 +314,7 @@ export const menuService = {
               minSelect: group.minSelections,
               maxSelect: group.maxSelections,
               restaurantId,
-              ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
+              ...(branchId ? { branchId } : {}),
             },
           });
         }
