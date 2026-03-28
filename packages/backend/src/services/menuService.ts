@@ -38,7 +38,7 @@ export const menuService = {
       where: { 
         restaurantId, 
         isActive: true,
-        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
+        ...(branchId ? { branchId } : {}),
       },
       orderBy: { sortOrder: 'asc' },
       select: {
@@ -84,7 +84,7 @@ export const menuService = {
       data: {
         ...input,
         restaurantId,
-        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
+        ...(branchId ? { branchId } : {}),
       },
     });
 
@@ -213,7 +213,7 @@ export const menuService = {
       where: {
         restaurantId,
         isActive: true,
-        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
+        ...(branchId ? { branchId } : {}),
         ...(categoryId ? { categoryId } : {}),
       },
       orderBy: [
@@ -517,7 +517,7 @@ export const menuService = {
       where: {
         id: { in: itemIds },
         restaurantId,
-        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
+        ...(branchId ? { branchId } : {}),
       },
       data: { isAvailable },
     });
@@ -553,7 +553,7 @@ export const menuService = {
       data: {
         ...groupData,
         restaurantId,
-        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
+        ...(branchId ? { branchId } : {}),
         modifiers: {
           create: modifiers,
         },
@@ -610,7 +610,7 @@ export const menuService = {
       where: { 
         restaurantId: restaurant.id, 
         isActive: true,
-        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
+        ...(branchId ? { branchId } : {}),
       },
       orderBy: { sortOrder: 'asc' },
       select: {
@@ -623,7 +623,7 @@ export const menuService = {
           where: { 
             isActive: true, 
             isAvailable: true,
-            ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
+            ...(branchId ? { branchId } : {}),
           },
           orderBy: { sortOrder: 'asc' },
           select: {
