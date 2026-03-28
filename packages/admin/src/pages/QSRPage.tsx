@@ -33,7 +33,7 @@ interface CartItem {
   selectedModifiers: SelectedModifier[];
 }
 
-type PaymentMethod = 'CASH' | 'CARD' | 'UPI' | 'CREDIT';
+type PaymentMethod = 'CASH' | 'CARD' | 'UPI' | 'CREDIT' | 'UNPAID';
 
 interface SplitEntry {
   id: number;
@@ -277,7 +277,7 @@ export default function QSRPage() {
   const pendingCreditRef = useRef<{ accountId: string; amount: number } | null>(null);
 
   // Mode selection (null = show picker screen)
-  const [selectedMode, setSelectedMode] = useState<'dinein' | 'takeaway'>('dinein');
+  const [, setSelectedMode] = useState<'dinein' | 'takeaway'>('dinein');
 
   // Table selection state
   const [selectedTable, setSelectedTable] = useState('');
@@ -2034,17 +2034,17 @@ export default function QSRPage() {
                   </button>
                 ))}
                 <button
-                  onClick={() => { setSelectedQuickMethod('UNPAID' as PaymentMethod); setSelectedCreditAccount(null); setCreditSearch(''); }}
+                  onClick={() => { setSelectedQuickMethod('UNPAID'); setSelectedCreditAccount(null); setCreditSearch(''); }}
                   className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all active:scale-95 ${
-                    selectedQuickMethod === ('UNPAID' as PaymentMethod)
+                    selectedQuickMethod === ('UNPAID')
                       ? 'bg-red-50 border-red-400 text-red-700 shadow-sm'
                       : 'border-red-200 bg-red-50/40 hover:border-red-400 hover:bg-red-50'
                   }`}
                 >
-                  <svg className={`w-6 h-6 ${selectedQuickMethod === ('UNPAID' as PaymentMethod) ? 'text-red-600' : 'text-red-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className={`w-6 h-6 ${selectedQuickMethod === ('UNPAID') ? 'text-red-600' : 'text-red-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <span className={`text-sm font-semibold ${selectedQuickMethod === ('UNPAID' as PaymentMethod) ? 'text-red-700' : 'text-red-500'}`}>Unpaid</span>
+                  <span className={`text-sm font-semibold ${selectedQuickMethod === ('UNPAID') ? 'text-red-700' : 'text-red-500'}`}>Unpaid</span>
                 </button>
               </div>
 
@@ -2115,7 +2115,7 @@ export default function QSRPage() {
               )}
 
               {/* Bill details + Settle */}
-              {selectedQuickMethod && selectedQuickMethod !== ('UNPAID' as PaymentMethod) && (
+              {selectedQuickMethod && selectedQuickMethod !== ('UNPAID') && (
                 <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
                   <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Bill Summary</p>
 
@@ -2194,7 +2194,7 @@ export default function QSRPage() {
               )}
 
               {/* Unpaid confirm block */}
-              {selectedQuickMethod === ('UNPAID' as PaymentMethod) && (
+              {selectedQuickMethod === ('UNPAID') && (
                 <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-3">
                   <div className="flex justify-between text-sm font-bold">
                     <span className="text-red-800">Total to collect later</span>
@@ -2215,7 +2215,7 @@ export default function QSRPage() {
               )}
 
               {/* Split Payment toggle button */}
-              {!showSplitMode && selectedQuickMethod !== ('UNPAID' as PaymentMethod) && (
+              {!showSplitMode && selectedQuickMethod !== ('UNPAID') && (
                 <button
                   onClick={() => { setShowSplitMode(true); setSelectedQuickMethod(null); setCurrentSplitAmount(total.toFixed(2)); }}
                   className="w-full py-2.5 text-sm font-medium text-primary hover:text-primary-hover transition-colors flex items-center justify-center gap-2 border border-dashed border-primary/30 rounded-xl hover:border-primary/60 hover:bg-primary/5"
