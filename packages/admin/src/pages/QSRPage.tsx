@@ -108,13 +108,18 @@ const PRINT_CSS = `
     @page{size:80mm auto;margin:0}
     @media print{html,body{width:80mm;margin:0;padding:0;overflow:hidden} *{color:#000!important;font-weight:bold!important}}`;
 
-function firePrintJob(html: string, title: string) {
-  const w = window.open('', '_blank', 'width=400,height=600');
-  if (!w) return;
-  w.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>${PRINT_CSS}</style></head><body style="padding:16px">${html}</body></html>`);
-  w.document.close();
-  w.print();
-  w.onafterprint = () => w.close();
+function firePrintJob(html: string, title: string): Promise<void> {
+  return new Promise((resolve) => {
+    const w = window.open('', '_blank', 'width=400,height=600');
+    if (!w) { resolve(); return; }
+    let resolved = false;
+    const done = () => { if (resolved) return; resolved = true; try { w.close(); } catch {} resolve(); };
+    w.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>${PRINT_CSS}</style></head><body style="padding:16px">${html}</body></html>`);
+    w.document.close();
+    w.onafterprint = done;
+    setTimeout(done, 60000);
+    w.print();
+  });
 }
 
 function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrency: (n: number) => string, restaurantName: string, itemStationMap?: Map<string, string>, orderLabel?: string, parcelCharge?: number, logoUrl?: string) {
@@ -183,10 +188,12 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
       ${paymentMethod === 'UNPAID' ? '<div class="method">UNPAID</div>' : `<div class="method">Paid via ${escapeHtml(paymentMethod)}</div>`}
       <div class="footer">Thank you! Please wait for your token to be called.</div>`;
 
-  // Fire all print jobs simultaneously — printer spooler queues them
-  firePrintJob(customerHtml, 'Customer Token');
-  if (kitchenItems.length > 0) firePrintJob(buildKotHtmlBody('KITCHEN ORDER', kitchenItems), 'Kitchen KOT');
-  if (beverageItems.length > 0) firePrintJob(buildKotHtmlBody('BEVERAGE ORDER', beverageItems), 'Beverage KOT');
+  // Chain print jobs sequentially — each opens after previous closes
+  (async () => {
+    await firePrintJob(customerHtml, 'Customer Token');
+    if (kitchenItems.length > 0) await firePrintJob(buildKotHtmlBody('KITCHEN ORDER', kitchenItems), 'Kitchen KOT');
+    if (beverageItems.length > 0) await firePrintJob(buildKotHtmlBody('BEVERAGE ORDER', beverageItems), 'Beverage KOT');
+  })();
 }
 
 /* ═══════════════════ QSR Page ═══════════════════ */

@@ -505,7 +505,7 @@ export default function MenuPage() {
         </div>
 
         {/* Category tabs */}
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+        <div className="flex gap-2 overflow-x-auto pb-2">
           <button
             onClick={() => handleFilterChange(null)}
             className={`shrink-0 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all duration-200 ${
