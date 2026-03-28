@@ -132,11 +132,14 @@ export interface Order {
   restaurantId: string;
   tableId: string;
   tableName: string;
+  tableNumber?: string | null;
   orderType?: string;
   sectionName?: string | null;
   items: OrderItem[];
   status: OrderStatus;
   subtotal: number;
+  discount: number;
+  discountName?: string | null;
   tax: number;
   total: number;
   specialInstructions?: string;

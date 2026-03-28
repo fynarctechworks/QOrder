@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { menuService, settingsService, orderService, tableService } from '../services';
+import { discountService } from '../services/discountService';
 import { useSocket } from '../context/SocketContext';
 import { crmService } from '../services/crmService';
 import type { Customer } from '../services/crmService';
@@ -81,7 +82,8 @@ const PRINT_CSS = `
     .center{text-align:center}
     .restaurant{font-size:18px;font-weight:bold;margin:0 0 4px}
     .divider{border-top:2px dashed #000;margin:10px 0}
-    .token-box{text-align:center;border:3px solid #000;border-radius:8px;padding:12px;margin:12px 0}
+    .token-row{display:flex;gap:8px;margin:12px 0}
+    .token-box{text-align:center;border:3px solid #000;border-radius:8px;padding:12px;flex:1}
     .token-label{font-size:13px;text-transform:uppercase;letter-spacing:0.1em;font-weight:bold}
     .token-num{font-size:36px;font-weight:bold;line-height:1.1}
     .item{display:flex;gap:6px;padding:6px 0;align-items:center;font-size:14px}
@@ -91,10 +93,11 @@ const PRINT_CSS = `
     .price{text-align:right;white-space:nowrap;font-weight:bold;font-size:14px}
     .total-row{display:flex;justify-content:space-between;padding:3px 0;font-size:14px}
     .total-row.grand{font-size:16px;font-weight:bold;border-top:2px solid #000;padding-top:6px;margin-top:4px}
-    .method{text-align:center;font-size:13px;margin-top:8px;font-weight:bold}
+    .method{text-align:center;font-size:24px;margin-top:10px;font-weight:bold;border:3px solid #000;border-radius:8px;padding:8px;letter-spacing:2px}
     .footer{text-align:center;font-size:12px;margin-top:12px;font-weight:bold}
     .k-header{font-size:16px;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;margin:0}
-    .k-token-box{text-align:center;border:3px solid #000;border-radius:8px;padding:12px;margin:12px 0}
+    .k-token-row{display:flex;gap:8px;margin:12px 0}
+    .k-token-box{text-align:center;border:3px solid #000;border-radius:8px;padding:12px;flex:1}
     .k-token-label{font-size:13px;text-transform:uppercase;letter-spacing:0.1em;font-weight:bold}
     .k-token-num{font-size:36px;font-weight:bold;line-height:1.1}
     .k-item{display:flex;gap:8px;padding:6px 0;border-bottom:1px dotted #000;font-size:15px}
@@ -129,14 +132,22 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
     return `<div class="k-item"><span class="k-qty">${item.quantity}x</span><div class="k-name">${escapeHtml(item.menuItemName)}${mods ? `<div class="k-mods">${escapeHtml(mods)}</div>` : ''}</div></div>`;
   }).join('');
 
-  const typeLabel = orderLabel || order.tableName || 'Counter';
+  const typeLabel = orderLabel === 'Takeaway' ? 'Takeaway' : 'Dine In';
+
+  const tokenNum = escapeHtml(order.tokenNumber ? String(order.tokenNumber).padStart(3, '0') : order.orderNumber);
 
   const buildKotHtmlBody = (title: string, items: typeof order.items) => `
       <p class="k-header center">${escapeHtml(title)}</p>
       <p class="center" style="font-size:13px;margin:2px 0 0">${escapeHtml(restaurantName)}</p>
-      <div class="k-token-box">
-        <div class="k-token-label">Token</div>
-        <div class="k-token-num">${escapeHtml(order.tokenNumber ? String(order.tokenNumber).padStart(3, '0') : order.orderNumber)}</div>
+      <div class="k-token-row">
+        <div class="k-token-box">
+          <div class="k-token-label">Token</div>
+          <div class="k-token-num">${tokenNum}</div>
+        </div>
+        ${order.tableNumber ? `<div class="k-token-box">
+          <div class="k-token-label">Table</div>
+          <div class="k-token-num">${escapeHtml(order.tableNumber)}</div>
+        </div>` : ''}
       </div>
       <p class="center" style="font-size:16px;margin:4px 0;font-weight:bold">${escapeHtml(typeLabel)}</p>
       ${order.customerName ? `<p class="center" style="font-size:14px;margin:4px 0"><strong>${escapeHtml(order.customerName)}</strong></p>` : ''}
@@ -150,19 +161,26 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
   const customerHtml = `
       ${logoHtml}
       <p class="restaurant center">${escapeHtml(restaurantName)}</p>
-      <div class="token-box">
-        <div class="token-label">Token Number</div>
-        <div class="token-num">${escapeHtml(order.tokenNumber ? String(order.tokenNumber).padStart(3, '0') : order.orderNumber)}</div>
+      <div class="token-row">
+        <div class="token-box">
+          <div class="token-label">Token</div>
+          <div class="token-num">${tokenNum}</div>
+        </div>
+        ${order.tableNumber ? `<div class="token-box">
+          <div class="token-label">Table</div>
+          <div class="token-num">${escapeHtml(order.tableNumber)}</div>
+        </div>` : ''}
       </div>
       <p class="center" style="font-size:16px;margin:4px 0;font-weight:bold">${escapeHtml(typeLabel)}</p>
       <div class="divider"></div>
       ${customerItemsHtml}
       <div class="divider"></div>
       <div class="total-row"><span>Subtotal</span><span>${escapeHtml(formatCurrency(order.subtotal))}</span></div>
+      ${order.discount > 0 ? `<div class="total-row"><span>Discount${order.discountName ? ` (${escapeHtml(order.discountName)})` : ''}</span><span>-${escapeHtml(formatCurrency(order.discount))}</span></div>` : ''}
       ${order.tax > 0 ? `<div class="total-row"><span>Tax</span><span>${escapeHtml(formatCurrency(order.tax))}</span></div>` : ''}
       ${parcelCharge && parcelCharge > 0 ? `<div class="total-row"><span>Parcel Charges</span><span>${escapeHtml(formatCurrency(parcelCharge))}</span></div>` : ''}
       <div class="total-row grand"><span>Total</span><span>${escapeHtml(formatCurrency(order.total))}</span></div>
-      <div class="method">Paid via ${escapeHtml(paymentMethod)}</div>
+      ${paymentMethod === 'UNPAID' ? '<div class="method">UNPAID</div>' : `<div class="method">Paid via ${escapeHtml(paymentMethod)}</div>`}
       <div class="footer">Thank you! Please wait for your token to be called.</div>`;
 
   // Fire all print jobs simultaneously — printer spooler queues them
@@ -201,6 +219,12 @@ export default function QSRPage() {
   const { data: topItemsData = [] } = useQuery({
     queryKey: ['top-items-qsr'],
     queryFn: () => reportService.topSellingItems({ limit: '20' }),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: allDiscounts = [] } = useQuery({
+    queryKey: ['discounts'],
+    queryFn: discountService.list,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -252,8 +276,12 @@ export default function QSRPage() {
   const creditSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingCreditRef = useRef<{ accountId: string; amount: number } | null>(null);
 
+  // Mode selection (null = show picker screen)
+  const [selectedMode, setSelectedMode] = useState<'dinein' | 'takeaway'>('dinein');
+
   // Table selection state
   const [selectedTable, setSelectedTable] = useState('');
+
 
   // WhatsApp invoice state
   const [whatsappStatus, setWhatsappStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
@@ -378,6 +406,7 @@ export default function QSRPage() {
       new Date(o.createdAt) >= todayStart
     ).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   }, [qsrOrdersData]);
+
 
   /* ── Per-item serve mutation ── */
   const markItemServedMut = useMutation({
@@ -513,7 +542,7 @@ export default function QSRPage() {
       // Auto-print customer token + station KOTs
       const stationMap = buildItemStationMap();
       const _tbl = selectedTable && selectedTable !== 'takeaway' ? tables.find(t => t.id === selectedTable) : null;
-      const orderLabel = selectedTable === 'takeaway' ? 'Takeaway' : _tbl ? (_tbl.name ? `${_tbl.name} (${_tbl.number})` : `Table ${_tbl.number}`) : 'Counter';
+      const orderLabel = selectedTable === 'takeaway' ? 'Takeaway' : _tbl ? (_tbl.name ? `${_tbl.name} (${_tbl.number})` : `Table ${_tbl.number}`) : 'Dine In';
       const logoUrl = (settings?.settings as any)?.qrLogoUrl || (settings?.settings as any)?.printLogoUrl;
       const resolvedLogoUrl = logoUrl ? (logoUrl.startsWith('/uploads') ? `${UPLOAD_BASE}${logoUrl}` : logoUrl) : undefined;
       setTimeout(() => printReceipts(order, selectedQuickMethod || 'CASH', formatCurrency, restaurantName, stationMap, orderLabel, parcelCharge, resolvedLogoUrl), 300);
@@ -551,6 +580,7 @@ export default function QSRPage() {
     pendingCreditRef.current = null;
     isPayLaterRef.current = false;
     settledRef.current = false;
+    setSelectedMode('dinein');
   };
 
   /* ── Hold current ticket ── */
@@ -707,7 +737,7 @@ export default function QSRPage() {
     const targetKey = selectedCategory === 'all' ? 'all' : selectedCategory;
     const btn = categoryBtnRefs.current.get(targetKey);
     if (btn) {
-      btn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+      btn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
   }, [selectedCategory]);
 
@@ -801,9 +831,35 @@ export default function QSRPage() {
 
   const taxAmount = subtotal * (taxRate / 100);
   const discountNum = parseFloat(discountValue) || 0;
-  const discountAmount = discountType === 'PERCENTAGE'
+  const manualDiscountAmount = discountType === 'PERCENTAGE'
     ? Math.min(subtotal * (discountNum / 100), subtotal)
     : Math.min(discountNum, subtotal);
+
+  /* ── Auto-apply discount (only when no manual discount) ── */
+  const autoDiscount = useMemo(() => {
+    if (manualDiscountAmount > 0 || subtotal <= 0) return null;
+    const now = new Date();
+    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const today = now.getDay();
+    for (const d of allDiscounts.filter(d => d.isActive && d.isAutoApply).sort((a, b) => b.value - a.value)) {
+      if (d.activeFrom && now < new Date(d.activeFrom)) continue;
+      if (d.activeTo && now > new Date(d.activeTo)) continue;
+      if (d.activeDays.length > 0 && !d.activeDays.includes(today)) continue;
+      if (d.activeTimeFrom && d.activeTimeTo && (currentTime < d.activeTimeFrom || currentTime > d.activeTimeTo)) continue;
+      if (d.minOrderAmount && subtotal < d.minOrderAmount) continue;
+      if (d.maxUses && d.usedCount >= d.maxUses) continue;
+      let amount = d.type === 'PERCENTAGE' ? subtotal * d.value / 100 : d.value;
+      if (d.type === 'PERCENTAGE' && d.maxDiscount && amount > d.maxDiscount) amount = d.maxDiscount;
+      if (amount > subtotal) amount = subtotal;
+      return { name: d.name, amount: Math.round(amount * 100) / 100 };
+    }
+    return null;
+  }, [allDiscounts, subtotal, manualDiscountAmount]);
+
+  const discountAmount = manualDiscountAmount > 0 ? manualDiscountAmount : (autoDiscount?.amount ?? 0);
+  const discountLabel = manualDiscountAmount > 0
+    ? `Discount${discountType === 'PERCENTAGE' ? ` (${discountNum}%)` : ''}`
+    : autoDiscount ? `Discount (${autoDiscount.name})` : '';
 
   /* ── Parcel charges (takeaway only) ── */
   const parcelCharge = useMemo(() => {
@@ -841,8 +897,15 @@ export default function QSRPage() {
     setSplits(prev => prev.filter(s => s.id !== id));
   };
 
+  const requiresTable = selectedTable !== 'takeaway';
+  const tableSelected = selectedTable !== '' && selectedTable !== 'takeaway';
+
   const handleSplitSettle = () => {
     if (settledRef.current || !splitsReady) return;
+    if (requiresTable && !tableSelected) {
+      toast.error('Please select a table number');
+      return;
+    }
     const creditSplits = splits.filter(s => s.method === 'CREDIT');
     if (creditSplits.length > 0) {
       if (!selectedCreditAccount) {
@@ -869,14 +932,14 @@ export default function QSRPage() {
       customerPhone: customerPhone.trim() || undefined,
       notes: notes.trim() || undefined,
       serviceType: selectedTable === 'takeaway' ? 'takeaway' : selectedTable ? 'table' : 'counter',
-      ...(discountAmount > 0 ? { manualDiscount: discountNum, manualDiscountType: discountType } : {}),
+      ...(manualDiscountAmount > 0 ? { manualDiscount: discountNum, manualDiscountType: discountType } : {}),
     });
   };
 
   /* ── Settle — opens settlement modal ── */
   const handleOpenSettle = () => {
     if (cart.length === 0) return;
-    setSelectedQuickMethod('CASH');
+    setSelectedQuickMethod(null);
     setShowSettlement(true);
   };
 
@@ -891,6 +954,10 @@ export default function QSRPage() {
 
   const handlePayLater = () => {
     if (settledRef.current) return;
+    if (requiresTable && !tableSelected) {
+      toast.error('Please select a table number');
+      return;
+    }
     isPayLaterRef.current = true;
     setSettling(true);
     createOrderMut.mutate({
@@ -908,7 +975,7 @@ export default function QSRPage() {
       notes: notes.trim() || undefined,
       serviceType: selectedTable === 'takeaway' ? 'takeaway' : selectedTable ? 'table' : 'counter',
       isPaid: false,
-      ...(discountAmount > 0 ? { manualDiscount: discountNum, manualDiscountType: discountType } : {}),
+      ...(manualDiscountAmount > 0 ? { manualDiscount: discountNum, manualDiscountType: discountType } : {}),
     });
   };
 
@@ -967,6 +1034,10 @@ export default function QSRPage() {
 
   const handleQuickSettle = () => {
     if (settledRef.current || !selectedQuickMethod) return;
+    if (requiresTable && !tableSelected) {
+      toast.error('Please select a table number');
+      return;
+    }
     if (selectedQuickMethod === 'CREDIT' && !selectedCreditAccount) {
       toast.error('Please select a credit account');
       return;
@@ -989,7 +1060,7 @@ export default function QSRPage() {
       customerPhone: customerPhone.trim() || undefined,
       notes: notes.trim() || undefined,
       serviceType: selectedTable === 'takeaway' ? 'takeaway' : selectedTable ? 'table' : 'counter',
-      ...(discountAmount > 0 ? { manualDiscount: discountNum, manualDiscountType: discountType } : {}),
+      ...(manualDiscountAmount > 0 ? { manualDiscount: discountNum, manualDiscountType: discountType } : {}),
     });
   };
 
@@ -1006,6 +1077,8 @@ export default function QSRPage() {
       };
     });
   }, [cart]);
+
+  /* ═══════════════════════ MODE PICKER ══════════════════════ */
 
   /* ═══════════════════════ ORDER VIEW ═══════════════════════ */
   return (
@@ -1067,23 +1140,24 @@ export default function QSRPage() {
           <div className="flex items-center gap-2">
             {!showOrderBoard && (
               <>
-                <select
-                  value={selectedTable}
-                  onChange={e => setSelectedTable(e.target.value)}
-                  className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary flex-1 sm:flex-none sm:w-32 bg-white min-w-0"
+                <button
+                  onClick={() => {
+                    if (selectedTable === 'takeaway') {
+                      setSelectedTable('');
+                      setSelectedMode('dinein');
+                    } else {
+                      setSelectedTable('takeaway');
+                      setSelectedMode('takeaway');
+                    }
+                  }}
+                  className={`rounded-xl px-4 py-2 text-sm font-semibold border-2 transition-all active:scale-[0.97] shrink-0 ${
+                    selectedTable === 'takeaway'
+                      ? 'bg-emerald-50 border-emerald-500 text-emerald-700'
+                      : 'bg-orange-50 border-primary text-primary'
+                  }`}
                 >
-                  <option value="">Counter</option>
-                  <option value="takeaway">Takeaway</option>
-                  {tables
-                    .filter(t => t.status === 'available' || t.status === 'occupied')
-                    .sort((a, b) => Number(a.number) - Number(b.number))
-                    .map(t => (
-                      <option key={t.id} value={t.id}>
-                        {t.name ? `${t.name} (${t.number})` : `Table ${t.number}`}
-                        {t.status === 'occupied' ? ' • Occupied' : ''}
-                      </option>
-                    ))}
-                </select>
+                  {selectedTable === 'takeaway' ? 'Takeaway' : 'Dine In'}
+                </button>
                 <button
                   onClick={resetForm}
                   title="New Order"
@@ -1474,10 +1548,16 @@ export default function QSRPage() {
                 placeholder="0"
                 className="w-16 text-xs border border-gray-200 rounded-md px-2 py-1 text-center bg-white focus:outline-none focus:border-primary"
               />
-              {discountAmount > 0 && (
-                <span className="ml-auto text-xs font-medium text-orange-600 tabular-nums">-{formatCurrency(discountAmount)}</span>
+              {manualDiscountAmount > 0 && (
+                <span className="ml-auto text-xs font-medium text-orange-600 tabular-nums">-{formatCurrency(manualDiscountAmount)}</span>
               )}
             </div>
+            {autoDiscount && manualDiscountAmount === 0 && (
+              <div className="flex justify-between text-sm text-orange-600">
+                <span>{autoDiscount.name}</span>
+                <span className="font-medium tabular-nums">-{formatCurrency(autoDiscount.amount)}</span>
+              </div>
+            )}
             {taxRate > 0 && (
               <div className="flex justify-between text-sm text-gray-600">
                 <span>Tax ({taxRate}%)</span>
@@ -1533,67 +1613,57 @@ export default function QSRPage() {
               <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{totalItems}</span>
             )}
           </button>
-          <div className="shrink-0">
-            <div className="sticky top-0 z-10 px-3 md:px-5 py-3 bg-white/95 backdrop-blur border-b border-gray-100">
-              <div className="flex items-center gap-2 flex-wrap pb-0.5">
-                  <button
-                    ref={(el) => {
-                      if (el) categoryBtnRefs.current.set('all', el);
-                      else categoryBtnRefs.current.delete('all');
-                    }}
-                    onClick={() => setSelectedCategory('all')}
-                    className={`shrink-0 px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all border ${
-                      selectedCategory === 'all'
-                        ? 'bg-primary text-white border-primary shadow-sm'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200'
-                    }`}
-                  >
-                    All
-                  </button>
+          <div className="flex-1 flex overflow-hidden">
 
-                  {topItemsData.length > 0 && (
-                    <button
-                      ref={(el) => {
-                        if (el) categoryBtnRefs.current.set('top', el);
-                        else categoryBtnRefs.current.delete('top');
-                      }}
-                      onClick={() => setSelectedCategory('top')}
-                      className={`shrink-0 flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all border ${
-                        selectedCategory === 'top'
-                          ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
-                          : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-200'
-                      }`}
-                    >
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-                      </svg>
-                      Top Selling
-                    </button>
-                  )}
-
-                  {activeCategories.map((cat: Category) => (
-                    <button
-                      key={cat.id}
-                      ref={(el) => {
-                        if (el) categoryBtnRefs.current.set(cat.id, el);
-                        else categoryBtnRefs.current.delete(cat.id);
-                      }}
-                      onClick={() => setSelectedCategory(cat.id)}
-                      className={`shrink-0 px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all border ${
-                        selectedCategory === cat.id
-                          ? 'bg-primary text-white border-primary shadow-sm'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200'
-                      }`}
-                      title={cat.name}
-                    >
-                      {cat.name}
-                    </button>
-                  ))}
-              </div>
+            {/* ── Category Sidebar ── */}
+            <div className="w-36 shrink-0 overflow-y-auto border-r border-gray-200 bg-gray-50 flex flex-col">
+              <p className="px-3 pt-3 pb-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest shrink-0">Categories</p>
+              <button
+                ref={(el) => { if (el) categoryBtnRefs.current.set('all', el); else categoryBtnRefs.current.delete('all'); }}
+                onClick={() => setSelectedCategory('all')}
+                className={`w-full text-left px-3 py-3 text-[13px] font-semibold transition-all ${
+                  selectedCategory === 'all'
+                    ? 'bg-primary text-white'
+                    : 'text-gray-600 hover:bg-white hover:text-gray-900'
+                }`}
+              >
+                All
+              </button>
+              {topItemsData.length > 0 && (
+                <button
+                  ref={(el) => { if (el) categoryBtnRefs.current.set('top', el); else categoryBtnRefs.current.delete('top'); }}
+                  onClick={() => setSelectedCategory('top')}
+                  className={`w-full text-left flex items-center gap-1.5 px-3 py-3 text-[13px] font-semibold transition-all ${
+                    selectedCategory === 'top'
+                      ? 'bg-amber-500 text-white'
+                      : 'text-amber-600 hover:bg-white'
+                  }`}
+                >
+                  <svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                  </svg>
+                  <span className="truncate">Top Selling</span>
+                </button>
+              )}
+              {activeCategories.map((cat: Category) => (
+                <button
+                  key={cat.id}
+                  ref={(el) => { if (el) categoryBtnRefs.current.set(cat.id, el); else categoryBtnRefs.current.delete(cat.id); }}
+                  onClick={() => setSelectedCategory(cat.id)}
+                  className={`w-full text-left px-3 py-3 text-[13px] font-semibold transition-all ${
+                    selectedCategory === cat.id
+                      ? 'bg-primary text-white'
+                      : 'text-gray-600 hover:bg-white hover:text-gray-900'
+                  }`}
+                  title={cat.name}
+                >
+                  <span className="block truncate">{cat.name}</span>
+                </button>
+              ))}
             </div>
-          </div>
 
-          <div className="flex-1 overflow-y-auto p-3 md:p-5">
+            {/* ── Menu Grid ── */}
+            <div className="flex-1 overflow-y-auto p-3 md:p-4">
             {availableItems.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-gray-400">
                 <svg className="w-16 h-16 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
@@ -1690,6 +1760,7 @@ export default function QSRPage() {
               );
             })()}
           </div>
+          </div>{/* end sidebar+grid flex wrapper */}
         </div>
       </div>
       )}
@@ -1731,6 +1802,12 @@ export default function QSRPage() {
                 <span className="text-text-secondary">Subtotal</span>
                 <span>{formatCurrency(completedOrder.subtotal)}</span>
               </div>
+              {completedOrder.discount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-orange-600">Discount{completedOrder.discountName ? ` (${completedOrder.discountName})` : ''}</span>
+                  <span className="text-orange-600">-{formatCurrency(completedOrder.discount)}</span>
+                </div>
+              )}
               {completedOrder.tax > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-text-secondary">Tax</span>
@@ -1894,6 +1971,46 @@ export default function QSRPage() {
               </div>
             </div>
 
+            {/* Table Number Picker */}
+            {tables.length > 0 && selectedTable !== 'takeaway' && (
+              <div>
+                <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">
+                  Table Number
+                  {selectedTable && selectedTable !== 'takeaway' && (
+                    <button onClick={() => setSelectedTable('')} className="ml-2 text-primary font-semibold normal-case">Clear</button>
+                  )}
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {tables
+                    .slice()
+                    .sort((a, b) => Number(a.number) - Number(b.number) || a.number.localeCompare(b.number))
+                    .map(t => {
+                    const selected = selectedTable === t.id;
+                    const occupied = t.status === 'occupied';
+                    return (
+                      <button
+                        key={t.id}
+                        onClick={() => setSelectedTable(selected ? '' : t.id)}
+                        className={`min-w-[2.5rem] h-10 px-2 rounded-lg text-sm font-bold transition-all border-2 ${
+                          selected
+                            ? 'bg-primary text-white border-primary'
+                            : occupied
+                            ? 'bg-orange-50 text-orange-600 border-orange-200 hover:border-primary'
+                            : 'bg-white text-gray-700 border-gray-200 hover:border-primary hover:text-primary'
+                        }`}
+                      >
+                        {t.number}
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedTable && selectedTable !== 'takeaway' && (() => {
+                  const t = tables.find(tb => tb.id === selectedTable);
+                  return t ? <p className="text-xs text-primary font-semibold mt-1.5">Table {t.name || t.number} selected</p> : null;
+                })()}
+              </div>
+            )}
+
             {/* Quick Pay — hidden when in split mode */}
             {!showSplitMode && (
             <div className="space-y-3">
@@ -1920,14 +2037,14 @@ export default function QSRPage() {
                   onClick={() => { setSelectedQuickMethod('UNPAID' as PaymentMethod); setSelectedCreditAccount(null); setCreditSearch(''); }}
                   className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all active:scale-95 ${
                     selectedQuickMethod === ('UNPAID' as PaymentMethod)
-                      ? 'bg-amber-50 border-amber-400 text-amber-700 shadow-sm'
-                      : 'border-border-primary bg-white hover:border-amber-300 hover:bg-amber-50/50'
+                      ? 'bg-red-50 border-red-400 text-red-700 shadow-sm'
+                      : 'border-red-200 bg-red-50/40 hover:border-red-400 hover:bg-red-50'
                   }`}
                 >
-                  <svg className={`w-6 h-6 ${selectedQuickMethod === ('UNPAID' as PaymentMethod) ? 'text-amber-600' : 'text-text-secondary'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className={`w-6 h-6 ${selectedQuickMethod === ('UNPAID' as PaymentMethod) ? 'text-red-600' : 'text-red-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <span className={`text-sm font-semibold ${selectedQuickMethod === ('UNPAID' as PaymentMethod) ? 'text-amber-700' : 'text-text-primary'}`}>Unpaid</span>
+                  <span className={`text-sm font-semibold ${selectedQuickMethod === ('UNPAID' as PaymentMethod) ? 'text-red-700' : 'text-red-500'}`}>Unpaid</span>
                 </button>
               </div>
 
@@ -2025,7 +2142,7 @@ export default function QSRPage() {
                     </div>
                     {discountAmount > 0 && (
                       <div className="flex justify-between text-sm">
-                        <span className="text-orange-600">Discount{discountType === 'PERCENTAGE' ? ` (${discountNum}%)` : ''}</span>
+                        <span className="text-orange-600">{discountLabel}</span>
                         <span className="text-orange-600">-{formatCurrency(discountAmount)}</span>
                       </div>
                     )}
@@ -2078,15 +2195,15 @@ export default function QSRPage() {
 
               {/* Unpaid confirm block */}
               {selectedQuickMethod === ('UNPAID' as PaymentMethod) && (
-                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
+                <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-3">
                   <div className="flex justify-between text-sm font-bold">
-                    <span className="text-amber-800">Total to collect later</span>
-                    <span className="text-amber-900">{formatCurrency(total)}</span>
+                    <span className="text-red-800">Total to collect later</span>
+                    <span className="text-red-900">{formatCurrency(total)}</span>
                   </div>
                   <button
                     onClick={handlePayLater}
                     disabled={settling}
-                    className="w-full py-3.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold transition-colors disabled:opacity-60 flex items-center justify-center gap-2 text-base"
+                    className="w-full py-3.5 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-colors disabled:opacity-60 flex items-center justify-center gap-2 text-base"
                   >
                     {settling ? (
                       <><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />Placing...</>
@@ -2382,7 +2499,7 @@ export default function QSRPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-gray-900">
-                      {order.customerName || (order.orderType === 'QSR_TAKEAWAY' ? 'Takeaway' : 'Counter')}
+                      {order.customerName || (order.orderType === 'QSR_TAKEAWAY' ? 'Takeaway' : 'Dine In')}
                     </span>
                     {order.customerPhone && (
                       <span className="text-xs text-text-muted">{order.customerPhone}</span>
@@ -2671,10 +2788,10 @@ function QSROrderCard({
           </div>
           <div className="min-w-0">
             <p className="text-sm font-bold text-gray-900 truncate">
-              {order.customerName || order.tableName || 'Counter'}
+              {order.customerName || order.tableName || 'Dine In'}
             </p>
             <p className="text-[11px] text-gray-400 mt-0.5">
-              {order.customerName && <span className="font-semibold text-gray-600">{order.tableName || 'Counter'}</span>}
+              {order.customerName && <span className="font-semibold text-gray-600">{order.tableName || 'Dine In'}</span>}
               {order.customerName && ' • '}
               {timeAgo(order.createdAt)}
               {order.customerPhone && ` • ${order.customerPhone}`}

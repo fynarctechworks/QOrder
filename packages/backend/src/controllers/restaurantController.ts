@@ -109,9 +109,18 @@ export const restaurantController = {
   ) {
     try {
       const restaurantId = req.restaurantId!;
-      console.log('[updateSettings] raw body:', JSON.stringify(req.body));
+      const rawBody = (req as any)._rawBody || req.body;
       const { password, ...settingsPayload } = req.body as UpdateRestaurantSettingsInput & { password?: string };
-      console.log('[updateSettings] settingsPayload:', JSON.stringify(settingsPayload));
+
+      // Zod strip mode may drop fields that ARE in the schema but aren't
+      // being picked up (e.g. after tsx watch fails to reload validators).
+      // Merge any numeric/boolean settings from the raw body as a safety net.
+      const safeKeys = ['kitchenParcelCharge', 'beverageParcelCharge'] as const;
+      for (const key of safeKeys) {
+        if ((settingsPayload as any)[key] === undefined && rawBody[key] !== undefined) {
+          (settingsPayload as any)[key] = rawBody[key];
+        }
+      }
 
       // When turning off acceptsOrders, require password confirmation
       if (settingsPayload.acceptsOrders === false) {

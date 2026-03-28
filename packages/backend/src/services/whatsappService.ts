@@ -374,7 +374,7 @@ export const whatsappService = {
   /**
    * Send bill to customer via WhatsApp after takeaway order settlement
    */
-  async sendOrderBill(orderIds: string[], restaurantId: string): Promise<{ sent: boolean; phone?: string }> {
+  async sendOrderBill(orderIds: string[], restaurantId: string, overridePhone?: string): Promise<{ sent: boolean; phone?: string }> {
     const orders = await prisma.order.findMany({
       where: { id: { in: orderIds }, restaurantId },
       include: {
@@ -396,7 +396,7 @@ export const whatsappService = {
 
     const firstOrder = orders[0]!;
 
-    const customerPhone = orders.find((o) => o.customerPhone)?.customerPhone;
+    const customerPhone = overridePhone || orders.find((o) => o.customerPhone)?.customerPhone;
     if (!customerPhone) {
       logger.info({ orderIds }, 'No customer phone found on order — skipping WhatsApp bill');
       return { sent: false };
@@ -478,6 +478,12 @@ export const whatsappService = {
       },
       message,
     );
+
+    // Send bill link as a follow-up message
+    if (sent && orderIds.length > 0) {
+      const billUrl = `${config.adminUrl}/bill/${orderIds[0]}`;
+      await sendWhatsAppMessage(customerPhone, `View your bill here: ${billUrl}`);
+    }
 
     return { sent, phone: customerPhone };
   },

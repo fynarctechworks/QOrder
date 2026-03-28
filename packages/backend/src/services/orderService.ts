@@ -182,6 +182,9 @@ export const orderService = {
           } 
         },
         table: { select: { id: true, number: true, name: true, section: { select: { id: true, name: true } } } },
+        orderDiscounts: {
+          include: { discount: { select: { name: true, type: true, value: true } } },
+        },
         items: {
           include: {
             menuItem: { select: { id: true, name: true, image: true } },
@@ -233,6 +236,7 @@ export const orderService = {
           isAvailable: true,
         },
         include: {
+          category: { select: { kotStation: true } },
           modifierGroups: {
             include: {
               modifierGroup: {
@@ -417,7 +421,22 @@ export const orderService = {
       }
     }
 
-    const total = subtotal.minus(discountAmount).plus(tax);
+    // Parcel charges for takeaway orders
+    let parcelChargeTotal = new Decimal(0);
+    const effectiveOrderType = orderType || (tableId ? 'DINE_IN' : 'TAKEAWAY');
+    if (effectiveOrderType === 'TAKEAWAY' || effectiveOrderType === 'QSR_TAKEAWAY') {
+      const settings = (restaurant.settings as Record<string, unknown>) || {};
+      const kitchenRate = new Decimal(Number(settings.kitchenParcelCharge ?? 0));
+      const beverageRate = new Decimal(Number(settings.beverageParcelCharge ?? 0));
+      for (const oi of orderItems) {
+        const menuItem = menuItemMap.get(oi.menuItemId);
+        const station = (menuItem as Record<string, unknown> & { category?: { kotStation?: string } })?.category?.kotStation || 'KITCHEN';
+        const rate = station === 'BEVERAGE' ? beverageRate : kitchenRate;
+        parcelChargeTotal = parcelChargeTotal.plus(rate.times(oi.quantity));
+      }
+    }
+
+    const total = subtotal.minus(discountAmount).plus(tax).plus(parcelChargeTotal);
 
     // Create order inside a serializable transaction to prevent race conditions
     // (e.g. two concurrent orders reading the same session state).
@@ -449,7 +468,7 @@ export const orderService = {
               tokenNumber: { not: null },
               createdAt: { gte: todayStartUTC },
             },
-            orderBy: { createdAt: 'desc' },
+            orderBy: { tokenNumber: 'desc' },
             select: { tokenNumber: true },
           });
           const tokenNumber = lastOrder?.tokenNumber && lastOrder.tokenNumber < 999

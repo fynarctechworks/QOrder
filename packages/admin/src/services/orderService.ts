@@ -29,6 +29,7 @@ function mapApiOrder(raw: Record<string, unknown>): Order {
     restaurantId: r.restaurantId as string,
     tableId: (r.tableId as string) || '',
     tableName: (r.tableName as string) || 'Unknown',
+    tableNumber: (r.tableNumber as string) || (r.table as Record<string, unknown>)?.number as string || null,
     orderType: (r.orderType as string) || undefined,
     sectionName: (r.sectionName as string) || null,
     status: (r.status as string).toLowerCase() as OrderStatus,
@@ -45,6 +46,8 @@ function mapApiOrder(raw: Record<string, unknown>): Order {
       preparedAt: (item.preparedAt as string) || undefined,
     })),
     subtotal: Number(r.subtotal),
+    discount: Number(r.discount ?? 0),
+    discountName: (r.discountName as string) || null,
     tax: Number(r.tax),
     total: Number(r.total),
     specialInstructions: (r.specialInstructions as string) || undefined,
@@ -180,9 +183,9 @@ export const orderService = {
   /**
    * Send bill via WhatsApp for takeaway orders
    */
-  async sendWhatsAppBill(orderIds: string[]): Promise<{ sent: boolean; phone?: string }> {
+  async sendWhatsAppBill(orderIds: string[], phone?: string): Promise<{ sent: boolean; phone?: string }> {
     return apiClient.post<{ sent: boolean; phone?: string }>(
-      `/orders/${orderIds.join(',')}/whatsapp-bill`, {},
+      `/orders/${orderIds.join(',')}/whatsapp-bill`, phone ? { phone } : {},
     );
   },
 };

@@ -430,8 +430,8 @@ export default function SettingsPage() {
   const { data: restaurant, isLoading, isError: settingsError } = useQuery({
     queryKey: ['settings', activeBranchId],
     queryFn: settingsService.get,
-    staleTime: 0,
-    refetchOnWindowFocus: true,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const [form, setForm] = useState<FormState>(DEFAULTS);
@@ -677,7 +677,7 @@ export default function SettingsPage() {
         latitude: form.geoFenceEnabled && form.geoLatitude ? parseFloat(form.geoLatitude) : null,
         longitude: form.geoFenceEnabled && form.geoLongitude ? parseFloat(form.geoLongitude) : null,
         geoFenceRadius: form.geoFenceEnabled ? parseInt(form.geoFenceRadius, 10) || 50 : undefined,
-        settings: settings as any,
+        settings: settings,
       });
     },
     onSuccess: (data) => {

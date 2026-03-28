@@ -104,6 +104,7 @@ function transformOrder(raw: RawOrder) {
     tableName: raw.table
       ? (raw.table.name ? `${raw.table.name} (${raw.table.number})` : `Table ${raw.table.number}`)
       : raw.orderType === 'QSR' ? 'Counter' : raw.orderType === 'QSR_TAKEAWAY' ? 'Takeaway' : raw.orderType === 'PAN_CORNER' ? 'Pan Corner' : 'Takeaway',
+    tableNumber: raw.table?.number ?? null,
     orderType: raw.orderType ?? 'DINE_IN',
     sectionName: raw.table?.section?.name ?? null,
     status,
@@ -131,6 +132,8 @@ function transformOrder(raw: RawOrder) {
       };
     }),
     subtotal: Number(raw.subtotal),
+    discount: Number((raw as Record<string, unknown>).discount ?? 0),
+    discountName: ((raw as Record<string, unknown>).orderDiscounts as Array<{ discount: { name: string } }> | undefined)?.[0]?.discount?.name ?? null,
     tax: Number(raw.tax),
     total: Number(raw.total),
     specialInstructions: raw.notes ?? undefined,
@@ -700,7 +703,8 @@ export const orderController = {
         return;
       }
 
-      const result = await whatsappService.sendOrderBill(orderIds, restaurantId);
+      const overridePhone = typeof req.body?.phone === 'string' ? req.body.phone.trim() : undefined;
+      const result = await whatsappService.sendOrderBill(orderIds, restaurantId, overridePhone);
 
       if (!result.sent) {
         res.status(400).json({

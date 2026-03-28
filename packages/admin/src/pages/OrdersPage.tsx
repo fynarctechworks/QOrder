@@ -458,7 +458,20 @@ export default function OrdersPage() {
       bill: b,
       ts: Math.max(...b.orders.map(o => new Date(o.updatedAt).getTime())),
     }));
-    items.sort((a, b) => b.ts - a.ts);
+    const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+    const getISTDay = (ts: number) => {
+      const d = new Date(ts + IST_OFFSET_MS);
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+    };
+    items.sort((a, b) => {
+      const dayA = getISTDay(a.ts);
+      const dayB = getISTDay(b.ts);
+      if (dayB !== dayA) return dayB.localeCompare(dayA);
+      const tokenA = a.kind === 'bill' ? Math.max(...a.bill.orders.map(o => o.tokenNumber ?? 0)) : (a.order.tokenNumber ?? 0);
+      const tokenB = b.kind === 'bill' ? Math.max(...b.bill.orders.map(o => o.tokenNumber ?? 0)) : (b.order.tokenNumber ?? 0);
+      if (tokenB !== tokenA) return tokenB - tokenA;
+      return b.ts - a.ts;
+    });
     return { items };
   }, [all, matchesSearch]);
 
@@ -1401,6 +1414,70 @@ function OrderDetail({
   const isCancelled = order.status === 'cancelled';
   const isDone = order.status === 'completed' || isCancelled;
 
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: settingsService.get,
+    staleTime: 30_000,
+    enabled: order.status === 'completed',
+  });
+
+  const [manualPhone, setManualPhone] = useState('');
+  const [showPhoneInput, setShowPhoneInput] = useState(false);
+
+  const whatsappMut = useMutation({
+    mutationFn: (phone?: string) => orderService.sendWhatsAppBill([order.id], phone),
+    onSuccess: (data) => {
+      if (data.sent) { toast.success('Bill sent via WhatsApp'); setShowPhoneInput(false); setManualPhone(''); }
+      else toast.error('Failed to send WhatsApp bill');
+    },
+    onError: () => toast.error('Failed to send WhatsApp bill'),
+  });
+
+  const handlePrint = useCallback(() => {
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const token = order.tokenNumber != null
+      ? `Token #${String(order.tokenNumber).padStart(3, '0')}`
+      : `#${order.orderNumber || order.id.slice(-6).toUpperCase()}`;
+
+    const itemRows = order.items.map(item => `
+      <tr>
+        <td>${item.quantity}x ${esc(item.menuItemName)}${
+          item.customizations.flatMap(g => g.options).map(o => `<br><small style="color:#666">+ ${esc(o.name)}</small>`).join('')
+        }</td>
+        <td style="text-align:right;white-space:nowrap">${formatCurrency(item.totalPrice)}</td>
+      </tr>`).join('');
+
+    const html = `<!DOCTYPE html><html><head><title>Bill</title><style>
+      body{font-family:monospace;font-size:13px;width:300px;margin:0 auto;padding:16px}
+      h2{text-align:center;font-size:15px;margin:0 0 4px}
+      .sub{text-align:center;color:#666;font-size:11px;margin-bottom:4px}
+      table{width:100%;border-collapse:collapse}td{padding:3px 0;vertical-align:top}
+      .divider{border-top:1px dashed #000;margin:8px 0}
+      .total td{font-weight:bold;font-size:14px}
+      .footer{text-align:center;color:#666;font-size:11px;margin-top:12px}
+    </style></head><body>
+      <h2>${esc(settings?.name || 'Restaurant')}</h2>
+      <div class="sub">${new Date(order.createdAt).toLocaleString()}</div>
+      <div class="sub"><strong>${esc(token)}</strong>${order.customerName ? ` · ${esc(order.customerName)}` : ''}</div>
+      <div class="divider"></div>
+      <table>${itemRows}</table>
+      <div class="divider"></div>
+      <table>
+        <tr><td>Subtotal</td><td style="text-align:right">${formatCurrency(order.subtotal)}</td></tr>
+        <tr><td>Tax</td><td style="text-align:right">${formatCurrency(order.tax)}</td></tr>
+        <tr class="total"><td>Total</td><td style="text-align:right">${formatCurrency(order.total)}</td></tr>
+      </table>
+      <div class="footer">Thank you for visiting!</div>
+    </body></html>`;
+
+    const w = window.open('', '_blank', 'width=420,height=600');
+    if (!w) return;
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => { w.print(); }, 300);
+  }, [order, settings, formatCurrency]);
+
   return (
     <>
       {/* Backdrop */}
@@ -1669,7 +1746,60 @@ function OrderDetail({
           </section>
         </div>
 
-        {/* ── Footer ── */}
+        {/* ── Footer: completed actions ── */}
+        {order.status === 'completed' && (
+          <div className="border-t border-gray-100 bg-white">
+            {/* Phone input (shown when no phone on order) */}
+            {showPhoneInput && (
+              <div className="px-6 pt-4 flex gap-2">
+                <input
+                  type="tel"
+                  value={manualPhone}
+                  onChange={e => setManualPhone(e.target.value)}
+                  placeholder="Enter phone number"
+                  className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                  autoFocus
+                />
+                <button
+                  onClick={() => whatsappMut.mutate(manualPhone || undefined)}
+                  disabled={whatsappMut.isPending || !manualPhone.trim()}
+                  className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold disabled:opacity-50 hover:bg-emerald-700"
+                >
+                  {whatsappMut.isPending ? '…' : 'Send'}
+                </button>
+              </div>
+            )}
+            <div className="px-6 py-4 flex gap-3">
+              <button
+                onClick={handlePrint}
+                className="flex-1 py-3 rounded-xl text-[15px] font-semibold inline-flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                Print Bill
+              </button>
+              <button
+                onClick={() => {
+                  if (order.customerPhone) {
+                    whatsappMut.mutate(undefined);
+                  } else {
+                    setShowPhoneInput(p => !p);
+                  }
+                }}
+                disabled={whatsappMut.isPending}
+                className="flex-1 py-3 rounded-xl text-[15px] font-semibold inline-flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.98] disabled:opacity-50 bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                </svg>
+                {whatsappMut.isPending ? 'Sending…' : 'WhatsApp'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Footer: active order actions ── */}
         {!isDone && (
           <div className="px-6 py-4 border-t border-gray-100 flex gap-3 bg-white">
             <button
