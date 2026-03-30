@@ -1014,6 +1014,13 @@ export default function QSRPage() {
       }
       qc.invalidateQueries({ queryKey: ['qsr-board-orders'] });
       toast.success(`Payment collected for Token #${collectingOrder.tokenNumber ? String(collectingOrder.tokenNumber).padStart(3, '0') : collectingOrder.orderNumber}`);
+      // Print bill after collecting payment
+      const cLUrl = (settings?.settings as any)?.qrLogoUrl || (settings?.settings as any)?.printLogoUrl;
+      const cRLUrl = cLUrl ? (cLUrl.startsWith('/uploads') ? `${UPLOAD_BASE}${cLUrl}` : cLUrl) : undefined;
+      const cOLabel = collectingOrder.orderType === 'QSR_TAKEAWAY' ? 'Takeaway' : collectingOrder.tableName || 'Dine In';
+      const cParcel = collectingOrder.orderType === 'QSR_TAKEAWAY' ? Math.max(0, Math.round((collectingOrder.total - collectingOrder.subtotal + collectingOrder.discount - collectingOrder.tax) * 100) / 100) : 0;
+      const cStationMap = buildItemStationMap();
+      setTimeout(() => printReceipts(collectingOrder, collectMethod, formatCurrency, restaurantName, cStationMap, cOLabel, cParcel || undefined, cRLUrl), 300);
       setCollectingOrder(null);
       setCollectMethod('CASH');
       setCollectCreditAccount(null);
@@ -1864,7 +1871,7 @@ export default function QSRPage() {
 
             <div className="flex flex-col sm:flex-row gap-3 max-w-sm mx-auto">
               <button
-                onClick={() => { const lUrl = (settings?.settings as any)?.qrLogoUrl || (settings?.settings as any)?.printLogoUrl; const rLUrl = lUrl ? (lUrl.startsWith('/uploads') ? `${UPLOAD_BASE}${lUrl}` : lUrl) : undefined; printReceipts(completedOrder, selectedQuickMethod || 'CASH', formatCurrency, restaurantName, buildItemStationMap(), undefined, undefined, rLUrl); }}
+                onClick={() => { const lUrl = (settings?.settings as any)?.qrLogoUrl || (settings?.settings as any)?.printLogoUrl; const rLUrl = lUrl ? (lUrl.startsWith('/uploads') ? `${UPLOAD_BASE}${lUrl}` : lUrl) : undefined; const rOLabel = completedOrder.orderType === 'QSR_TAKEAWAY' ? 'Takeaway' : completedOrder.tableName || 'Dine In'; const rParcel = completedOrder.orderType === 'QSR_TAKEAWAY' ? Math.max(0, Math.round((completedOrder.total - completedOrder.subtotal + completedOrder.discount - completedOrder.tax) * 100) / 100) : 0; printReceipts(completedOrder, selectedQuickMethod || 'CASH', formatCurrency, restaurantName, buildItemStationMap(), rOLabel, rParcel || undefined, rLUrl); }}
                 className="flex-1 px-5 py-3 bg-white border-2 border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-800 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 text-sm"
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
