@@ -48,6 +48,7 @@ interface HeldTicket {
   customerPhone: string;
   notes: string;
   heldAt: number; // timestamp
+  selectedTable: string;
 }
 
 const PAYMENT_METHODS: Array<{ value: PaymentMethod; label: string; icon: string; color: string; bg: string }> = [
@@ -232,8 +233,8 @@ export default function QSRPage() {
 
   const taxRate = settings?.taxRate ?? 0;
   const restaurantName = (settings?.name as string) || 'Restaurant';
-  const kitchenParcelRate = Number((settings?.settings as any)?.kitchenParcelCharge ?? 10);
-  const beverageParcelRate = Number((settings?.settings as any)?.beverageParcelCharge ?? 15);
+  const kitchenParcelRate = Number((settings?.settings as any)?.kitchenParcelCharge ?? 0);
+  const beverageParcelRate = Number((settings?.settings as any)?.beverageParcelCharge ?? 0);
   const menuShowItemImages = (settings?.settings as any)?.menuShowItemImages !== false;
 
   /* ── State ── */
@@ -593,6 +594,7 @@ export default function QSRPage() {
       customerPhone,
       notes,
       heldAt: Date.now(),
+      selectedTable,
     };
     const updated = [...heldTickets, ticket];
     setHeldTickets(updated);
@@ -619,6 +621,7 @@ export default function QSRPage() {
         customerPhone,
         notes,
         heldAt: Date.now(),
+        selectedTable,
       };
       const withCurrent = [...heldTickets, currentTicket].filter(t => t.id !== ticketId);
       setHeldTickets(withCurrent);
@@ -633,6 +636,7 @@ export default function QSRPage() {
     setCustomerName(ticket.customerName);
     setCustomerPhone(ticket.customerPhone);
     setNotes(ticket.notes);
+    setSelectedTable(ticket.selectedTable ?? '');
     setActiveCartItemId(null);
     setShowRecall(false);
     toast.success('Ticket recalled');
@@ -2196,10 +2200,51 @@ export default function QSRPage() {
               {/* Unpaid confirm block */}
               {selectedQuickMethod === ('UNPAID') && (
                 <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-3">
-                  <div className="flex justify-between text-sm font-bold">
-                    <span className="text-red-800">Total to collect later</span>
-                    <span className="text-red-900">{formatCurrency(total)}</span>
+                  <p className="text-xs font-semibold text-red-400 uppercase tracking-wide">Bill Summary</p>
+
+                  <div className="space-y-1">
+                    {cartSummaryItems.map((item, i) => (
+                      <div key={i} className="text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-red-700">{item.quantity}x {item.name}</span>
+                          <span className="text-red-900">{formatCurrency(item.totalPrice)}</span>
+                        </div>
+                        {item.modifiers.length > 0 && (
+                          <p className="text-xs text-red-400 pl-4">{item.modifiers.join(', ')}</p>
+                        )}
+                      </div>
+                    ))}
                   </div>
+
+                  <div className="border-t border-red-200 pt-2 space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-red-700">Subtotal</span>
+                      <span className="text-red-900">{formatCurrency(subtotal)}</span>
+                    </div>
+                    {discountAmount > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-orange-600">{discountLabel}</span>
+                        <span className="text-orange-600">-{formatCurrency(discountAmount)}</span>
+                      </div>
+                    )}
+                    {taxAmount > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-red-700">Tax</span>
+                        <span className="text-red-900">{formatCurrency(taxAmount)}</span>
+                      </div>
+                    )}
+                    {parcelCharge > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-red-700">Parcel Charges</span>
+                        <span className="text-red-900">{formatCurrency(parcelCharge)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm font-bold pt-1 border-t border-red-200 mt-1">
+                      <span className="text-red-800">Total to collect later</span>
+                      <span className="text-red-900">{formatCurrency(total)}</span>
+                    </div>
+                  </div>
+
                   <button
                     onClick={handlePayLater}
                     disabled={settling}
