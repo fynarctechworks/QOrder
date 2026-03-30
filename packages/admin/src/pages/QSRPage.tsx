@@ -48,6 +48,7 @@ interface HeldTicket {
   customerPhone: string;
   notes: string;
   heldAt: number; // timestamp
+  selectedTable: string;
 }
 
 const PAYMENT_METHODS: Array<{ value: PaymentMethod; label: string; icon: string; color: string; bg: string }> = [
@@ -239,8 +240,8 @@ export default function QSRPage() {
 
   const taxRate = settings?.taxRate ?? 0;
   const restaurantName = (settings?.name as string) || 'Restaurant';
-  const kitchenParcelRate = Number((settings?.settings as any)?.kitchenParcelCharge ?? 10);
-  const beverageParcelRate = Number((settings?.settings as any)?.beverageParcelCharge ?? 15);
+  const kitchenParcelRate = Number((settings?.settings as any)?.kitchenParcelCharge ?? 0);
+  const beverageParcelRate = Number((settings?.settings as any)?.beverageParcelCharge ?? 0);
   const menuShowItemImages = (settings?.settings as any)?.menuShowItemImages !== false;
 
   /* ── State ── */
@@ -600,6 +601,7 @@ export default function QSRPage() {
       customerPhone,
       notes,
       heldAt: Date.now(),
+      selectedTable,
     };
     const updated = [...heldTickets, ticket];
     setHeldTickets(updated);
@@ -626,6 +628,7 @@ export default function QSRPage() {
         customerPhone,
         notes,
         heldAt: Date.now(),
+        selectedTable,
       };
       const withCurrent = [...heldTickets, currentTicket].filter(t => t.id !== ticketId);
       setHeldTickets(withCurrent);
@@ -640,6 +643,7 @@ export default function QSRPage() {
     setCustomerName(ticket.customerName);
     setCustomerPhone(ticket.customerPhone);
     setNotes(ticket.notes);
+    setSelectedTable(ticket.selectedTable ?? '');
     setActiveCartItemId(null);
     setShowRecall(false);
     toast.success('Ticket recalled');
@@ -1380,7 +1384,7 @@ export default function QSRPage() {
         )}
 
         {/* ── RIGHT: Current Ticket ── */}
-        <div className={`fixed inset-y-0 right-0 z-40 w-full sm:w-[300px] md:static md:z-auto md:w-[40%] flex flex-col bg-white border-l border-gray-200 shrink-0 transform transition-transform duration-200 order-last ${showCart ? 'translate-x-0' : 'translate-x-full'} md:translate-x-0`}>
+        <div className={`fixed inset-y-0 right-0 z-40 w-full sm:w-[300px] md:static md:z-auto md:w-96 flex flex-col bg-white border-l border-gray-200 shrink-0 transform transition-transform duration-200 order-last ${showCart ? 'translate-x-0' : 'translate-x-full'} md:translate-x-0`}>
           <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
             <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Current Ticket</h2>
             <div className="flex items-center gap-2">
@@ -1414,7 +1418,7 @@ export default function QSRPage() {
                 <p className="text-xs text-gray-300 mt-0.5">Tap menu items to add</p>
               </div>
             ) : (
-              <div className="grid grid-cols-3 gap-2">
+              <div className="flex flex-col gap-1.5">
                 {cart.map((c) => {
                   const basePrice = c.menuItem.discountPrice ?? c.menuItem.price;
                   const modTotal = c.selectedModifiers.reduce((s, m) => s + m.price, 0);
@@ -1426,41 +1430,64 @@ export default function QSRPage() {
                       key={c.cartId}
                       ref={(el) => { if (el) cartItemRefs.current.set(c.cartId, el); else cartItemRefs.current.delete(c.cartId); }}
                       onClick={() => setActiveCartItemId(isActive ? null : c.cartId)}
-                      className={`border rounded-lg p-2 cursor-pointer transition-all flex flex-col gap-1 ${
-                        isActive && hasGroups ? 'col-span-3 border-primary bg-primary/5 ring-1 ring-primary/20'
-                          : isActive ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
-                          : 'border-gray-200 hover:border-gray-300'
+                      className={`border rounded-lg px-3 py-4 cursor-pointer transition-all ${
+                        isActive ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : 'border-gray-200 hover:border-gray-300'
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-1">
-                        <p className="text-xs font-semibold text-gray-900 leading-tight line-clamp-2 flex-1 min-w-0">{c.menuItem.name}</p>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); removeFromCart(c.cartId); if (isActive) setActiveCartItemId(null); }}
-                          className="text-red-400 hover:text-red-600 transition-colors shrink-0"
-                        >
-                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </div>
-                      <p className="text-[10px] text-gray-400">{formatCurrency(basePrice)}</p>
-
-                      {c.selectedModifiers.length > 0 && !isActive && (
-                        <div className="flex flex-wrap gap-x-1 gap-y-0.5">
-                          {c.selectedModifiers.map(m => (
-                            <span key={m.modifierId} className="text-[10px] text-primary leading-tight">
-                              +{m.name}
-                            </span>
-                          ))}
+                      {/* Main row */}
+                      <div className="flex items-center gap-2">
+                        {/* Name + price */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-900 leading-tight break-words">{c.menuItem.name}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">{formatCurrency(basePrice)}</p>
+                          {c.selectedModifiers.length > 0 && !isActive && (
+                            <div className="flex flex-wrap gap-x-1 mt-0.5">
+                              {c.selectedModifiers.map(m => (
+                                <span key={m.modifierId} className="text-[11px] text-primary leading-tight">+{m.name}</span>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      )}
-
+                        {/* Qty controls */}
+                        <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                          <button
+                            onClick={() => updateQuantity(c.cartId, -1)}
+                            className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 transition-colors active:scale-90"
+                          >
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4" />
+                            </svg>
+                          </button>
+                          <span className="w-6 text-center text-sm font-bold text-gray-900 tabular-nums">{c.quantity}</span>
+                          <button
+                            onClick={() => updateQuantity(c.cartId, 1)}
+                            className="w-6 h-6 rounded bg-primary/10 hover:bg-primary/20 flex items-center justify-center text-primary transition-colors active:scale-90"
+                          >
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                            </svg>
+                          </button>
+                        </div>
+                        {/* Line total + remove */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-sm font-bold text-gray-900 tabular-nums w-16 text-right">{formatCurrency(lineTotal)}</span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); removeFromCart(c.cartId); if (isActive) setActiveCartItemId(null); }}
+                            className="text-red-400 hover:text-red-600 transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      {/* Customization groups (expanded) */}
                       {hasGroups && isActive && (
-                        <div className="mt-1 space-y-1.5">
+                        <div className="mt-2 space-y-1.5">
                           {c.menuItem.customizationGroups.map(group => {
                             const selectedIds = new Set(c.selectedModifiers.map(m => m.modifierId));
                             return (
-                              <div key={group.id} className="flex flex-wrap gap-1.5 w-full">
+                              <div key={group.id} className="flex flex-wrap gap-1.5">
                                 {group.options.filter(o => o.isAvailable).map(opt => {
                                   const isSelected = selectedIds.has(opt.id);
                                   return (
@@ -1486,29 +1513,6 @@ export default function QSRPage() {
                           })}
                         </div>
                       )}
-
-                      <div className="flex items-center justify-between mt-auto pt-1" onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center gap-0.5">
-                          <button
-                            onClick={() => updateQuantity(c.cartId, -1)}
-                            className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 transition-colors active:scale-90"
-                          >
-                            <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4" />
-                            </svg>
-                          </button>
-                          <span className="w-5 text-center text-xs font-bold text-gray-900 tabular-nums">{c.quantity}</span>
-                          <button
-                            onClick={() => updateQuantity(c.cartId, 1)}
-                            className="w-5 h-5 rounded bg-primary/10 hover:bg-primary/20 flex items-center justify-center text-primary transition-colors active:scale-90"
-                          >
-                            <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                            </svg>
-                          </button>
-                        </div>
-                        <span className="text-xs font-bold text-gray-900 tabular-nums">{formatCurrency(lineTotal)}</span>
-                      </div>
                     </div>
                   );
                 })}
@@ -1623,12 +1627,12 @@ export default function QSRPage() {
           <div className="flex-1 flex overflow-hidden">
 
             {/* ── Category Sidebar ── */}
-            <div className="w-36 shrink-0 overflow-y-auto border-r border-gray-200 bg-gray-50 flex flex-col">
-              <p className="px-3 pt-3 pb-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest shrink-0">Categories</p>
+            <div className="w-72 shrink-0 overflow-y-auto border-r border-gray-200 bg-gray-50 flex flex-col">
+              <p className="px-3 pt-3 pb-1.5 text-sm font-bold text-gray-400 uppercase tracking-widest shrink-0">Categories</p>
               <button
                 ref={(el) => { if (el) categoryBtnRefs.current.set('all', el); else categoryBtnRefs.current.delete('all'); }}
                 onClick={() => setSelectedCategory('all')}
-                className={`w-full text-left px-3 py-3 text-[13px] font-semibold transition-all ${
+                className={`w-full text-left px-3 py-4 text-base font-semibold transition-all ${
                   selectedCategory === 'all'
                     ? 'bg-primary text-white'
                     : 'text-gray-600 hover:bg-white hover:text-gray-900'
@@ -1640,7 +1644,7 @@ export default function QSRPage() {
                 <button
                   ref={(el) => { if (el) categoryBtnRefs.current.set('top', el); else categoryBtnRefs.current.delete('top'); }}
                   onClick={() => setSelectedCategory('top')}
-                  className={`w-full text-left flex items-center gap-1.5 px-3 py-3 text-[13px] font-semibold transition-all ${
+                  className={`w-full text-left flex items-center gap-1.5 px-3 py-4 text-base font-semibold transition-all ${
                     selectedCategory === 'top'
                       ? 'bg-amber-500 text-white'
                       : 'text-amber-600 hover:bg-white'
@@ -1657,7 +1661,7 @@ export default function QSRPage() {
                   key={cat.id}
                   ref={(el) => { if (el) categoryBtnRefs.current.set(cat.id, el); else categoryBtnRefs.current.delete(cat.id); }}
                   onClick={() => setSelectedCategory(cat.id)}
-                  className={`w-full text-left px-3 py-3 text-[13px] font-semibold transition-all ${
+                  className={`w-full text-left px-3 py-4 text-base font-semibold transition-all ${
                     selectedCategory === cat.id
                       ? 'bg-primary text-white'
                       : 'text-gray-600 hover:bg-white hover:text-gray-900'
@@ -2203,10 +2207,51 @@ export default function QSRPage() {
               {/* Unpaid confirm block */}
               {selectedQuickMethod === ('UNPAID') && (
                 <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-3">
-                  <div className="flex justify-between text-sm font-bold">
-                    <span className="text-red-800">Total to collect later</span>
-                    <span className="text-red-900">{formatCurrency(total)}</span>
+                  <p className="text-xs font-semibold text-red-400 uppercase tracking-wide">Bill Summary</p>
+
+                  <div className="space-y-1">
+                    {cartSummaryItems.map((item, i) => (
+                      <div key={i} className="text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-red-700">{item.quantity}x {item.name}</span>
+                          <span className="text-red-900">{formatCurrency(item.totalPrice)}</span>
+                        </div>
+                        {item.modifiers.length > 0 && (
+                          <p className="text-xs text-red-400 pl-4">{item.modifiers.join(', ')}</p>
+                        )}
+                      </div>
+                    ))}
                   </div>
+
+                  <div className="border-t border-red-200 pt-2 space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-red-700">Subtotal</span>
+                      <span className="text-red-900">{formatCurrency(subtotal)}</span>
+                    </div>
+                    {discountAmount > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-orange-600">{discountLabel}</span>
+                        <span className="text-orange-600">-{formatCurrency(discountAmount)}</span>
+                      </div>
+                    )}
+                    {taxAmount > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-red-700">Tax</span>
+                        <span className="text-red-900">{formatCurrency(taxAmount)}</span>
+                      </div>
+                    )}
+                    {parcelCharge > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-red-700">Parcel Charges</span>
+                        <span className="text-red-900">{formatCurrency(parcelCharge)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm font-bold pt-1 border-t border-red-200 mt-1">
+                      <span className="text-red-800">Total to collect later</span>
+                      <span className="text-red-900">{formatCurrency(total)}</span>
+                    </div>
+                  </div>
+
                   <button
                     onClick={handlePayLater}
                     disabled={settling}
