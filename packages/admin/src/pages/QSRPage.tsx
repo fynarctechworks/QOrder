@@ -1014,13 +1014,6 @@ export default function QSRPage() {
       }
       qc.invalidateQueries({ queryKey: ['qsr-board-orders'] });
       toast.success(`Payment collected for Token #${collectingOrder.tokenNumber ? String(collectingOrder.tokenNumber).padStart(3, '0') : collectingOrder.orderNumber}`);
-      // Print bill after collecting payment
-      const cLUrl = (settings?.settings as any)?.qrLogoUrl || (settings?.settings as any)?.printLogoUrl;
-      const cRLUrl = cLUrl ? (cLUrl.startsWith('/uploads') ? `${UPLOAD_BASE}${cLUrl}` : cLUrl) : undefined;
-      const cOLabel = collectingOrder.orderType === 'QSR_TAKEAWAY' ? 'Takeaway' : collectingOrder.tableName || 'Dine In';
-      const cParcel = collectingOrder.orderType === 'QSR_TAKEAWAY' ? Math.max(0, Math.round((collectingOrder.total - collectingOrder.subtotal + collectingOrder.discount - collectingOrder.tax) * 100) / 100) : 0;
-      const cStationMap = buildItemStationMap();
-      setTimeout(() => printReceipts(collectingOrder, collectMethod, formatCurrency, restaurantName, cStationMap, cOLabel, cParcel || undefined, cRLUrl), 300);
       setCollectingOrder(null);
       setCollectMethod('CASH');
       setCollectCreditAccount(null);
@@ -1315,6 +1308,10 @@ export default function QSRPage() {
                             formatCurrency={formatCurrency}
                             mode="preparing"
                             onServeItem={(itemId) => markItemServedMut.mutate({ orderId: order.id, itemId })}
+                            onServeAll={() => {
+                              const unserved = order.items.filter(i => !i.preparedAt);
+                              unserved.forEach(i => markItemServedMut.mutate({ orderId: order.id, itemId: i.id }));
+                            }}
                             isServingItem={markItemServedMut.isPending}
                           />
                         ))}
@@ -2784,6 +2781,7 @@ function QSROrderCard({
   formatCurrency,
   mode = 'completed',
   onServeItem,
+  onServeAll,
   isServingItem,
   onCollectPayment,
 }: {
@@ -2791,6 +2789,7 @@ function QSROrderCard({
   formatCurrency: (n: number) => string;
   mode?: 'preparing' | 'served' | 'completed';
   onServeItem?: (itemId: string) => void;
+  onServeAll?: () => void;
   isServingItem?: boolean;
   onCollectPayment?: (order: Order) => void;
 }) {
@@ -2867,6 +2866,18 @@ function QSROrderCard({
             <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-600 tabular-nums">
               {servedCount}/{totalItemCount} served
             </span>
+          )}
+          {mode === 'preparing' && onServeAll && servedCount < totalItemCount && (
+            <button
+              onClick={onServeAll}
+              disabled={isServingItem}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-semibold transition-all active:scale-95 disabled:opacity-50"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+              Serve All
+            </button>
           )}
         </div>
       </div>
