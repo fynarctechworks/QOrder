@@ -64,7 +64,7 @@ export const dashboardService = {
         ORDER BY total DESC
       `,
 
-      // 5. Financial snapshot: total discount & tax from today's completed orders
+      // 5. Financial snapshot: total discount & tax from today's non-cancelled orders
       prisma.$queryRaw<[{ total_discount: number; total_tax: number; total_subtotal: number }]>`
         SELECT
           COALESCE(SUM("discount"), 0)::float AS total_discount,
@@ -73,7 +73,7 @@ export const dashboardService = {
         FROM "Order"
         WHERE "restaurantId" = ${restaurantId}
           AND "createdAt" >= ${todayStart}
-          AND "status" = 'COMPLETED'
+          AND "status" NOT IN ('CANCELLED')
           ${branchSql}
       `,
 

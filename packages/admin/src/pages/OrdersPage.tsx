@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { orderService } from '../services';
@@ -346,13 +346,7 @@ export default function OrdersPage() {
 
   const all = data?.data ?? [];
 
-  /* Keep detail panel in sync after mutations */
-  useEffect(() => {
-    if (detail) {
-      const fresh = all.find(o => o.id === detail.id);
-      if (fresh && (fresh.updatedAt !== detail.updatedAt || fresh.preparedAt !== detail.preparedAt || JSON.stringify(fresh.items.map(i => i.preparedAt)) !== JSON.stringify(detail.items.map(i => i.preparedAt)))) setDetail(fresh);
-    }
-  }, [all, detail]);
+  /* Keep detail panel in sync after mutations — moved after paginated queries */
 
   /* ── Derived data ── */
   const counts = useMemo(() => {
@@ -417,46 +411,41 @@ export default function OrdersPage() {
     payment_pending: ppTableBills,
   }), [pendingBills, preparingBills, ppTableBills]);
 
-  /* ── Completed / Cancelled lists (for grid views) ── */
-  /* Pre-compute BOTH so data is ready instantly on tab switch */
-  const completedGrid = useMemo(() => {
-    let list = all.filter(o => o.status === 'completed' && matchesSearch(o));
-    list.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  /* ── Completed / Cancelled — paginated queries ── */
+  const GRID_PAGE_SIZE = 50;
 
-    // Group completed orders by table (batch settlement within 60s)
-    const bills: TableBill[] = [];
-    const byTable = new Map<string, Order[]>();
-    for (const o of list) {
-      if (!o.tableId) {
-        // Takeaway: each order is its own bill card
-        bills.push(makeBill([o], 'completed'));
-        continue;
-      }
-      const key = o.tableId;
-      if (!byTable.has(key)) byTable.set(key, []);
-      byTable.get(key)!.push(o);
-    }
-    for (const orders of byTable.values()) {
-      orders.sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime());
-      let batch: Order[] = [orders[0]!];
-      for (let i = 1; i < orders.length; i++) {
-        const curr = orders[i]!;
-        const prev = orders[i - 1]!;
-        const gap = new Date(curr.updatedAt).getTime() - new Date(prev.updatedAt).getTime();
-        if (gap <= 60_000) {
-          batch.push(curr);
-        } else {
-          bills.push(makeBill(batch, 'completed'));
-          batch = [curr];
-        }
-      }
-      bills.push(makeBill(batch, 'completed'));
-    }
-    type GridItem = { kind: 'bill'; bill: TableBill; ts: number } | { kind: 'order'; order: Order; ts: number };
-    const items: GridItem[] = bills.map(b => ({
-      kind: 'bill' as const,
-      bill: b,
-      ts: Math.max(...b.orders.map(o => new Date(o.updatedAt).getTime())),
+  const completedQuery = useInfiniteQuery({
+    queryKey: ['orders', 'completed'],
+    queryFn: ({ pageParam = 1 }) =>
+      orderService.getAll({ status: 'COMPLETED' as unknown as OrderStatus, limit: GRID_PAGE_SIZE, page: pageParam }),
+    initialPageParam: 1,
+    getNextPageParam: (last) =>
+      last.pagination.page < last.pagination.totalPages ? last.pagination.page + 1 : undefined,
+    enabled: view === 'completed',
+    staleTime: 10_000,
+  });
+
+  const cancelledQuery = useInfiniteQuery({
+    queryKey: ['orders', 'cancelled'],
+    queryFn: ({ pageParam = 1 }) =>
+      orderService.getAll({ status: 'CANCELLED' as unknown as OrderStatus, limit: GRID_PAGE_SIZE, page: pageParam }),
+    initialPageParam: 1,
+    getNextPageParam: (last) =>
+      last.pagination.page < last.pagination.totalPages ? last.pagination.page + 1 : undefined,
+    enabled: view === 'cancelled',
+    staleTime: 10_000,
+  });
+
+  const activeGridQuery = view === 'completed' ? completedQuery : cancelledQuery;
+
+  const gridData = useMemo(() => {
+    const pages = activeGridQuery.data?.pages ?? [];
+    const list = pages.flatMap(p => p.data).filter(o => matchesSearch(o));
+    type GridItem = { kind: 'order'; order: Order; ts: number };
+    const items: GridItem[] = list.map(o => ({
+      kind: 'order' as const,
+      order: o,
+      ts: new Date(o.updatedAt).getTime(),
     }));
     const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
     const getISTDay = (ts: number) => {
@@ -467,23 +456,27 @@ export default function OrdersPage() {
       const dayA = getISTDay(a.ts);
       const dayB = getISTDay(b.ts);
       if (dayB !== dayA) return dayB.localeCompare(dayA);
-      const tokenA = a.kind === 'bill' ? Math.max(...a.bill.orders.map(o => o.tokenNumber ?? 0)) : (a.order.tokenNumber ?? 0);
-      const tokenB = b.kind === 'bill' ? Math.max(...b.bill.orders.map(o => o.tokenNumber ?? 0)) : (b.order.tokenNumber ?? 0);
+      const tokenA = a.order.tokenNumber ?? 0;
+      const tokenB = b.order.tokenNumber ?? 0;
       if (tokenB !== tokenA) return tokenB - tokenA;
       return b.ts - a.ts;
     });
-    return { items };
-  }, [all, matchesSearch]);
+    return { items, total: pages[0]?.pagination.total ?? 0 };
+  }, [activeGridQuery.data, matchesSearch]);
 
-  const cancelledGrid = useMemo(() => {
-    let list = all.filter(o => o.status === 'cancelled' && matchesSearch(o));
-    list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    type GridItem = { kind: 'bill'; bill: TableBill; ts: number } | { kind: 'order'; order: Order; ts: number };
-    const items: GridItem[] = list.map(o => ({ kind: 'order' as const, order: o, ts: new Date(o.createdAt).getTime() }));
-    return { items };
-  }, [all, matchesSearch]);
+  /* Keep detail panel in sync after mutations */
+  const allPaginatedOrders = useMemo(() => {
+    const completed = completedQuery.data?.pages.flatMap(p => p.data) ?? [];
+    const cancelled = cancelledQuery.data?.pages.flatMap(p => p.data) ?? [];
+    return [...all, ...completed, ...cancelled];
+  }, [all, completedQuery.data, cancelledQuery.data]);
 
-  const gridData = view === 'completed' ? completedGrid : cancelledGrid;
+  useEffect(() => {
+    if (detail) {
+      const fresh = allPaginatedOrders.find(o => o.id === detail.id);
+      if (fresh && (fresh.updatedAt !== detail.updatedAt || fresh.preparedAt !== detail.preparedAt || JSON.stringify(fresh.items.map(i => i.preparedAt)) !== JSON.stringify(detail.items.map(i => i.preparedAt)))) setDetail(fresh);
+    }
+  }, [allPaginatedOrders, detail]);
 
   /* ── Download CSV ── */
   const handleDownloadCsv = useCallback(async (preset: string) => {
@@ -524,16 +517,6 @@ export default function OrdersPage() {
       {/* ═══ Header ═══ */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-3">
         <div className="flex items-center gap-3">
-          {/* Create Order */}
-          <button
-            onClick={() => navigate('/create-order')}
-            className="shrink-0 rounded-xl text-sm px-4 py-2 shadow-sm bg-primary hover:bg-primary/90 text-white active:scale-[0.97] flex items-center gap-2 transition-colors whitespace-nowrap"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
-            Create Order
-          </button>
           {/* Download CSV dropdown */}
           <div className="relative">
             <button
@@ -591,10 +574,11 @@ export default function OrdersPage() {
       </div>
 
       {/* ═══ Quick Stats ═══ */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         {[
-          { label: 'Active Orders', value: String(activeCount), color: 'text-violet-600', iconBg: 'bg-violet-500', icon: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z', ring: '' },
-          { label: 'Pending Payments', value: formatCurrency(pendingPayments), color: 'text-primary', iconBg: 'bg-primary', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6', ring: pendingPayments > 0 ? 'ring-1 ring-orange-200' : '' },
+          { label: 'Pending', value: String(counts['pending'] || 0), color: 'text-amber-600', iconBg: 'bg-amber-500', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', ring: (counts['pending'] || 0) > 0 ? 'ring-1 ring-amber-200' : '' },
+          { label: 'Preparing', value: String(counts['preparing'] || 0), color: 'text-violet-600', iconBg: 'bg-violet-500', icon: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z', ring: (counts['preparing'] || 0) > 0 ? 'ring-1 ring-violet-200' : '' },
+          { label: 'Payment Pending', value: String(counts['payment_pending'] || 0), color: 'text-primary', iconBg: 'bg-primary', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6', ring: (counts['payment_pending'] || 0) > 0 ? 'ring-1 ring-orange-200' : '' },
         ].map(stat => (
           <div key={stat.label} className={`card p-4 transition-shadow ${stat.ring}`}>
             <div className="flex items-center gap-3">
@@ -616,14 +600,14 @@ export default function OrdersPage() {
       <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
         {([
           { key: 'board' as const, label: 'Order Board', dot: 'bg-violet-500', count: (counts['pending'] || 0) + (counts['preparing'] || 0) + (counts['payment_pending'] || 0) },
-          { key: 'completed' as const, label: 'Completed', dot: 'bg-gray-400', count: counts['completed'] || 0 },
-          { key: 'cancelled' as const, label: 'Cancelled', dot: 'bg-red-500', count: counts['cancelled'] || 0 },
+          { key: 'completed' as const, label: 'Completed', dot: 'bg-gray-400', count: completedQuery.data?.pages[0]?.pagination.total ?? counts['completed'] ?? 0 },
+          { key: 'cancelled' as const, label: 'Cancelled', dot: 'bg-red-500', count: cancelledQuery.data?.pages[0]?.pagination.total ?? counts['cancelled'] ?? 0 },
         ]).map(tab => {
           const active = view === tab.key;
           return (
             <button
               key={tab.key}
-              onClick={() => { setView(tab.key); refetch(); }}
+              onClick={() => { setView(tab.key); if (tab.key === 'board') refetch(); }}
               className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-medium whitespace-nowrap transition-all ${
                 active
                   ? 'bg-primary text-white shadow-sm'
@@ -777,38 +761,43 @@ export default function OrdersPage() {
             );
           })}
         </div>
+      ) : activeGridQuery.isLoading ? (
+        <OrderSkeleton />
       ) : (gridData.items.length === 0) ? (
         <EmptyState search={search} view={view as 'completed' | 'cancelled'} />
       ) : (
         /* ── Card grid for completed / cancelled ── */
+        <>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           <AnimatePresence mode="popLayout">
-            {gridData.items.map(item =>
-              item.kind === 'bill' ? (
-                <TableBillCard
-                  key={`bill-${item.bill.tableId}-${item.bill.status}-${item.bill.orders[0]?.id}`}
-                  bill={item.bill}
-                  onAdvanceAll={() => {}}
-                  onSelectOrder={o => setDetail(o)}
-                  isAdvancing={false}
-                />
-              ) : (
+            {gridData.items.map(item => (
                 <OrderCard
                   key={item.order.id}
                   order={item.order}
                   onSelect={() => setDetail(item.order)}
                   onAdvance={() => {
                     const ns = nextStatus(item.order.status);
-                    // Block advancing from preparing unless ALL items are kitchen-ready
                     if (item.order.status === 'preparing' && !item.order.items.every(i => i.preparedAt)) return;
                     if (ns) advanceMut.mutate({ id: item.order.id, status: ns });
                   }}
                   isAdvancing={advanceMut.isPending}
                 />
-              )
-            )}
+            ))}
           </AnimatePresence>
         </div>
+        {activeGridQuery.hasNextPage && (
+          <div className="flex justify-center pt-4">
+            <button
+              onClick={() => activeGridQuery.fetchNextPage()}
+              disabled={activeGridQuery.isFetchingNextPage}
+              className="px-6 py-2.5 text-sm font-medium rounded-xl bg-surface-elevated hover:bg-gray-100 text-text-secondary border border-border transition-colors"
+            >
+              {activeGridQuery.isFetchingNextPage ? 'Loading...' : `Load More (${gridData.items.length} of ${gridData.total})`}
+            </button>
+          </div>
+        )}
+        </>
+
       )}
 
       {/* ═══ Running Tables ═══ */}
@@ -953,13 +942,22 @@ function TableBillCard({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
               </svg>
               <p className="text-sm font-bold text-text-primary">{bill.tableName}</p>
-              {bill.orders.length === 1 && (
-                <span className="inline-flex items-center font-mono text-sm font-extrabold text-orange-700 bg-orange-50 border border-orange-100 rounded-md px-2 py-0.5 leading-none tracking-wide">
-                  {bill.orders[0]?.tokenNumber != null
-                    ? `Token #${String(bill.orders[0]?.tokenNumber).padStart(3, '0')}`
-                    : `#${bill.orders[0]?.orderNumber || bill.orders[0]?.id.slice(-6).toUpperCase()}`}
-                </span>
-              )}
+              {(() => {
+                const tokens = bill.orders
+                  .map(o => o.tokenNumber)
+                  .filter((t): t is number => t != null)
+                  .sort((a, b) => a - b);
+                const label = tokens.length > 0
+                  ? (tokens.length === 1
+                      ? `Token #${String(tokens[0]).padStart(3, '0')}`
+                      : `Tokens ${tokens.map(t => `#${String(t).padStart(3, '0')}`).join(', ')}`)
+                  : `#${bill.orders[0]?.orderNumber || bill.orders[0]?.id.slice(-6).toUpperCase()}`;
+                return (
+                  <span className="inline-flex items-center font-mono text-sm font-extrabold text-orange-700 bg-orange-50 border border-orange-100 rounded-md px-2 py-0.5 leading-none tracking-wide">
+                    {label}
+                  </span>
+                );
+              })()}
               {bill.orders.some(o => o.isPaid === false) && (
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">
                   UNPAID

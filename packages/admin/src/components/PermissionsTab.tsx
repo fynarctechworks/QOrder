@@ -7,7 +7,7 @@ import Toggle from './Toggle';
 
 /* ═══════════════════════ Types ══════════════════════════ */
 
-export type PageKey = 'dashboard' | 'create-order' | 'qsr' | 'pan-corner' | 'orders' | 'menu' | 'tables' | 'analytics' | 'inventory' | 'kitchen' | 'crm' | 'credit' | 'reports' | 'staff-management' | 'tv-menu';
+export type PageKey = 'dashboard' | 'qsr' | 'pan-corner' | 'orders' | 'menu' | 'tables' | 'analytics' | 'inventory' | 'kitchen' | 'crm' | 'credit' | 'reports' | 'staff-management' | 'tv-menu';
 
 /** Base roles always present + optional custom roleTitle keys */
 export interface RolePermissions {
@@ -23,12 +23,6 @@ export const ALL_PAGES: { key: PageKey; label: string; description: string; icon
     label: 'Dashboard',
     description: 'Overview stats and running tables',
     icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6z',
-  },
-  {
-    key: 'create-order',
-    label: 'Create Order',
-    description: 'Create new orders from the POS',
-    icon: 'M12 4v16m8-8H4',
   },
   {
     key: 'qsr',
@@ -112,9 +106,9 @@ export const ALL_PAGES: { key: PageKey; label: string; description: string; icon
 
 /** Default permissions for each role */
 export const DEFAULT_PERMISSIONS: RolePermissions = {
-  ADMIN: ['dashboard', 'create-order', 'qsr', 'pan-corner', 'orders', 'menu', 'tables', 'analytics', 'inventory', 'kitchen', 'crm', 'credit', 'reports', 'staff-management', 'tv-menu'],
-  MANAGER: ['dashboard', 'create-order', 'qsr', 'pan-corner', 'orders', 'menu', 'tables', 'analytics', 'inventory', 'kitchen', 'crm', 'credit', 'reports', 'tv-menu'],
-  STAFF: ['create-order', 'qsr', 'pan-corner', 'orders', 'tables', 'kitchen'],
+  ADMIN: ['dashboard', 'qsr', 'pan-corner', 'orders', 'menu', 'tables', 'analytics', 'inventory', 'kitchen', 'crm', 'credit', 'reports', 'staff-management', 'tv-menu'],
+  MANAGER: ['dashboard', 'qsr', 'pan-corner', 'orders', 'menu', 'tables', 'analytics', 'inventory', 'kitchen', 'crm', 'credit', 'reports', 'tv-menu'],
+  STAFF: ['qsr', 'pan-corner', 'orders', 'tables', 'kitchen'],
 };
 
 const ROLE_LABELS: Record<string, string> = {

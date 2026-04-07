@@ -13,7 +13,6 @@ const LoginPage = lazy(() => import('./pages/LoginPage'));
 const SignUpPage = lazy(() => import('./pages/SignUpPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const OrdersPage = lazy(() => import('./pages/OrdersPage'));
-const CreateOrderPage = lazy(() => import('./pages/CreateOrderPage'));
 const MenuPage = lazy(() => import('./pages/MenuPage'));
 const TablesPage = lazy(() => import('./pages/TablesPage'));
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'));
@@ -63,11 +62,6 @@ function App() {
               <Route path="dashboard" element={
                 <ProtectedRoute pageKey="dashboard">
                   <DashboardPage />
-                </ProtectedRoute>
-              } />
-              <Route path="create-order" element={
-                <ProtectedRoute pageKey="create-order">
-                  <CreateOrderPage />
                 </ProtectedRoute>
               } />
               <Route path="qsr" element={

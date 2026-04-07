@@ -1228,38 +1228,42 @@ export default function QSRPage() {
       {showOrderBoard ? (
         /* ═══ QSR Order Board — 3-Column Kanban ═══ */
         <div className="flex-1 flex flex-col overflow-hidden bg-background">
-          {/* Stats + Search Bar */}
-          <div className="shrink-0 px-3 md:px-5 py-3 bg-white border-b border-gray-200">
-            <div className="flex flex-col md:flex-row md:items-center gap-3">
-              {/* Quick stat pills */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-violet-50 text-violet-700">
-                  <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />
-                  Preparing {boardCounts.preparing}
-                </span>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-orange-50 text-primary">
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                  Served {boardCounts.served}
-                </span>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  Completed {boardCounts.completed}
-                </span>
-                <span className="text-xs text-text-muted font-medium px-2 tabular-nums">Revenue: {formatCurrency(qsrTotalRevenue)}</span>
-              </div>
-              {/* Search */}
-              <div className="relative md:ml-auto md:w-72">
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input
-                  type="text"
-                  placeholder="Search token, name, item…"
-                  value={boardSearch}
-                  onChange={e => setBoardSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                />
-              </div>
+          {/* Stats Cards + Search */}
+          <div className="shrink-0 px-3 md:px-5 py-3 bg-white border-b border-gray-200 space-y-3">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+              {([
+                { label: 'Preparing', value: String(boardCounts.preparing), color: 'text-violet-600', iconBg: 'bg-violet-500', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', ring: boardCounts.preparing > 0 ? 'ring-1 ring-violet-200' : '' },
+                { label: 'Served', value: String(boardCounts.served), color: 'text-primary', iconBg: 'bg-primary', icon: 'M5 13l4 4L19 7', ring: boardCounts.served > 0 ? 'ring-1 ring-orange-200' : '' },
+                { label: 'Completed', value: String(boardCounts.completed), color: 'text-emerald-600', iconBg: 'bg-emerald-500', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z', ring: '' },
+                { label: 'Revenue', value: formatCurrency(qsrTotalRevenue), color: 'text-emerald-600', iconBg: 'bg-emerald-500', icon: 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6', ring: '' },
+                { label: 'Yet to Collect', value: formatCurrency(unpaidOrders.reduce((s, o) => s + o.total, 0)), color: 'text-amber-600', iconBg: 'bg-amber-500', icon: 'M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z', ring: unpaidOrders.length > 0 ? 'ring-1 ring-amber-200' : '' },
+              ]).map(stat => (
+                <div key={stat.label} className={`card p-4 transition-shadow ${stat.ring}`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-xl ${stat.iconBg} flex items-center justify-center shrink-0 shadow-sm`}>
+                      <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                        <path d={stat.icon} />
+                      </svg>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[11px] text-text-muted font-medium uppercase tracking-wider leading-none">{stat.label}</p>
+                      <p className={`text-xl font-bold ${stat.color} mt-1 leading-none tabular-nums`}>{stat.value}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="relative md:w-72 md:ml-auto">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search token, name, item..."
+                value={boardSearch}
+                onChange={e => setBoardSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+              />
             </div>
           </div>
 

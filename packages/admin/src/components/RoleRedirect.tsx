@@ -7,7 +7,6 @@ import { DEFAULT_PERMISSIONS, type PageKey, type RolePermissions } from './Permi
 /** Maps page keys to their route paths */
 const PAGE_TO_PATH: Record<PageKey, string> = {
   dashboard: '/dashboard',
-  'create-order': '/create-order',
   qsr: '/qsr',
   'pan-corner': '/pan-corner',
   orders: '/orders',
