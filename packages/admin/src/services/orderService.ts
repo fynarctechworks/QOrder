@@ -118,17 +118,6 @@ export const orderService = {
     return mapApiOrder(raw);
   },
 
-  async createOrder(data: {
-    tableId?: string;
-    items: Array<{ menuItemId: string; quantity: number; notes?: string; modifiers?: Array<{ modifierId: string }> }>;
-    customerName?: string;
-    customerPhone?: string;
-    notes?: string;
-  }): Promise<Order> {
-    const raw = await apiClient.post<Record<string, unknown>>('/orders/cashier', data);
-    return mapApiOrder(raw);
-  },
-
   /** QSR order — created directly as PREPARING (paid at counter, or pay later) */
   async createQSROrder(data: {
     items: Array<{ menuItemId: string; quantity: number; notes?: string; modifiers?: Array<{ modifierId: string }> }>;

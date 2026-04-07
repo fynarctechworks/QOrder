@@ -262,42 +262,6 @@ export const orderController = {
     }
   },
 
-// Cashier/admin order creation — goes straight to PREPARING
-  async createCashierOrder(
-    req: Request<unknown, unknown, CreateOrderInput>,
-    res: Response<ApiResponse>,
-    next: NextFunction
-  ) {
-    try {
-      const restaurantId = req.restaurantId!;
-      const restaurantData = (req as unknown as { restaurantData?: RestaurantMiddlewareData }).restaurantData;
-      const order = await orderService.createOrder(restaurantId, req.body, restaurantData, 'PREPARING', req.branchId);
-
-      // Fetch full order data for admin response + socket
-      const fullOrderData = await orderService.getOrderById(order.id, restaurantId);
-      const fullOrder = transformOrder(fullOrderData as unknown as RawOrder);
-
-      // Emit new order to restaurant room via Socket.io
-      const io = getIO();
-      if (io) {
-        const payload = orderService.toSocketPayload(fullOrderData);
-        io.to(`restaurant:${restaurantId}`).emit('order:new', payload);
-        io.to(`restaurant:${restaurantId}`).emit('order:newFull', fullOrder);
-
-        if (order.tableId) {
-          io.to(`restaurant:${restaurantId}`).emit('table:updated', { tableId: order.tableId });
-        }
-      }
-
-      res.status(201).json({
-        success: true,
-        data: fullOrder,
-      });
-    } catch (error) {
-      next(error);
-    }
-  },
-
   // QSR order creation — goes to PREPARING (items served individually, then completed)
   async createQSROrder(
     req: Request<unknown, unknown, CreateOrderInput>,
@@ -309,7 +273,7 @@ export const orderController = {
       const restaurantData = (req as unknown as { restaurantData?: RestaurantMiddlewareData }).restaurantData;
       const serviceType = (req.body as Record<string, unknown>).serviceType as string | undefined;
       const isPaid = (req.body as Record<string, unknown>).isPaid !== false; // default true
-      const orderType = serviceType === 'takeaway' ? 'QSR_TAKEAWAY' : 'QSR';
+      const orderType = serviceType === 'delivery' ? 'QSR_DELIVERY' : serviceType === 'takeaway' ? 'QSR_TAKEAWAY' : 'QSR';
       const order = await orderService.createOrder(restaurantId, req.body, restaurantData, 'PREPARING', req.branchId, orderType, isPaid);
 
       // Fetch full order data for admin response + socket

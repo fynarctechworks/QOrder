@@ -958,7 +958,7 @@ export const orderService = {
       prisma.order.aggregate({
         where: {
           ...where,
-          status: { in: ['COMPLETED'] },
+          NOT: { status: 'CANCELLED' as const },
         },
         _sum: { total: true },
       }),
@@ -978,29 +978,42 @@ export const orderService = {
     const now = new Date();
     let startDate: Date;
 
+    // IST = UTC+5:30. Compute "today in IST" then convert back to UTC for Prisma.
+    const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+    const istNow = new Date(now.getTime() + IST_OFFSET_MS);
+    const istYear = istNow.getUTCFullYear();
+    const istMonth = istNow.getUTCMonth();
+    const istDate = istNow.getUTCDate();
+    const istDay = istNow.getUTCDay(); // 0=Sun..6=Sat
+
     switch (period) {
-      case 'week':
-        startDate = new Date(now);
-        startDate.setDate(startDate.getDate() - 7);
-        startDate.setHours(0, 0, 0, 0);
+      case 'week': {
+        // Start of current week (Monday) in IST
+        const daysFromMonday = (istDay + 6) % 7;
+        const weekStartIST = new Date(Date.UTC(istYear, istMonth, istDate - daysFromMonday));
+        startDate = new Date(weekStartIST.getTime() - IST_OFFSET_MS);
         break;
-      case 'month':
-        startDate = new Date(now);
-        startDate.setMonth(startDate.getMonth() - 1);
-        startDate.setHours(0, 0, 0, 0);
+      }
+      case 'month': {
+        // 1st of current month in IST
+        const monthStartIST = new Date(Date.UTC(istYear, istMonth, 1));
+        startDate = new Date(monthStartIST.getTime() - IST_OFFSET_MS);
         break;
-      default: // day
-        startDate = new Date(now);
-        startDate.setHours(0, 0, 0, 0);
+      }
+      default: {
+        // Start of today in IST
+        const todayStartIST = new Date(Date.UTC(istYear, istMonth, istDate));
+        startDate = new Date(todayStartIST.getTime() - IST_OFFSET_MS);
+      }
     }
 
     const branchFilter = branchId ? { OR: [{ branchId }, { branchId: null }] } : {};
 
-    const completedWhere = {
+    const revenueWhere = {
       restaurantId,
       ...branchFilter,
       createdAt: { gte: startDate, lte: now },
-      status: { in: ['COMPLETED' as const] },
+      NOT: { status: 'CANCELLED' as const },
     };
 
     const allWhere = {
@@ -1009,11 +1022,11 @@ export const orderService = {
       createdAt: { gte: startDate, lte: now },
     };
 
-    const [totalOrders, completedOrderCount, completedRevenue, dailyRevenueRaw, topItemsRaw, hourlyRaw] = await Promise.all([
+    const [totalOrders, revenueOrderCount, revenueAggregate, dailyRevenueRaw, topItemsRaw, hourlyRaw] = await Promise.all([
       prisma.order.count({ where: allWhere }),
-      prisma.order.count({ where: completedWhere }),
+      prisma.order.count({ where: revenueWhere }),
       prisma.order.aggregate({
-        where: completedWhere,
+        where: revenueWhere,
         _sum: { total: true },
       }),
       prisma.$queryRaw<Array<{ date: Date; revenue: number; orders: bigint }>>`
@@ -1024,7 +1037,7 @@ export const orderService = {
         FROM "Order"
         WHERE "restaurantId" = ${restaurantId}
           AND "createdAt" >= ${startDate}
-          AND "status" IN ('COMPLETED')
+          AND "status" NOT IN ('CANCELLED')
           ${branchId ? Prisma.sql`AND ("branchId" = ${branchId} OR "branchId" IS NULL)` : Prisma.empty}
         GROUP BY DATE(("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata')
         ORDER BY date ASC
@@ -1036,7 +1049,7 @@ export const orderService = {
             restaurantId,
             ...branchFilter,
             createdAt: { gte: startDate },
-            status: { in: ['COMPLETED'] },
+            NOT: { status: 'CANCELLED' as const },
           },
         },
         _sum: { quantity: true, totalPrice: true },
@@ -1059,8 +1072,8 @@ export const orderService = {
       `,
     ]);
 
-    const totalRevenue = Number(completedRevenue._sum.total || 0);
-    const averageOrderValue = completedOrderCount > 0 ? totalRevenue / completedOrderCount : 0;
+    const totalRevenue = Number(revenueAggregate._sum.total || 0);
+    const averageOrderValue = revenueOrderCount > 0 ? totalRevenue / revenueOrderCount : 0;
 
     // Get item details for top items
     const itemIds = topItemsRaw.map(i => i.menuItemId).filter((id): id is string => id !== null);
@@ -1119,7 +1132,7 @@ export const orderService = {
       FROM "Order"
       WHERE "restaurantId" = ${restaurantId}
         AND "createdAt" >= ${startDate}
-        AND "status" IN ('COMPLETED')
+        AND "status" NOT IN ('CANCELLED')
         ${branchId ? Prisma.sql`AND ("branchId" = ${branchId} OR "branchId" IS NULL)` : Prisma.empty}
       GROUP BY DATE(("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Kolkata')
       ORDER BY date ASC
@@ -1133,7 +1146,7 @@ export const orderService = {
           restaurantId,
           ...branchFilter,
           createdAt: { gte: startDate },
-          status: { in: ['COMPLETED'] },
+          NOT: { status: 'CANCELLED' as const },
         },
       },
       _sum: { quantity: true, totalPrice: true },
@@ -1263,11 +1276,11 @@ export const orderService = {
   async getAdvancedAnalytics(restaurantId: string, startDate: Date, endDate: Date, branchId?: string | null) {
     const branchFilter = branchId ? { OR: [{ branchId }, { branchId: null }] } : {};
 
-    const completedWhere = {
+    const revenueWhere = {
       restaurantId,
       ...branchFilter,
       createdAt: { gte: startDate, lte: endDate },
-      status: { in: ['COMPLETED' as const] },
+      NOT: { status: 'CANCELLED' as const },
     };
 
     const [categoryRevenue, paymentMethodBreakdown, weekdayBreakdown, orderStatusCounts] = await Promise.all([
@@ -1286,7 +1299,7 @@ export const orderService = {
         WHERE o."restaurantId" = ${restaurantId}
           AND o."createdAt" >= ${startDate}
           AND o."createdAt" <= ${endDate}
-          AND o."status" IN ('COMPLETED')
+          AND o."status" NOT IN ('CANCELLED')
           ${branchId ? Prisma.sql`AND (o."branchId" = ${branchId} OR o."branchId" IS NULL)` : Prisma.empty}
         GROUP BY c."id", c."name"
         ORDER BY revenue DESC
@@ -1319,7 +1332,7 @@ export const orderService = {
         WHERE "restaurantId" = ${restaurantId}
           AND "createdAt" >= ${startDate}
           AND "createdAt" <= ${endDate}
-          AND "status" IN ('COMPLETED')
+          AND "status" NOT IN ('CANCELLED')
           ${branchId ? Prisma.sql`AND ("branchId" = ${branchId} OR "branchId" IS NULL)` : Prisma.empty}
         GROUP BY EXTRACT(DOW FROM "createdAt")
         ORDER BY weekday ASC

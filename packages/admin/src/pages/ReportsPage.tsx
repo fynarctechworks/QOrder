@@ -240,9 +240,11 @@ function downloadExcel(reportLabel: string, columns: ColDef[], rows: any[], form
   XLSX.writeFile(wb, `${reportLabel.replace(/\s+/g, '_')}_Report.xlsx`);
 }
 
+const toLocalDateStr = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const today = new Date();
-const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
-const todayStr = today.toISOString().slice(0, 10);
+const monthStart = toLocalDateStr(new Date(today.getFullYear(), today.getMonth(), 1));
+const todayStr = toLocalDateStr(today);
 
 type ReportKey = string;
 
@@ -342,9 +344,15 @@ export default function ReportsPage() {
         <div className="flex gap-1.5">
           {[
             { label: 'Today', fn: () => { setFromDate(todayStr); setToDate(todayStr); } },
-            { label: '7D', fn: () => { const d = new Date(); d.setDate(d.getDate() - 7); setFromDate(d.toISOString().slice(0, 10)); setToDate(todayStr); } },
-            { label: '30D', fn: () => { const d = new Date(); d.setDate(d.getDate() - 30); setFromDate(d.toISOString().slice(0, 10)); setToDate(todayStr); } },
-            { label: 'MTD', fn: () => { setFromDate(monthStart); setToDate(todayStr); } },
+            { label: 'Week', fn: () => {
+                const d = new Date();
+                const daysFromMonday = (d.getDay() + 6) % 7;
+                d.setDate(d.getDate() - daysFromMonday);
+                setFromDate(toLocalDateStr(d));
+                setToDate(todayStr);
+              } },
+            { label: 'Month', fn: () => { setFromDate(monthStart); setToDate(todayStr); } },
+            { label: 'All Time', fn: () => { setFromDate('2020-01-01'); setToDate(todayStr); } },
           ].map(q => (
             <button key={q.label} onClick={q.fn}
               className="px-3 py-2 text-xs font-medium rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">

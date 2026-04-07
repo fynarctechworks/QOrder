@@ -26,15 +26,6 @@ const navigation = [
     ),
   },
   {
-    name: 'Create Order',
-    path: '/create-order',
-    icon: (
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-      </svg>
-    ),
-  },
-  {
     name: 'QSR',
     path: '/qsr',
     icon: (
@@ -325,7 +316,6 @@ function DashboardLayoutInner() {
   // Map nav paths to permission page keys
   const pathToPageKey: Record<string, PageKey> = {
     '/dashboard': 'dashboard',
-    '/create-order': 'create-order',
     '/qsr': 'qsr',
     '/pan-corner': 'pan-corner',
     '/orders': 'orders',
@@ -507,7 +497,7 @@ function DashboardLayoutInner() {
                 <NavLink
                   to={item.path}
                   onClick={() => {
-                    if (isMobile || item.path === '/create-order' || item.path === '/qsr' || item.path === '/pan-corner') {
+                    if (isMobile || item.path === '/qsr' || item.path === '/pan-corner') {
                       setIsSidebarHidden(true);
                     }
                   }}

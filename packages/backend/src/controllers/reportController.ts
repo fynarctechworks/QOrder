@@ -1,21 +1,40 @@
 import type { Request, Response, NextFunction } from 'express';
 import { reportService } from '../services/reportService.js';
 
-const MAX_DATE_RANGE_DAYS = 366;
+const MAX_DATE_RANGE_DAYS = 3650;
 
 function parseDateRange(query: Record<string, unknown>) {
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
   const now = new Date();
-  const startDate = query.startDate ? new Date(query.startDate as string) : new Date(now.getFullYear(), now.getMonth(), 1);
-  const endDate = query.endDate ? new Date(query.endDate as string) : now;
   const branchId = query.branchId as string | undefined;
+
+  // Parse "YYYY-MM-DD" as IST start-of-day → UTC. Falls back to native Date parsing for ISO strings.
+  const parseISTDate = (s: string, endOfDay = false): Date => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if (m) {
+      const [, y, mo, d] = m;
+      const istMs = Date.UTC(Number(y), Number(mo) - 1, Number(d));
+      const utcMs = istMs - IST_OFFSET_MS;
+      return new Date(endOfDay ? utcMs + 24 * 60 * 60 * 1000 - 1 : utcMs);
+    }
+    const dt = new Date(s);
+    if (endOfDay) dt.setUTCHours(23, 59, 59, 999);
+    return dt;
+  };
+
+  const startDate = query.startDate
+    ? parseISTDate(query.startDate as string, false)
+    : (() => {
+        const istNow = new Date(now.getTime() + IST_OFFSET_MS);
+        const istMs = Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), 1);
+        return new Date(istMs - IST_OFFSET_MS);
+      })();
+  const endDate = query.endDate ? parseISTDate(query.endDate as string, true) : now;
 
   // Validate parsed dates
   if (isNaN(startDate.getTime())) throw Object.assign(new Error('Invalid startDate'), { status: 400 });
   if (isNaN(endDate.getTime())) throw Object.assign(new Error('Invalid endDate'), { status: 400 });
 
-  // Make endDate cover the full day (otherwise dates like '2026-03-05' resolve to midnight,
-  // excluding all orders during that day)
-  endDate.setUTCHours(23, 59, 59, 999);
   if (startDate > endDate) throw Object.assign(new Error('startDate must be before endDate'), { status: 400 });
 
   // Cap range to prevent excessively large queries

@@ -138,15 +138,6 @@ router.post(
   orderController.createOrder
 );
 
-// Cashier/admin order creation (authenticated) — goes straight to PREPARING
-router.post(
-  '/cashier',
-  authenticate,
-  resolveBranch,
-  validate(createOrderSchema),
-  orderController.createCashierOrder
-);
-
 // QSR order creation (authenticated) — pre-paid, goes straight to COMPLETED
 router.post(
   '/qsr',
