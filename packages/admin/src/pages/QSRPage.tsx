@@ -1916,7 +1916,7 @@ export default function QSRPage() {
 
             <div className="flex flex-col sm:flex-row gap-3 max-w-sm mx-auto">
               <button
-                onClick={() => { const lUrl = (settings?.settings as any)?.qrLogoUrl || (settings?.settings as any)?.printLogoUrl; const rLUrl = lUrl ? (lUrl.startsWith('/uploads') ? `${UPLOAD_BASE}${lUrl}` : lUrl) : undefined; const rOLabel = completedOrder.orderType === 'QSR_TAKEAWAY' ? 'Takeaway' : completedOrder.tableName || 'Dine In'; const rParcel = completedOrder.orderType === 'QSR_TAKEAWAY' ? Math.max(0, Math.round((completedOrder.total - completedOrder.subtotal + completedOrder.discount - completedOrder.tax) * 100) / 100) : 0; printReceipts(completedOrder, selectedQuickMethod || 'CASH', formatCurrency, restaurantName, buildItemStationMap(), rOLabel, rParcel || undefined, rLUrl); }}
+                onClick={() => { const lUrl = (settings?.settings as any)?.qrLogoUrl || (settings?.settings as any)?.printLogoUrl; const rLUrl = lUrl ? (lUrl.startsWith('/uploads') ? `${UPLOAD_BASE}${lUrl}` : lUrl) : undefined; const rOLabel = completedOrder.orderType === 'QSR_DELIVERY' ? 'Door Delivery' : completedOrder.orderType === 'QSR_TAKEAWAY' ? 'Takeaway' : completedOrder.tableName || 'Dine In'; const rParcel = (completedOrder.orderType === 'QSR_TAKEAWAY' || completedOrder.orderType === 'QSR_DELIVERY') ? Math.max(0, Math.round((completedOrder.total - completedOrder.subtotal + completedOrder.discount - completedOrder.tax) * 100) / 100) : 0; printReceipts(completedOrder, selectedQuickMethod || 'CASH', formatCurrency, restaurantName, buildItemStationMap(), rOLabel, rParcel || undefined, rLUrl); }}
                 className="flex-1 px-5 py-3 bg-white border-2 border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-800 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 text-sm"
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
@@ -2603,7 +2603,7 @@ export default function QSRPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-gray-900">
-                      {order.customerName || (order.orderType === 'QSR_TAKEAWAY' ? 'Takeaway' : 'Dine In')}
+                      {order.customerName || (order.orderType === 'QSR_DELIVERY' ? 'Door Delivery' : order.orderType === 'QSR_TAKEAWAY' ? 'Takeaway' : 'Dine In')}
                     </span>
                     {order.customerPhone && (
                       <span className="text-xs text-text-muted">{order.customerPhone}</span>
@@ -2894,10 +2894,10 @@ function QSROrderCard({
           </div>
           <div className="min-w-0">
             <p className="text-sm font-bold text-gray-900 truncate">
-              {order.customerName || order.tableName || 'Dine In'}
+              {order.customerName || order.tableName || (order.orderType === 'QSR_DELIVERY' ? 'Door Delivery' : order.orderType === 'QSR_TAKEAWAY' ? 'Takeaway' : 'Dine In')}
             </p>
             <p className="text-[11px] text-gray-400 mt-0.5">
-              {order.customerName && <span className="font-semibold text-gray-600">{order.tableName || 'Dine In'}</span>}
+              {order.customerName && <span className="font-semibold text-gray-600">{order.tableName || (order.orderType === 'QSR_DELIVERY' ? 'Door Delivery' : order.orderType === 'QSR_TAKEAWAY' ? 'Takeaway' : 'Dine In')}</span>}
               {order.customerName && ' • '}
               {timeAgo(order.createdAt)}
               {order.customerPhone && ` • ${order.customerPhone}`}
