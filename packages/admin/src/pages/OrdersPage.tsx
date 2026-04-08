@@ -340,7 +340,7 @@ export default function OrdersPage() {
     return () => { u1(); u2(); u3(); u4(); u5(); };
   }, [onNewOrder, onNewOrderFull, onOrderStatusUpdate, onKitchenReady, onItemKitchenReady, qc]);
 
-  const all = data?.data ?? [];
+  const all = (data?.data ?? []).filter(o => o.orderType !== 'QSR' && o.orderType !== 'QSR_TAKEAWAY' && o.orderType !== 'QSR_DELIVERY');
 
   /* Keep detail panel in sync after mutations — moved after paginated queries */
 
@@ -426,7 +426,7 @@ export default function OrdersPage() {
 
   const gridData = useMemo(() => {
     const pages = activeGridQuery.data?.pages ?? [];
-    const list = pages.flatMap(p => p.data).filter(o => matchesSearch(o));
+    const list = pages.flatMap(p => p.data).filter(o => o.orderType !== 'QSR' && o.orderType !== 'QSR_TAKEAWAY' && o.orderType !== 'QSR_DELIVERY' && matchesSearch(o));
     type GridItem = { kind: 'order'; order: Order; ts: number };
     const items: GridItem[] = list.map(o => ({
       kind: 'order' as const,
