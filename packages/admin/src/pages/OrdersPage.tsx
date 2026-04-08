@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -33,8 +32,6 @@ const SM: Record<OrderStatus, {
   completed:       { label: 'Completed',       btnLabel: 'Complete',        dot: 'bg-gray-400',    bg: 'bg-gray-100',   text: 'text-gray-600',    border: 'border-l-gray-300',    btnStyle: 'bg-gray-500 hover:bg-gray-600 text-white shadow-gray-200/50',     btnIcon: 'M5 13l4 4L19 7' },
   cancelled:       { label: 'Cancelled',       btnLabel: 'Cancel',          dot: 'bg-red-500',     bg: 'bg-red-50',     text: 'text-red-700',     border: 'border-l-red-400',     btnStyle: 'bg-red-500 hover:bg-red-600 text-white shadow-red-200/50',       btnIcon: 'M6 18L18 6M6 6l12 12' },
 };
-
-const ACTIVE_STATUSES: OrderStatus[] = ['pending', 'preparing'];
 
 /* ═══════════════════════════ Helpers ═════════════════════════ */
 
@@ -102,7 +99,6 @@ const BOARD_COL_META: { key: OrderStatus; label: string; dot: string; headerBg: 
 
 export default function OrdersPage() {
   const qc = useQueryClient();
-  const navigate = useNavigate();
   const formatCurrency = useCurrency();
   const { onNewOrder, onNewOrderFull, onOrderStatusUpdate, onKitchenReady, onItemKitchenReady, kdsCount } = useSocket();
   // 'board' shows the 3-column Kanban; 'completed'/'cancelled' show card grids
@@ -354,16 +350,6 @@ export default function OrdersPage() {
     for (const o of all) m[o.status] = (m[o.status] || 0) + 1;
     return m;
   }, [all]);
-
-  const activeCount = useMemo(
-    () => all.filter(o => ACTIVE_STATUSES.includes(o.status)).length,
-    [all],
-  );
-
-  const pendingPayments = useMemo(
-    () => all.filter(o => o.status === 'payment_pending').reduce((s, o) => s + o.total, 0),
-    [all],
-  );
 
   /* ── Search helper ── */
   const matchesSearch = useCallback((o: Order) => {
