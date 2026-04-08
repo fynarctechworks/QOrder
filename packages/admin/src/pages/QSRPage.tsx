@@ -138,7 +138,10 @@ function printReceipts(order: Order, paymentMethod: PaymentMethod, formatCurrenc
     return `<div class="k-item"><span class="k-qty">${item.quantity}x</span><div class="k-name">${escapeHtml(item.menuItemName)}${mods ? `<div class="k-mods">${escapeHtml(mods)}</div>` : ''}</div></div>`;
   }).join('');
 
-  const typeLabel = orderLabel === 'Takeaway' ? 'Takeaway' : 'Dine In';
+  const typeLabel =
+    orderLabel === 'Takeaway' ? 'Takeaway' :
+    orderLabel === 'Door Delivery' ? 'Door Delivery' :
+    'Dine In';
 
   const tokenNum = escapeHtml(order.tokenNumber ? String(order.tokenNumber).padStart(3, '0') : order.orderNumber);
 
@@ -284,8 +287,10 @@ export default function QSRPage() {
   const creditSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingCreditRef = useRef<{ accountId: string; amount: number } | null>(null);
 
-  // Mode selection (null = show picker screen)
-  const [, setSelectedMode] = useState<'dinein' | 'takeaway'>('dinein');
+  // Mode selection: dine-in / takeaway / door delivery
+  const [selectedMode, setSelectedMode] = useState<'dinein' | 'takeaway' | 'delivery'>('dinein');
+  const [showModeDropdown, setShowModeDropdown] = useState(false);
+  const modeDropdownRef = useRef<HTMLDivElement>(null);
 
   // Table selection state
   const [selectedTable, setSelectedTable] = useState('');
@@ -361,7 +366,7 @@ export default function QSRPage() {
     const served: Order[] = [];     // orders with at least one served item but not all
     const completed: Order[] = [];
     for (const o of all) {
-      if (o.orderType !== 'QSR' && o.orderType !== 'QSR_TAKEAWAY') continue;
+      if (o.orderType !== 'QSR' && o.orderType !== 'QSR_TAKEAWAY' && o.orderType !== 'QSR_DELIVERY') continue;
       if (new Date(o.createdAt) < todayStart) continue;
       if (!matchesBoardSearch(o)) continue;
       if (o.status === 'cancelled') continue;
@@ -408,7 +413,7 @@ export default function QSRPage() {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     return all.filter(o =>
-      (o.orderType === 'QSR' || o.orderType === 'QSR_TAKEAWAY') &&
+      (o.orderType === 'QSR' || o.orderType === 'QSR_TAKEAWAY' || o.orderType === 'QSR_DELIVERY') &&
       o.isPaid === false &&
       o.status !== 'cancelled' &&
       new Date(o.createdAt) >= todayStart
@@ -549,8 +554,14 @@ export default function QSRPage() {
       isPayLaterRef.current = false;
       // Auto-print customer token + station KOTs
       const stationMap = buildItemStationMap();
-      const _tbl = selectedTable && selectedTable !== 'takeaway' ? tables.find(t => t.id === selectedTable) : null;
-      const orderLabel = selectedTable === 'takeaway' ? 'Takeaway' : _tbl ? (_tbl.name ? `${_tbl.name} (${_tbl.number})` : `Table ${_tbl.number}`) : 'Dine In';
+      const _tbl = selectedMode === 'dinein' && selectedTable && selectedTable !== 'takeaway' && selectedTable !== 'delivery'
+        ? tables.find(t => t.id === selectedTable)
+        : null;
+      const orderLabel =
+        selectedMode === 'delivery' ? 'Door Delivery' :
+        selectedMode === 'takeaway' ? 'Takeaway' :
+        _tbl ? (_tbl.name ? `${_tbl.name} (${_tbl.number})` : `Table ${_tbl.number}`) :
+        'Dine In';
       const logoUrl = (settings?.settings as any)?.qrLogoUrl || (settings?.settings as any)?.printLogoUrl;
       const resolvedLogoUrl = logoUrl ? (logoUrl.startsWith('/uploads') ? `${UPLOAD_BASE}${logoUrl}` : logoUrl) : undefined;
       setTimeout(() => printReceipts(order, selectedQuickMethod || 'CASH', formatCurrency, restaurantName, stationMap, orderLabel, parcelCharge, resolvedLogoUrl), 300);
@@ -752,10 +763,24 @@ export default function QSRPage() {
     }
   }, [selectedCategory]);
 
+  // Close mode dropdown on outside click
+  useEffect(() => {
+    if (!showModeDropdown) return;
+    const onClick = (e: MouseEvent) => {
+      if (modeDropdownRef.current && !modeDropdownRef.current.contains(e.target as Node)) {
+        setShowModeDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [showModeDropdown]);
 
-  /* ── Cart helpers ── */
+
+  /* ── Cart helpers ──
+     Each click ALWAYS creates a new cart line so the cashier can apply
+     different modifiers to each line. Use the per-line +/- buttons to
+     bump quantity within a single line. */
   const addToCart = useCallback((item: MenuItem) => {
-    // Build default modifiers for this item
     const defaultMods: SelectedModifier[] = [];
     item.customizationGroups?.forEach(g => {
       g.options.forEach(opt => {
@@ -764,30 +789,11 @@ export default function QSRPage() {
         }
       });
     });
-
-    const defaultModIds = new Set(defaultMods.map(m => m.modifierId));
-
-    // Find existing cart entry with same item + same modifier set
-    const existing = cart.find(c => {
-      if (c.menuItem.id !== item.id) return false;
-      if (c.selectedModifiers.length !== defaultMods.length) return false;
-      return c.selectedModifiers.every(m => defaultModIds.has(m.modifierId));
-    });
-
-    if (existing) {
-      setCart(prev => prev.map(c =>
-        c.cartId === existing.cartId ? { ...c, quantity: c.quantity + 1 } : c
-      ));
-      lastAddedIdRef.current = existing.cartId;
-      setActiveCartItemId(existing.cartId);
-      return;
-    }
-
     const id = `cart-${++cartIdCounter.current}`;
     lastAddedIdRef.current = id;
     setActiveCartItemId(id);
     setCart(prev => [...prev, { cartId: id, menuItem: item, quantity: 1, selectedModifiers: defaultMods }]);
-  }, [cart]);
+  }, []);
 
   const updateQuantity = useCallback((cartId: string, delta: number) => {
     setCart(prev => prev.reduce<CartItem[]>((acc, c) => {
@@ -872,15 +878,15 @@ export default function QSRPage() {
     ? `Discount${discountType === 'PERCENTAGE' ? ` (${discountNum}%)` : ''}`
     : autoDiscount ? `Discount (${autoDiscount.name})` : '';
 
-  /* ── Parcel charges (takeaway only) ── */
+  /* ── Parcel charges (takeaway + door delivery) ── */
   const parcelCharge = useMemo(() => {
-    if (selectedTable !== 'takeaway') return 0;
+    if (selectedMode !== 'takeaway' && selectedMode !== 'delivery') return 0;
     return cart.reduce((sum, c) => {
       const station = catStationMap.get(c.menuItem.categoryId) || 'KITCHEN';
       const rate = station === 'BEVERAGE' ? beverageParcelRate : kitchenParcelRate;
       return sum + rate * c.quantity;
     }, 0);
-  }, [cart, selectedTable, catStationMap, kitchenParcelRate, beverageParcelRate]);
+  }, [cart, selectedMode, catStationMap, kitchenParcelRate, beverageParcelRate]);
 
   const total = subtotal - discountAmount + taxAmount + parcelCharge;
 
@@ -908,8 +914,9 @@ export default function QSRPage() {
     setSplits(prev => prev.filter(s => s.id !== id));
   };
 
-  const requiresTable = selectedTable !== 'takeaway';
-  const tableSelected = selectedTable !== '' && selectedTable !== 'takeaway';
+  // Only dine-in mode requires picking a table; takeaway/delivery don't.
+  const requiresTable = selectedMode === 'dinein';
+  const tableSelected = selectedMode === 'dinein' && selectedTable !== '' && selectedTable !== 'takeaway' && selectedTable !== 'delivery';
 
   const handleSplitSettle = () => {
     if (settledRef.current || !splitsReady) return;
@@ -938,11 +945,11 @@ export default function QSRPage() {
           ? c.selectedModifiers.map(m => ({ modifierId: m.modifierId }))
           : undefined,
       })),
-      tableId: selectedTable && selectedTable !== 'takeaway' ? selectedTable : undefined,
+      tableId: selectedMode === 'dinein' && selectedTable && selectedTable !== 'takeaway' && selectedTable !== 'delivery' ? selectedTable : undefined,
       customerName: customerName.trim() || undefined,
       customerPhone: customerPhone.trim() || undefined,
       notes: notes.trim() || undefined,
-      serviceType: selectedTable === 'takeaway' ? 'takeaway' : selectedTable ? 'table' : 'counter',
+      serviceType: selectedMode === 'delivery' ? 'delivery' : selectedMode === 'takeaway' ? 'takeaway' : selectedTable ? 'table' : 'counter',
       ...(manualDiscountAmount > 0 ? { manualDiscount: discountNum, manualDiscountType: discountType } : {}),
     });
   };
@@ -980,11 +987,11 @@ export default function QSRPage() {
           ? c.selectedModifiers.map(m => ({ modifierId: m.modifierId }))
           : undefined,
       })),
-      tableId: selectedTable && selectedTable !== 'takeaway' ? selectedTable : undefined,
+      tableId: selectedMode === 'dinein' && selectedTable && selectedTable !== 'takeaway' && selectedTable !== 'delivery' ? selectedTable : undefined,
       customerName: customerName.trim() || undefined,
       customerPhone: customerPhone.trim() || undefined,
       notes: notes.trim() || undefined,
-      serviceType: selectedTable === 'takeaway' ? 'takeaway' : selectedTable ? 'table' : 'counter',
+      serviceType: selectedMode === 'delivery' ? 'delivery' : selectedMode === 'takeaway' ? 'takeaway' : selectedTable ? 'table' : 'counter',
       isPaid: false,
       ...(manualDiscountAmount > 0 ? { manualDiscount: discountNum, manualDiscountType: discountType } : {}),
     });
@@ -1066,11 +1073,11 @@ export default function QSRPage() {
           ? c.selectedModifiers.map(m => ({ modifierId: m.modifierId }))
           : undefined,
       })),
-      tableId: selectedTable && selectedTable !== 'takeaway' ? selectedTable : undefined,
+      tableId: selectedMode === 'dinein' && selectedTable && selectedTable !== 'takeaway' && selectedTable !== 'delivery' ? selectedTable : undefined,
       customerName: customerName.trim() || undefined,
       customerPhone: customerPhone.trim() || undefined,
       notes: notes.trim() || undefined,
-      serviceType: selectedTable === 'takeaway' ? 'takeaway' : selectedTable ? 'table' : 'counter',
+      serviceType: selectedMode === 'delivery' ? 'delivery' : selectedMode === 'takeaway' ? 'takeaway' : selectedTable ? 'table' : 'counter',
       ...(manualDiscountAmount > 0 ? { manualDiscount: discountNum, manualDiscountType: discountType } : {}),
     });
   };
@@ -1151,24 +1158,61 @@ export default function QSRPage() {
           <div className="flex items-center gap-2">
             {!showOrderBoard && (
               <>
-                <button
-                  onClick={() => {
-                    if (selectedTable === 'takeaway') {
-                      setSelectedTable('');
-                      setSelectedMode('dinein');
-                    } else {
-                      setSelectedTable('takeaway');
-                      setSelectedMode('takeaway');
-                    }
-                  }}
-                  className={`rounded-xl px-4 py-2 text-sm font-semibold border-2 transition-all active:scale-[0.97] shrink-0 ${
-                    selectedTable === 'takeaway'
-                      ? 'bg-emerald-50 border-emerald-500 text-emerald-700'
-                      : 'bg-orange-50 border-primary text-primary'
-                  }`}
-                >
-                  {selectedTable === 'takeaway' ? 'Takeaway' : 'Dine In'}
-                </button>
+                {/* Mode dropdown — Dine In / Takeaway / Door Delivery */}
+                <div className="relative shrink-0" ref={modeDropdownRef}>
+                  {(() => {
+                    const modeMeta = {
+                      dinein:   { label: 'Dine In',       bg: 'bg-orange-50',  border: 'border-primary',          text: 'text-primary',          dot: 'bg-primary' },
+                      takeaway: { label: 'Takeaway',      bg: 'bg-emerald-50', border: 'border-emerald-500',      text: 'text-emerald-700',      dot: 'bg-emerald-500' },
+                      delivery: { label: 'Door Delivery', bg: 'bg-sky-50',     border: 'border-sky-500',          text: 'text-sky-700',          dot: 'bg-sky-500' },
+                    } as const;
+                    const cur = modeMeta[selectedMode];
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => setShowModeDropdown(v => !v)}
+                        className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold border-2 transition-all active:scale-[0.97] ${cur.bg} ${cur.border} ${cur.text}`}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${cur.dot}`} />
+                        {cur.label}
+                        <svg className={`w-3.5 h-3.5 transition-transform ${showModeDropdown ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                    );
+                  })()}
+                  {showModeDropdown && (
+                    <div className="absolute right-0 mt-1.5 w-48 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-50">
+                      {([
+                        { key: 'dinein',   label: 'Dine In',       desc: 'Eat at table',     dot: 'bg-primary',      hover: 'hover:bg-orange-50' },
+                        { key: 'takeaway', label: 'Takeaway',      desc: 'Pickup',           dot: 'bg-emerald-500',  hover: 'hover:bg-emerald-50' },
+                        { key: 'delivery', label: 'Door Delivery', desc: 'Send to address',  dot: 'bg-sky-500',      hover: 'hover:bg-sky-50' },
+                      ] as const).map(opt => (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          onClick={() => {
+                            setSelectedMode(opt.key);
+                            setSelectedTable(opt.key === 'dinein' ? '' : opt.key);
+                            setShowModeDropdown(false);
+                          }}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 text-left ${opt.hover} ${selectedMode === opt.key ? 'bg-gray-50' : ''} transition-colors`}
+                        >
+                          <span className={`w-2.5 h-2.5 rounded-full ${opt.dot} shrink-0`} />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-semibold text-gray-900">{opt.label}</p>
+                            <p className="text-[11px] text-gray-500">{opt.desc}</p>
+                          </div>
+                          {selectedMode === opt.key && (
+                            <svg className="w-4 h-4 text-primary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <button
                   onClick={resetForm}
                   title="New Order"
@@ -1990,12 +2034,12 @@ export default function QSRPage() {
               </div>
             </div>
 
-            {/* Table Number Picker */}
-            {tables.length > 0 && selectedTable !== 'takeaway' && (
+            {/* Table Number Picker — only for dine-in */}
+            {tables.length > 0 && selectedMode === 'dinein' && (
               <div>
                 <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">
                   Table Number
-                  {selectedTable && selectedTable !== 'takeaway' && (
+                  {selectedTable && (
                     <button onClick={() => setSelectedTable('')} className="ml-2 text-primary font-semibold normal-case">Clear</button>
                   )}
                 </label>
@@ -2023,7 +2067,7 @@ export default function QSRPage() {
                     );
                   })}
                 </div>
-                {selectedTable && selectedTable !== 'takeaway' && (() => {
+                {selectedTable && (() => {
                   const t = tables.find(tb => tb.id === selectedTable);
                   return t ? <p className="text-xs text-primary font-semibold mt-1.5">Table {t.name || t.number} selected</p> : null;
                 })()}
