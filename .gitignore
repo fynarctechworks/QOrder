@@ -57,3 +57,9 @@ packages/backend/uploads/*
 *.pem
 *.local
 .cache/
+
+# Claude Code (local settings)
+.claude/
+
+# One-off DB snapshots from cleanup scripts (may contain production data)
+packages/backend/scripts/*.json
