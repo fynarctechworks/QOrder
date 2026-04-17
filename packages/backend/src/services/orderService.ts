@@ -925,16 +925,56 @@ export const orderService = {
   async settleUnpaidOrder(orderId: string, restaurantId: string) {
     const order = await prisma.order.findFirst({
       where: { id: orderId, restaurantId },
-      select: { id: true, isPaid: true },
+      select: { id: true, isPaid: true, status: true, tableId: true },
     });
     if (!order) throw AppError.notFound('Order');
     if (order.isPaid) throw AppError.badRequest('Order is already paid');
 
-    return prisma.order.update({
+    const shouldComplete = order.status !== 'COMPLETED' && order.status !== 'CANCELLED';
+
+    const updated = await prisma.order.update({
       where: { id: orderId },
-      data: { isPaid: true },
-      select: { id: true, isPaid: true },
+      data: {
+        isPaid: true,
+        ...(shouldComplete ? { status: 'COMPLETED', completedAt: new Date() } : {}),
+      },
+      select: { id: true, isPaid: true, status: true },
     });
+
+    // If this settle-completed the order and it was linked to a table,
+    // close the session and free the table once no other active orders remain.
+    if (shouldComplete && order.tableId) {
+      const tId = order.tableId;
+      try {
+        const activeCount = await prisma.order.count({
+          where: {
+            tableId: tId,
+            status: { in: ['PENDING', 'PREPARING', 'READY', 'PAYMENT_PENDING'] },
+          },
+        });
+        if (activeCount === 0) {
+          await prisma.tableSession.updateMany({
+            where: { tableId: tId, status: 'ACTIVE' },
+            data: { status: 'CLOSED', closedAt: new Date() },
+          });
+          await prisma.table.update({
+            where: { id: tId },
+            data: { status: 'AVAILABLE' },
+          });
+          await tableService.rotateSessionToken(tId, restaurantId).catch((err) => {
+            logger.error({ err, tableId: tId }, 'Failed to rotate session token on settle');
+          });
+          await cache.del(cache.keys.tables(restaurantId)).catch(() => {});
+        }
+      } catch (err) {
+        logger.error({ err, tableId: tId }, 'Failed to free table after settle');
+      }
+    }
+
+    await cache.del(cache.keys.activeOrders(restaurantId)).catch(() => {});
+    await cache.del(cache.keys.order(orderId)).catch(() => {});
+
+    return updated;
   },
 
   // Get order stats for dashboard

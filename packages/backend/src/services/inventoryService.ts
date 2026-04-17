@@ -3,6 +3,24 @@ import { prisma, cache, AppError } from '../lib/index.js';
 import { alertService } from './alertService.js';
 import { getIO } from '../socket/index.js';
 
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+/**
+ * Resolve a user-supplied date string (YYYY-MM-DD from an <input type="date">)
+ * to a timestamp suitable for StockMovement.createdAt. If the user picked
+ * today (in IST), use the current instant so history shows the real time.
+ * For past dates, anchor to noon IST so the timestamp reads as "that date"
+ * no matter which timezone renders it.
+ */
+function resolveMovementDate(dateStr: string): Date {
+  const istNow = new Date(Date.now() + IST_OFFSET_MS);
+  const todayIST = istNow.toISOString().slice(0, 10);
+  if (dateStr === todayIST) return new Date();
+  // Past date — store as noon IST (06:30 UTC) so it renders as the right day
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(y!, m! - 1, d!, 6, 30, 0));
+}
+
 /**
  * After any stock change, check if any affected ingredients hit zero.
  * If so, emit a real-time alert to the admin panel listing the out-of-stock
@@ -162,6 +180,7 @@ export const inventoryService = {
     type: 'MANUAL_ADD' | 'MANUAL_DEDUCT' | 'WASTE' | 'RETURN' | 'PURCHASE';
     quantity: number;
     costPerUnit?: number;
+    supplierId?: string | null;
     notes?: string;
     performedBy?: string;
     date?: string;
@@ -170,6 +189,14 @@ export const inventoryService = {
       where: { id: ingredientId, restaurantId },
     });
     if (!ingredient) throw AppError.notFound('Ingredient');
+
+    if (data.supplierId) {
+      const supplier = await prisma.supplier.findFirst({
+        where: { id: data.supplierId, restaurantId },
+        select: { id: true },
+      });
+      if (!supplier) throw AppError.badRequest('Invalid supplier for this restaurant');
+    }
 
     const qty = new Decimal(data.quantity);
     const previousQty = new Decimal(ingredient.currentStock);
@@ -187,6 +214,10 @@ export const inventoryService = {
       }
     }
 
+    const totalCost = data.costPerUnit !== undefined
+      ? new Decimal(data.costPerUnit).mul(qty)
+      : null;
+
     const [updated] = await prisma.$transaction([
       prisma.ingredient.update({
         where: { id: ingredientId },
@@ -202,11 +233,13 @@ export const inventoryService = {
           previousQty,
           newQty,
           costPerUnit: data.costPerUnit ?? null,
+          totalCost,
+          supplierId: data.supplierId ?? null,
           notes: data.notes,
           performedBy: data.performedBy,
           ingredientId,
           restaurantId,
-          ...(data.date && { createdAt: new Date(data.date) }),
+          ...(data.date && { createdAt: resolveMovementDate(data.date) }),
         },
       }),
     ]);
@@ -254,6 +287,7 @@ export const inventoryService = {
         where,
         include: {
           ingredient: { select: { id: true, name: true, unit: true } },
+          supplier: { select: { id: true, name: true } },
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -314,7 +348,7 @@ export const inventoryService = {
             performedBy: data.performedBy,
             ingredientId: item.ingredientId,
             restaurantId,
-            ...(data.date && { createdAt: new Date(data.date) }),
+            ...(data.date && { createdAt: resolveMovementDate(data.date) }),
           },
         })
       );

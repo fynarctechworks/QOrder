@@ -24,6 +24,10 @@ router.delete('/ingredients/:id', authorize('OWNER', 'ADMIN'), inventoryControll
 router.post('/ingredients/:id/adjust', authorize('OWNER', 'ADMIN', 'MANAGER'), inventoryController.adjustStock);
 router.get('/stock-history', inventoryController.getStockHistory);
 
+// ─── EXPORTS ────────────────────────────────────────────────
+router.get('/export/products', inventoryController.exportProducts);
+router.get('/export/stock-movements', inventoryController.exportStockMovements);
+
 // ─── USAGE / STOCK OUT ─────────────────────────────────────
 router.post('/usage', authorize('OWNER', 'ADMIN', 'MANAGER'), inventoryController.recordUsage);
 router.post('/auto-deduct/run', authorize('OWNER', 'ADMIN', 'MANAGER'), inventoryController.runAutoDeduct);

@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { inventoryService } from '../services/inventoryService.js';
+import { inventoryExportService } from '../services/inventoryExportService.js';
 
 export const inventoryController = {
   // ─── INGREDIENTS ───────────────────────────────────────────
@@ -74,6 +75,38 @@ export const inventoryController = {
         page: req.query.page ? Number(req.query.page) : undefined,
       });
       res.json({ success: true, ...result });
+    } catch (err) { next(err); }
+  },
+
+  // ─── EXPORTS ────────────────────────────────────────────────
+
+  async exportProducts(req: Request, res: Response, next: NextFunction) {
+    try {
+      const restaurantId = req.user!.restaurantId;
+      const branchId = req.branchId ?? undefined;
+      const wb = await inventoryExportService.buildProductsWorkbook(restaurantId, branchId);
+      const stamp = new Date().toISOString().slice(0, 10);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="products_${stamp}.xlsx"`);
+      await wb.xlsx.write(res);
+      res.end();
+    } catch (err) { next(err); }
+  },
+
+  async exportStockMovements(req: Request, res: Response, next: NextFunction) {
+    try {
+      const restaurantId = req.user!.restaurantId;
+      const wb = await inventoryExportService.buildStockMovementsWorkbook(restaurantId, {
+        startDate: req.query.startDate as string | undefined,
+        endDate: req.query.endDate as string | undefined,
+        type: req.query.type as string | undefined,
+        ingredientId: req.query.ingredientId as string | undefined,
+      });
+      const stamp = new Date().toISOString().slice(0, 10);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="stock_movements_${stamp}.xlsx"`);
+      await wb.xlsx.write(res);
+      res.end();
     } catch (err) { next(err); }
   },
 

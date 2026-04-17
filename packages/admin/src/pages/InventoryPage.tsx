@@ -321,6 +321,16 @@ function ProductsTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<t
           >
             {autoDeductMut.isPending ? 'Running...' : '▶ Run Auto-Deduct'}
           </button>
+          <button
+            className="btn-secondary text-sm flex-1 sm:flex-none"
+            onClick={async () => {
+              try { await inventoryService.exportProducts(); }
+              catch (e) { alert((e as Error).message); }
+            }}
+            title="Download all products as Excel"
+          >
+            📥 Export Excel
+          </button>
           <button className="btn-primary text-sm flex-1 sm:flex-none" onClick={() => setShowForm(true)}>+ Add Product</button>
         </div>
       </div>
@@ -625,6 +635,12 @@ function StockTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<type
   const [quantity, setQuantity] = useState<number>(0);
   const [notes, setNotes] = useState('');
   const [histPage, setHistPage] = useState(1);
+  const [productSearch, setProductSearch] = useState('');
+  const [productOpen, setProductOpen] = useState(false);
+  const [pricePerUnit, setPricePerUnit] = useState<number | ''>('');
+  const [supplierId, setSupplierId] = useState<string>('');
+  const [supplierSearch, setSupplierSearch] = useState('');
+  const [supplierOpen, setSupplierOpen] = useState(false);
 
   const { data: ingredients = [], isError: ingError, error: ingErr, refetch: refetchIng } = useQuery<Ingredient[]>({
     queryKey: ['inventory', 'ingredients'],
@@ -636,10 +652,40 @@ function StockTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<type
     queryFn: () => inventoryService.getStockHistory({ page: histPage, limit: HISTORY_LIMIT }),
   });
 
+  const { data: suppliers = [] } = useQuery<Supplier[]>({
+    queryKey: ['inventory', 'suppliers'],
+    queryFn: inventoryService.getSuppliers,
+  });
+
   const movements = (historyResult?.data ?? []) as StockMovement[];
   const histMeta = historyResult?.meta as { total: number; totalPages: number } | undefined;
 
-  const reset = () => { setIngredientId(''); setQuantity(0); setNotes(''); };
+  const reset = () => {
+    setIngredientId(''); setQuantity(0); setNotes(''); setProductSearch('');
+    setPricePerUnit(''); setSupplierId(''); setSupplierSearch('');
+  };
+
+  const selectedIngredient = ingredientId ? ingredients.find(i => i.id === ingredientId) : null;
+  const filteredIngredients = useMemo(() => {
+    const q = productSearch.trim().toLowerCase();
+    if (!q) return ingredients;
+    return ingredients.filter(i => i.name.toLowerCase().includes(q));
+  }, [ingredients, productSearch]);
+
+  const selectedSupplier = supplierId ? suppliers.find(s => s.id === supplierId) : null;
+  const filteredSuppliers = useMemo(() => {
+    const q = supplierSearch.trim().toLowerCase();
+    if (!q) return suppliers;
+    return suppliers.filter(s => s.name.toLowerCase().includes(q));
+  }, [suppliers, supplierSearch]);
+
+  // When ingredient changes, prefill price with its last known costPerUnit
+  useEffect(() => {
+    if (selectedIngredient && pricePerUnit === '') {
+      setPricePerUnit(selectedIngredient.costPerUnit || '');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ingredientId]);
 
   // Usage recording
   const usageMut = useMutation({
@@ -663,6 +709,8 @@ function StockTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<type
         quantity,
         notes: notes || 'Stock purchase',
         date,
+        ...(pricePerUnit !== '' && Number(pricePerUnit) >= 0 ? { costPerUnit: Number(pricePerUnit) } : {}),
+        ...(supplierId ? { supplierId } : {}),
       });
     },
     onSuccess: () => {
@@ -675,7 +723,6 @@ function StockTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<type
   const activeMut = mode === 'purchase' ? purchaseMut : usageMut;
 
   const ing = ingredients.find(i => i.id === ingredientId);
-  const estValue = ing ? quantity * ing.costPerUnit : 0;
 
 
   return (
@@ -686,6 +733,18 @@ function StockTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<type
           <button className="btn-primary text-sm" onClick={() => { refetchIng(); refetchHist(); }}>Retry</button>
         </div>
       )}
+      <div className="flex justify-end">
+        <button
+          className="btn-secondary text-sm"
+          onClick={async () => {
+            try { await inventoryService.exportStockMovements(); }
+            catch (e) { alert((e as Error).message); }
+          }}
+          title="Download all stock movements as Excel"
+        >
+          📥 Export Excel
+        </button>
+      </div>
       {/* Record Form */}
       <div className="card p-6">
         <div className="flex items-center gap-3 mb-5 flex-wrap">
@@ -722,18 +781,40 @@ function StockTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<type
           {activeMut.isSuccess && <p className="text-sm text-success">Recorded successfully ✓</p>}
 
           <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto] gap-2 items-center">
-            <select
-              className="select w-full"
-              value={ingredientId}
-              onChange={e => setIngredientId(e.target.value)}
-            >
-              <option value="">Select product...</option>
-              {ingredients.map(i => (
-                <option key={i.id} value={i.id}>
-                  {i.name} ({i.currentStock} {i.unit})
-                </option>
-              ))}
-            </select>
+            <div className="relative w-full">
+              <input
+                type="text"
+                className="input w-full"
+                placeholder="Search product..."
+                value={productOpen ? productSearch : (selectedIngredient ? `${selectedIngredient.name} (${selectedIngredient.currentStock} ${selectedIngredient.unit})` : '')}
+                onFocus={() => { setProductOpen(true); setProductSearch(''); }}
+                onBlur={() => setTimeout(() => setProductOpen(false), 150)}
+                onChange={e => setProductSearch(e.target.value)}
+              />
+              {productOpen && (
+                <div className="absolute z-20 mt-1 w-full max-h-72 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg">
+                  {filteredIngredients.length === 0 ? (
+                    <div className="px-3 py-2 text-sm text-text-secondary">No products match "{productSearch}"</div>
+                  ) : (
+                    filteredIngredients.map(i => (
+                      <button
+                        type="button"
+                        key={i.id}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-orange-50 ${i.id === ingredientId ? 'bg-orange-50 font-medium' : ''}`}
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => {
+                          setIngredientId(i.id);
+                          setProductSearch('');
+                          setProductOpen(false);
+                        }}
+                      >
+                        {i.name} <span className="text-text-secondary">({i.currentStock} {i.unit})</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
             <div className="flex gap-2 items-center">
               <input
                 className="input w-full sm:w-24"
@@ -752,9 +833,66 @@ function StockTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<type
             />
           </div>
 
+          {mode === 'purchase' && (
+            <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-2 items-center">
+              <div className="flex gap-2 items-center">
+                <label className="text-xs font-medium text-text-secondary whitespace-nowrap">Price / {ing?.unit || 'unit'}</label>
+                <input
+                  className="input w-32"
+                  type="number" min={0} step="0.01"
+                  placeholder="0.00"
+                  value={pricePerUnit === '' ? '' : pricePerUnit}
+                  onChange={e => setPricePerUnit(e.target.value === '' ? '' : +e.target.value)}
+                />
+              </div>
+              <div className="relative w-full">
+                <input
+                  type="text"
+                  className="input w-full"
+                  placeholder="Search vendor (optional)..."
+                  value={supplierOpen ? supplierSearch : (selectedSupplier ? selectedSupplier.name : '')}
+                  onFocus={() => { setSupplierOpen(true); setSupplierSearch(''); }}
+                  onBlur={() => setTimeout(() => setSupplierOpen(false), 150)}
+                  onChange={e => setSupplierSearch(e.target.value)}
+                />
+                {supplierOpen && (
+                  <div className="absolute z-20 mt-1 w-full max-h-60 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg">
+                    <button
+                      type="button"
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-orange-50 ${!supplierId ? 'bg-orange-50 font-medium' : ''}`}
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={() => { setSupplierId(''); setSupplierSearch(''); setSupplierOpen(false); }}
+                    >
+                      <span className="text-text-secondary">— No vendor —</span>
+                    </button>
+                    {filteredSuppliers.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-text-secondary">No vendors match "{supplierSearch}"</div>
+                    ) : (
+                      filteredSuppliers.map(s => (
+                        <button
+                          type="button"
+                          key={s.id}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-orange-50 ${s.id === supplierId ? 'bg-orange-50 font-medium' : ''}`}
+                          onMouseDown={e => e.preventDefault()}
+                          onClick={() => { setSupplierId(s.id); setSupplierSearch(''); setSupplierOpen(false); }}
+                        >
+                          {s.name}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-end pt-2">
             <div className="flex items-center gap-4">
-              {estValue > 0 && <span className="text-xs text-text-secondary">Est. value: <strong>{fmt(estValue)}</strong></span>}
+              {(() => {
+                const effectivePrice = mode === 'purchase' && pricePerUnit !== '' ? Number(pricePerUnit) : (ing?.costPerUnit ?? 0);
+                const total = quantity * effectivePrice;
+                return total > 0 ? <span className="text-xs text-text-secondary">Total: <strong>{fmt(total)}</strong></span> : null;
+              })()}
               <button type="submit" className="btn-primary text-sm" disabled={activeMut.isPending}>
                 {activeMut.isPending ? 'Recording...' : mode === 'purchase' ? 'Record Purchase' : 'Record Usage'}
               </button>
@@ -797,6 +935,9 @@ function StockTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<type
                   <th>Type</th>
                   <th>Product</th>
                   <th className="text-right">Qty</th>
+                  <th className="text-right">Price</th>
+                  <th className="text-right">Total</th>
+                  <th>Vendor</th>
                   <th className="text-right">Before</th>
                   <th className="text-right">After</th>
                   <th>Notes</th>
@@ -805,6 +946,10 @@ function StockTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<type
               <tbody>
                 {movements.map(m => {
                   const isAdd = ['PURCHASE', 'MANUAL_ADD', 'RETURN'].includes(m.type);
+                  const price = m.costPerUnit != null ? Number(m.costPerUnit) : null;
+                  const total = m.totalCost != null
+                    ? Number(m.totalCost)
+                    : (price != null ? price * Number(m.quantity) : null);
                   return (
                     <tr key={m.id}>
                       <td className="text-xs whitespace-nowrap">{fmtDateTime(m.createdAt)}</td>
@@ -813,6 +958,9 @@ function StockTab({ fmt, qc }: { fmt: (v: number) => string; qc: ReturnType<type
                       <td className={`text-right font-mono ${isAdd ? 'text-success' : 'text-error'}`}>
                         {isAdd ? '+' : '-'}{Number(m.quantity).toFixed(2)}
                       </td>
+                      <td className="text-right font-mono text-xs">{price != null ? fmt(price) : '—'}</td>
+                      <td className="text-right font-mono text-xs">{total != null ? fmt(total) : '—'}</td>
+                      <td className="text-xs">{m.supplier?.name ?? '—'}</td>
                       <td className="text-right font-mono text-text-secondary">{Number(m.previousQty).toFixed(2)}</td>
                       <td className="text-right font-mono">{Number(m.newQty).toFixed(2)}</td>
                       <td className="text-xs text-text-secondary truncate max-w-[150px]">{m.notes ?? '—'}</td>

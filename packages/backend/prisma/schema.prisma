@@ -972,8 +972,9 @@ model Supplier {
   restaurantId String
   restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 
-  ingredients IngredientSupplier[]
-  purchases   PurchaseOrder[]
+  ingredients    IngredientSupplier[]
+  purchases      PurchaseOrder[]
+  stockMovements StockMovement[]
 
   @@unique([restaurantId, name])
   @@index([restaurantId])
@@ -1052,6 +1053,7 @@ model StockMovement {
   previousQty  Decimal           @db.Decimal(12, 3)
   newQty       Decimal           @db.Decimal(12, 3)
   costPerUnit  Decimal?          @db.Decimal(10, 2)
+  totalCost    Decimal?          @db.Decimal(12, 2)
   reference    String?
   notes        String?
   performedBy  String?
@@ -1060,11 +1062,15 @@ model StockMovement {
   ingredientId String
   ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
 
+  supplierId   String?
+  supplier     Supplier?  @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+
   restaurantId String
   restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 
   @@index([ingredientId])
   @@index([restaurantId])
+  @@index([supplierId])
   @@index([type])
   @@index([createdAt])
 }

@@ -390,6 +390,7 @@ export const tableService = {
         orders: {
           some: {
             status: { in: activeOrderStatuses },
+            orderType: 'DINE_IN',
           },
         },
       },
@@ -403,6 +404,7 @@ export const tableService = {
         orders: {
           where: {
             status: { in: activeOrderStatuses },
+            orderType: 'DINE_IN',
           },
           select: {
             id: true,
@@ -484,14 +486,33 @@ export const tableService = {
   /**
    * Fix stuck tables: free any OCCUPIED table that has no active orders.
    * Called by the admin Sync button to recover from orphaned state.
+   * Also auto-completes active orders older than 12 hours so Running
+   * Tables can't show yesterday's sessions forever.
    */
   async syncTableStatuses(restaurantId: string) {
+    // Step 1: auto-complete any order that's been stuck in an active
+    // state for more than 12 hours. Safe heuristic — a real dine-in
+    // session never lasts that long, so anything older is orphaned.
+    const cutoff = new Date(Date.now() - 12 * 60 * 60 * 1000);
+    const staleActive = await prisma.order.updateMany({
+      where: {
+        restaurantId,
+        status: { in: ['PENDING', 'PREPARING', 'READY', 'PAYMENT_PENDING'] },
+        createdAt: { lt: cutoff },
+      },
+      data: { status: 'COMPLETED', completedAt: new Date() },
+    });
+    if (staleActive.count > 0) {
+      logger.info({ restaurantId, count: staleActive.count }, 'Auto-completed stale active orders');
+      await cache.del(cache.keys.activeOrders(restaurantId)).catch(() => {});
+    }
+
     const occupiedTables = await prisma.table.findMany({
       where: { restaurantId, status: 'OCCUPIED' },
       select: { id: true },
     });
 
-    if (occupiedTables.length === 0) return { fixed: 0 };
+    if (occupiedTables.length === 0) return { fixed: 0, staleOrdersClosed: staleActive.count };
 
     const tableIds = occupiedTables.map((t) => t.id);
 
@@ -534,7 +555,7 @@ export const tableService = {
 
     await cache.del(cache.keys.tables(restaurantId));
     logger.info({ restaurantId, stuckIds }, 'Synced stuck table statuses');
-    return { fixed: stuckIds.length, tableIds: stuckIds };
+    return { fixed: stuckIds.length, tableIds: stuckIds, staleOrdersClosed: staleActive.count };
   },
 
   /**

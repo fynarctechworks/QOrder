@@ -1,4 +1,46 @@
 import { apiClient } from './apiClient';
+import { useAuthStore } from '../state/authStore';
+import { useBranchStore } from '../state/branchStore';
+
+async function downloadXlsx(endpoint: string, filename: string): Promise<void> {
+  const url = `${apiClient.baseUrl}${endpoint}`;
+  const headers: Record<string, string> = {};
+  const token = useAuthStore.getState().accessToken;
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const branchId = useBranchStore.getState().activeBranchId;
+  if (branchId) headers['X-Branch-Id'] = branchId;
+
+  let res = await fetch(url, { headers, credentials: 'include' });
+  if (res.status === 401) {
+    await apiClient.refreshAccessToken();
+    const t2 = useAuthStore.getState().accessToken;
+    if (t2) headers['Authorization'] = `Bearer ${t2}`;
+    res = await fetch(url, { headers, credentials: 'include' });
+  }
+  if (!res.ok) {
+    let msg = `Export failed (${res.status})`;
+    try {
+      const txt = await res.text();
+      if (txt) {
+        try {
+          const j = JSON.parse(txt);
+          msg = j.error?.message || j.message || txt;
+        } catch { msg = txt; }
+      }
+    } catch { /* noop */ }
+    throw new Error(msg);
+  }
+
+  const blob = await res.blob();
+  const objUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = objUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objUrl);
+}
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -60,11 +102,13 @@ export interface StockMovement {
   previousQty: number;
   newQty: number;
   costPerUnit?: number;
+  totalCost?: number;
   reference?: string;
   notes?: string;
   performedBy?: string;
   createdAt: string;
   ingredient?: { id: string; name: string; unit: string };
+  supplier?: { id: string; name: string } | null;
 }
 
 export interface PurchaseOrder {
@@ -186,7 +230,7 @@ export const inventoryService = {
   },
 
   // Stock adjustments
-  async adjustStock(ingredientId: string, data: { type: string; quantity: number; notes?: string; costPerUnit?: number; date?: string }): Promise<Ingredient> {
+  async adjustStock(ingredientId: string, data: { type: string; quantity: number; notes?: string; costPerUnit?: number; supplierId?: string | null; date?: string }): Promise<Ingredient> {
     return apiClient.post(`/inventory/ingredients/${ingredientId}/adjust`, data);
   },
 
@@ -285,5 +329,30 @@ export const inventoryService = {
   // Forecast
   async getForecast(days: number = 14): Promise<ForecastItem[]> {
     return apiClient.get(`/inventory/forecast?days=${days}`);
+  },
+
+  // Excel exports
+  async exportProducts(): Promise<void> {
+    const stamp = new Date().toISOString().slice(0, 10);
+    return downloadXlsx('/inventory/export/products', `products_${stamp}.xlsx`);
+  },
+
+  async exportStockMovements(filters?: {
+    startDate?: string;
+    endDate?: string;
+    type?: string;
+    ingredientId?: string;
+  }): Promise<void> {
+    const params = new URLSearchParams();
+    if (filters?.startDate) params.set('startDate', filters.startDate);
+    if (filters?.endDate) params.set('endDate', filters.endDate);
+    if (filters?.type) params.set('type', filters.type);
+    if (filters?.ingredientId) params.set('ingredientId', filters.ingredientId);
+    const qs = params.toString();
+    const stamp = new Date().toISOString().slice(0, 10);
+    return downloadXlsx(
+      `/inventory/export/stock-movements${qs ? `?${qs}` : ''}`,
+      `stock_movements_${stamp}.xlsx`,
+    );
   },
 };
