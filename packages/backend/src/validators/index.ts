@@ -305,8 +305,11 @@ export const updateOrderStatusSchema = z.object({
   skipAutoInvoice: z.boolean().optional(),
 });
 
+const orderTypeEnum = z.enum(['DINE_IN', 'TAKEAWAY', 'QSR', 'QSR_TAKEAWAY', 'QSR_DELIVERY', 'PAN_CORNER']);
+
 export const orderQuerySchema = z.object({
   status: z.enum(['PENDING', 'PREPARING', 'READY', 'PAYMENT_PENDING', 'COMPLETED', 'CANCELLED']).optional(),
+  orderType: z.union([orderTypeEnum, z.array(orderTypeEnum)]).optional(),
   tableId: z.string().uuid().optional(),
   dateFrom: z.string().datetime().optional(),
   dateTo: z.string().datetime().optional(),

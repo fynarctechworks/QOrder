@@ -298,17 +298,11 @@ export const menuService = {
             },
           });
         } else {
-          // New group – upsert by (restaurantId, branchId, name)
-          modifierGroup = await tx.modifierGroup.upsert({
-            where: {
-              restaurantId_branchId_name: { restaurantId, branchId: branchId ?? '', name: group.name },
-            },
-            update: {
-              isRequired: group.required,
-              minSelect: group.minSelections,
-              maxSelect: group.maxSelections,
-            },
-            create: {
+          // New group – always create a fresh row so it is not shared across
+          // menu items. Sharing caused edits on one item to silently mutate
+          // another item's modifier group.
+          modifierGroup = await tx.modifierGroup.create({
+            data: {
               name: group.name,
               isRequired: group.required,
               minSelect: group.minSelections,
@@ -335,15 +329,9 @@ export const menuService = {
         const idsToRemove = [...existingIds].filter((id) => !incomingOptionIds.includes(id));
 
         if (idsToRemove.length > 0) {
-          // Try hard-delete first; if any are referenced by orders, soft-delete instead
-          for (const id of idsToRemove) {
-            try {
-              await tx.modifier.delete({ where: { id } });
-            } catch {
-              // Foreign key constraint (order references) — soft-delete
-              await tx.modifier.update({ where: { id }, data: { isActive: false } });
-            }
-          }
+          // FK is ON DELETE CASCADE — past OrderItemModifier rows (which already
+          // hold snapshotted name/price) are removed along with the Modifier.
+          await tx.modifier.deleteMany({ where: { id: { in: idsToRemove } } });
         }
 
         // Upsert each incoming option

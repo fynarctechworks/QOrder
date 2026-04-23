@@ -22,12 +22,15 @@ function generateOrderNumber(): string {
 
 export const orderService = {
   async getOrders(restaurantId: string, query: OrderQueryInput, branchId?: string | null) {
-    const { status, tableId, dateFrom, dateTo, page, limit, sortBy, sortOrder } = query;
+    const { status, orderType, tableId, dateFrom, dateTo, page, limit, sortBy, sortOrder } = query;
 
     const where = {
       restaurantId,
       ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
       ...(status ? { status } : {}),
+      ...(orderType
+        ? { orderType: Array.isArray(orderType) ? { in: orderType } : orderType }
+        : {}),
       ...(tableId ? { tableId } : {}),
       ...(dateFrom || dateTo ? {
         createdAt: {

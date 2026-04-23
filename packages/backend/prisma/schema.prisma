@@ -7,8 +7,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 // ==================== TENANT / RESTAURANT ====================
@@ -334,7 +335,9 @@ model ModifierGroup {
   modifiers  Modifier[]
   menuItems  MenuItemModifierGroup[]
 
-  @@unique([restaurantId, branchId, name])
+  // NOTE: no unique(restaurantId, branchId, name) — modifier groups are per
+  // menu item, so two items can independently both have a group called "TYPE"
+  // without interfering with each other.
   @@index([restaurantId])
   @@index([branchId])
 }
@@ -643,7 +646,7 @@ model OrderItemModifier {
 
   // Modifier relation
   modifierId String
-  modifier   Modifier @relation(fields: [modifierId], references: [id], onDelete: Restrict)
+  modifier   Modifier @relation(fields: [modifierId], references: [id], onDelete: Cascade)
 
   @@index([orderItemId])
   @@index([modifierId])
