@@ -397,13 +397,14 @@ export default function OrdersPage() {
     payment_pending: ppTableBills,
   }), [pendingBills, preparingBills, ppTableBills]);
 
-  /* ── Completed / Cancelled — paginated queries ── */
+  /* ── Completed / Cancelled — paginated queries (non-QSR only) ── */
   const GRID_PAGE_SIZE = 50;
+  const NON_QSR_TYPES = ['DINE_IN', 'TAKEAWAY', 'PAN_CORNER'];
 
   const completedQuery = useInfiniteQuery({
-    queryKey: ['orders', 'completed'],
+    queryKey: ['orders', 'completed', 'non-qsr'],
     queryFn: ({ pageParam = 1 }) =>
-      orderService.getAll({ status: 'COMPLETED' as unknown as OrderStatus, limit: GRID_PAGE_SIZE, page: pageParam }),
+      orderService.getAll({ status: 'COMPLETED' as unknown as OrderStatus, orderType: NON_QSR_TYPES, limit: GRID_PAGE_SIZE, page: pageParam }),
     initialPageParam: 1,
     getNextPageParam: (last) =>
       last.pagination.page < last.pagination.totalPages ? last.pagination.page + 1 : undefined,
@@ -412,9 +413,9 @@ export default function OrdersPage() {
   });
 
   const cancelledQuery = useInfiniteQuery({
-    queryKey: ['orders', 'cancelled'],
+    queryKey: ['orders', 'cancelled', 'non-qsr'],
     queryFn: ({ pageParam = 1 }) =>
-      orderService.getAll({ status: 'CANCELLED' as unknown as OrderStatus, limit: GRID_PAGE_SIZE, page: pageParam }),
+      orderService.getAll({ status: 'CANCELLED' as unknown as OrderStatus, orderType: NON_QSR_TYPES, limit: GRID_PAGE_SIZE, page: pageParam }),
     initialPageParam: 1,
     getNextPageParam: (last) =>
       last.pagination.page < last.pagination.totalPages ? last.pagination.page + 1 : undefined,
@@ -426,7 +427,7 @@ export default function OrdersPage() {
 
   const gridData = useMemo(() => {
     const pages = activeGridQuery.data?.pages ?? [];
-    const list = pages.flatMap(p => p.data).filter(o => o.orderType !== 'QSR' && o.orderType !== 'QSR_TAKEAWAY' && o.orderType !== 'QSR_DELIVERY' && matchesSearch(o));
+    const list = pages.flatMap(p => p.data).filter(o => matchesSearch(o));
     type GridItem = { kind: 'order'; order: Order; ts: number };
     const items: GridItem[] = list.map(o => ({
       kind: 'order' as const,

@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { menuService, settingsService, orderService, tableService } from '../services';
@@ -320,6 +320,72 @@ export default function QSRPage() {
   const [showOrderBoard, setShowOrderBoard] = useState(false);
   const [boardSearch, setBoardSearch] = useState('');
   const [showUnpaidPanel, setShowUnpaidPanel] = useState(false);
+  const [boardView, setBoardView] = useState<'live' | 'history'>('live');
+  const [historySearch, setHistorySearch] = useState('');
+  const [historyDetail, setHistoryDetail] = useState<Order | null>(null);
+
+  /* ── QSR Completed History — paginated ── */
+  const HISTORY_PAGE_SIZE = 50;
+  const qsrHistoryQuery = useInfiniteQuery({
+    queryKey: ['qsr-history-completed'],
+    queryFn: ({ pageParam = 1 }) =>
+      orderService.getAll({
+        status: 'COMPLETED' as unknown as OrderStatus,
+        orderType: ['QSR', 'QSR_TAKEAWAY', 'QSR_DELIVERY'],
+        limit: HISTORY_PAGE_SIZE,
+        page: pageParam,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (last) =>
+      last.pagination.page < last.pagination.totalPages ? last.pagination.page + 1 : undefined,
+    enabled: showOrderBoard && boardView === 'history',
+    staleTime: 30_000,
+  });
+
+  const historyItems = useMemo(() => {
+    const pages = qsrHistoryQuery.data?.pages ?? [];
+    const list = pages.flatMap((p) => p.data);
+    const q = historySearch.trim().toLowerCase();
+    const filtered = q
+      ? list.filter(
+          (o) =>
+            (o.tokenNumber != null && String(o.tokenNumber).padStart(3, '0').includes(q)) ||
+            (o.orderNumber && o.orderNumber.toLowerCase().includes(q)) ||
+            (o.customerName && o.customerName.toLowerCase().includes(q)) ||
+            o.items.some((i) => i.menuItemName.toLowerCase().includes(q))
+        )
+      : list;
+
+    const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+    const getISTDay = (iso: string) => {
+      const d = new Date(new Date(iso).getTime() + IST_OFFSET_MS);
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+    };
+
+    const groups = new Map<string, Order[]>();
+    for (const o of filtered) {
+      const day = getISTDay(o.createdAt);
+      if (!groups.has(day)) groups.set(day, []);
+      groups.get(day)!.push(o);
+    }
+    const ordered = Array.from(groups.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([day, orders]) => ({
+        day,
+        orders: orders.sort((a, b) => {
+          const ta = a.tokenNumber ?? 0;
+          const tb = b.tokenNumber ?? 0;
+          if (tb !== ta) return tb - ta;
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        }),
+      }));
+
+    return {
+      groups: ordered,
+      total: pages[0]?.pagination.total ?? 0,
+      loaded: list.length,
+    };
+  }, [qsrHistoryQuery.data, historySearch]);
 
   /* ── Fetch orders for the QSR board ── */
   const { data: qsrOrdersData, isLoading: qsrOrdersLoading, refetch: refetchQsrOrders } = useQuery({
@@ -1277,8 +1343,32 @@ export default function QSRPage() {
 
       {/* ═══ Body ═══ */}
       {showOrderBoard ? (
-        /* ═══ QSR Order Board — 3-Column Kanban ═══ */
+        /* ═══ QSR Order Board — Live + History ═══ */
         <div className="flex-1 flex flex-col overflow-hidden bg-background">
+          {/* Tab switcher */}
+          <div className="shrink-0 px-3 md:px-5 pt-3 bg-white border-b border-gray-200">
+            <div className="inline-flex gap-1 p-1 bg-gray-100 rounded-xl">
+              {([
+                { key: 'live' as const, label: 'Live Board' },
+                { key: 'history' as const, label: 'Completed History' },
+              ]).map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => setBoardView(t.key)}
+                  className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                    boardView === t.key
+                      ? 'bg-white text-primary shadow-sm'
+                      : 'text-text-muted hover:text-text-primary'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {boardView === 'live' ? (
+          <>
           {/* Stats Cards + Search */}
           <div className="shrink-0 px-3 md:px-5 py-3 bg-white border-b border-gray-200 space-y-3">
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
@@ -1423,6 +1513,94 @@ export default function QSRPage() {
                     )}
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+          </>
+          ) : (
+            /* ═══ Completed History ═══ */
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="shrink-0 px-3 md:px-5 py-3 bg-white border-b border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div>
+                  <p className="text-[11px] text-text-muted font-medium uppercase tracking-wider">Total Completed</p>
+                  <p className="text-xl font-bold text-emerald-600 tabular-nums leading-none mt-1">
+                    {qsrHistoryQuery.isLoading ? '…' : historyItems.total.toLocaleString()}
+                  </p>
+                </div>
+                <div className="relative md:w-72">
+                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <input
+                    type="text"
+                    placeholder="Search token, name, item..."
+                    value={historySearch}
+                    onChange={(e) => setHistorySearch(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-3 md:p-5">
+                {qsrHistoryQuery.isLoading ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <div key={i} className="card p-4 animate-pulse"><div className="h-24 bg-gray-100 rounded" /></div>
+                    ))}
+                  </div>
+                ) : historyItems.groups.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-3">
+                      <svg className="w-7 h-7 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                      </svg>
+                    </div>
+                    <h3 className="font-semibold text-text-primary mb-1">No completed QSR orders</h3>
+                    <p className="text-sm text-text-muted">{historySearch ? 'Try a different search.' : 'Completed QSR orders will appear here.'}</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-6">
+                      {historyItems.groups.map((group) => {
+                        const dayDate = new Date(`${group.day}T00:00:00+05:30`);
+                        const label = dayDate.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' });
+                        return (
+                          <div key={group.day}>
+                            <div className="flex items-center gap-3 mb-3">
+                              <h3 className="text-sm font-semibold text-text-primary">{label}</h3>
+                              <span className="text-xs text-text-muted tabular-nums">{group.orders.length} order{group.orders.length === 1 ? '' : 's'}</span>
+                              <div className="flex-1 h-px bg-gray-200" />
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                              {group.orders.map((order) => (
+                                <div key={order.id} onClick={() => setHistoryDetail(order)} className="cursor-pointer">
+                                  <QSROrderCard
+                                    order={order}
+                                    formatCurrency={formatCurrency}
+                                    mode="completed"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {qsrHistoryQuery.hasNextPage && (
+                      <div className="flex justify-center pt-6">
+                        <button
+                          onClick={() => qsrHistoryQuery.fetchNextPage()}
+                          disabled={qsrHistoryQuery.isFetchingNextPage}
+                          className="px-6 py-2.5 text-sm font-medium rounded-xl bg-surface-elevated hover:bg-gray-100 text-text-secondary border border-border transition-colors disabled:opacity-60"
+                        >
+                          {qsrHistoryQuery.isFetchingNextPage
+                            ? 'Loading...'
+                            : `Load More (${historyItems.loaded} of ${historyItems.total})`}
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -2572,6 +2750,93 @@ export default function QSRPage() {
                 )}
               </div>
             )}
+          </div>
+        )}
+      </Modal>
+
+      {/* ═══ QSR History Detail Modal ═══ */}
+      <Modal
+        open={!!historyDetail}
+        onClose={() => setHistoryDetail(null)}
+        title={historyDetail ? `Order #${historyDetail.tokenNumber != null ? String(historyDetail.tokenNumber).padStart(3, '0') : historyDetail.orderNumber}` : ''}
+        maxWidth="max-w-lg"
+      >
+        {historyDetail && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <p className="text-[11px] text-text-muted uppercase tracking-wider">Type</p>
+                <p className="font-semibold">
+                  {historyDetail.orderType === 'QSR_DELIVERY' ? 'Door Delivery' : historyDetail.orderType === 'QSR_TAKEAWAY' ? 'Takeaway' : 'Counter'}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] text-text-muted uppercase tracking-wider">Customer</p>
+                <p className="font-semibold truncate">{historyDetail.customerName || '—'}</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-text-muted uppercase tracking-wider">Created</p>
+                <p className="font-semibold">{new Date(historyDetail.createdAt).toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-text-muted uppercase tracking-wider">Payment</p>
+                <p className={`font-semibold ${historyDetail.isPaid === false ? 'text-amber-600' : 'text-emerald-600'}`}>
+                  {historyDetail.isPaid === false ? 'Unpaid' : 'Paid'}
+                </p>
+              </div>
+            </div>
+
+            <div className="border-t border-gray-100 pt-3">
+              <p className="text-[11px] text-text-muted uppercase tracking-wider mb-2">Items</p>
+              <div className="space-y-2">
+                {historyDetail.items.map((it) => (
+                  <div key={it.id} className="flex items-start justify-between text-sm gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium truncate">{it.quantity} × {it.menuItemName}</p>
+                      {it.specialInstructions && (
+                        <p className="text-xs text-text-muted truncate">{it.specialInstructions}</p>
+                      )}
+                    </div>
+                    <p className="tabular-nums font-semibold shrink-0">{formatCurrency(it.totalPrice)}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="border-t border-gray-100 pt-3 space-y-1 text-sm">
+              <div className="flex justify-between"><span className="text-text-muted">Subtotal</span><span className="tabular-nums">{formatCurrency(historyDetail.subtotal)}</span></div>
+              {historyDetail.discount > 0 && (
+                <div className="flex justify-between text-emerald-700"><span>Discount{historyDetail.discountName ? ` (${historyDetail.discountName})` : ''}</span><span className="tabular-nums">-{formatCurrency(historyDetail.discount)}</span></div>
+              )}
+              <div className="flex justify-between"><span className="text-text-muted">Tax</span><span className="tabular-nums">{formatCurrency(historyDetail.tax)}</span></div>
+              <div className="flex justify-between pt-2 border-t border-gray-100 font-bold text-base"><span>Total</span><span className="tabular-nums">{formatCurrency(historyDetail.total)}</span></div>
+            </div>
+
+            <div className="border-t border-gray-100 pt-3 flex justify-end">
+              <button
+                onClick={() => {
+                  const lUrl = (settings?.settings as unknown as { qrLogoUrl?: string; printLogoUrl?: string })?.qrLogoUrl
+                    || (settings?.settings as unknown as { qrLogoUrl?: string; printLogoUrl?: string })?.printLogoUrl;
+                  const rLUrl = lUrl ? (lUrl.startsWith('/uploads') ? `${UPLOAD_BASE}${lUrl}` : lUrl) : undefined;
+                  const rOLabel = historyDetail.orderType === 'QSR_DELIVERY'
+                    ? 'Door Delivery'
+                    : historyDetail.orderType === 'QSR_TAKEAWAY'
+                    ? 'Takeaway'
+                    : historyDetail.tableName || 'Dine In';
+                  const rParcel = (historyDetail.orderType === 'QSR_TAKEAWAY' || historyDetail.orderType === 'QSR_DELIVERY')
+                    ? Math.max(0, Math.round((historyDetail.total - historyDetail.subtotal + historyDetail.discount - historyDetail.tax) * 100) / 100)
+                    : 0;
+                  const method: PaymentMethod = historyDetail.isPaid === false ? 'UNPAID' : 'CASH';
+                  printReceipts(historyDetail, method, formatCurrency, restaurantName, buildItemStationMap(), rOLabel, rParcel || undefined, rLUrl);
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white border-2 border-gray-300 text-gray-700 hover:border-primary hover:text-primary font-semibold text-sm transition-colors"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                Reprint KOT
+              </button>
+            </div>
           </div>
         )}
       </Modal>

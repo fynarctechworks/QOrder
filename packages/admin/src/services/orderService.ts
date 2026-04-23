@@ -5,6 +5,7 @@ interface OrdersQuery {
   page?: number;
   limit?: number;
   status?: OrderStatus | OrderStatus[];
+  orderType?: string | string[];
   tableId?: string;
   startDate?: string;
   endDate?: string;
@@ -70,6 +71,10 @@ export const orderService = {
     if (query.status) {
       const statuses = Array.isArray(query.status) ? query.status : [query.status];
       statuses.forEach((s) => params.append('status', s));
+    }
+    if (query.orderType) {
+      const types = Array.isArray(query.orderType) ? query.orderType : [query.orderType];
+      types.forEach((t) => params.append('orderType', t));
     }
     if (query.tableId) params.set('tableId', query.tableId);
     if (query.startDate) params.set('startDate', query.startDate);
